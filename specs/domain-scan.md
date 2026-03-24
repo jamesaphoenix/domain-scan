@@ -2612,7 +2612,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - [x] `config.rs`: `.domain-scan.toml` parsing, custom service definitions, include/exclude globs
 - [x] `cache.rs`: content-addressed cache with DashMap, disk persistence with bincode, LRU eviction
 - [x] `resolver.rs`: import/export tracking, implementation matching
-- [ ] `index.rs`: ScanIndex construction with all lookup tables (interfaces, classes, services, methods, impls, schemas)
+- [x] `index.rs`: ScanIndex construction with all lookup tables (interfaces, classes, services, methods, impls, schemas)
 - [ ] `manifest.rs`: Manifest struct, deserialization, flatten, validate, match algorithm, write-back
 - [ ] `validate.rs`: 10 validation rules (naming, completeness, god-objects, impls)
 - [ ] Cross-file tests: interface in file A, implementation in file B

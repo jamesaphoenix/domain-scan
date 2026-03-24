@@ -10,6 +10,7 @@
 pub mod build_status;
 pub mod cache;
 pub mod config;
+pub mod index;
 pub mod ir;
 pub mod lang;
 pub mod output;

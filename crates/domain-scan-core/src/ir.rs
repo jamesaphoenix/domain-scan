@@ -588,6 +588,8 @@ pub enum ViolationSeverity {
 // ---------------------------------------------------------------------------
 
 /// The complete scan result.
+/// Lookup tables use indices (file_idx, entity_idx) into the `files` vec
+/// to avoid lifetime parameters. Query methods on ScanIndex resolve indices.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ScanIndex {
     pub root: PathBuf,
@@ -595,6 +597,24 @@ pub struct ScanIndex {
     pub scanned_at: DateTime<Utc>,
     pub files: Vec<IrFile>,
     pub stats: ScanStats,
+
+    // Pre-built lookup tables (populated after all files parsed)
+    #[serde(skip)]
+    pub(crate) interfaces_by_name: HashMap<String, Vec<(usize, usize)>>,
+    #[serde(skip)]
+    pub(crate) classes_by_name: HashMap<String, Vec<(usize, usize)>>,
+    #[serde(skip)]
+    pub(crate) services_by_kind: HashMap<ServiceKind, Vec<(usize, usize)>>,
+    #[serde(skip)]
+    pub(crate) methods_by_owner: HashMap<String, Vec<(usize, usize)>>,
+    #[serde(skip)]
+    pub(crate) implementations: HashMap<String, Vec<(usize, usize)>>,
+    #[serde(skip)]
+    pub(crate) implementors: HashMap<String, Vec<String>>,
+    #[serde(skip)]
+    pub(crate) schemas_by_framework: HashMap<String, Vec<(usize, usize)>>,
+    #[serde(skip)]
+    pub(crate) schemas_by_kind: HashMap<SchemaKind, Vec<(usize, usize)>>,
 }
 
 impl ScanIndex {
@@ -605,6 +625,14 @@ impl ScanIndex {
             scanned_at: Utc::now(),
             files: Vec::new(),
             stats: ScanStats::default(),
+            interfaces_by_name: HashMap::new(),
+            classes_by_name: HashMap::new(),
+            services_by_kind: HashMap::new(),
+            methods_by_owner: HashMap::new(),
+            implementations: HashMap::new(),
+            implementors: HashMap::new(),
+            schemas_by_framework: HashMap::new(),
+            schemas_by_kind: HashMap::new(),
         }
     }
 }
