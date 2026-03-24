@@ -2614,7 +2614,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - [x] `resolver.rs`: import/export tracking, implementation matching
 - [x] `index.rs`: ScanIndex construction with all lookup tables (interfaces, classes, services, methods, impls, schemas)
 - [x] `manifest.rs`: Manifest struct, deserialization, flatten, validate, match algorithm, write-back
-- [ ] `validate.rs`: 10 validation rules (naming, completeness, god-objects, impls)
+- [x] `validate.rs`: 10 validation rules (naming, completeness, god-objects, impls)
 - [ ] Cross-file tests: interface in file A, implementation in file B
 - [ ] Implementation completeness checking
 - [ ] Full pipeline integration test: walk -> parse -> index -> query -> output
