@@ -2736,9 +2736,9 @@ Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CL
 
 #### 6c.6 `--dry-run` Everywhere
 
-- [ ] Extend `--dry-run` to all mutating commands: `cache clear`, `cache prune`, `match --write-back`
-- [ ] `--dry-run` output shows what would happen as structured JSON: `{"action": "delete", "target": "cache/abc123.bin", "reason": "file deleted from disk"}`
-- [ ] Already exists on `match` — extend pattern to other commands
+- [x] Extend `--dry-run` to all mutating commands: `cache clear`, `cache prune`, `match --write-back`
+- [x] `--dry-run` output shows what would happen as structured JSON: `{"action": "delete", "target": "cache/abc123.bin", "reason": "file deleted from disk"}`
+- [x] Already exists on `match` — extend pattern to other commands
 
 #### 6c.7 Agent Skill Files
 

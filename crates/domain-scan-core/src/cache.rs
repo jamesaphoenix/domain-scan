@@ -46,6 +46,15 @@ pub struct CacheStats {
     pub max_size_bytes: u64,
 }
 
+/// A single action that a mutating cache command *would* perform.
+/// Used by `--dry-run` to preview side-effects as structured JSON.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DryRunAction {
+    pub action: String,
+    pub target: String,
+    pub reason: String,
+}
+
 impl Cache {
     /// Create a new cache. `max_size_mb` is the limit for on-disk storage.
     /// The cache directory is created lazily on first write.
@@ -173,6 +182,36 @@ impl Cache {
             self.remove(key);
         }
         count
+    }
+
+    /// Preview what `clear()` would do without actually deleting anything.
+    /// Returns a list of `DryRunAction` items for structured `--dry-run` output.
+    pub fn dry_run_clear(&self) -> Vec<DryRunAction> {
+        self.entries
+            .iter()
+            .map(|entry| DryRunAction {
+                action: "delete".to_string(),
+                target: self.disk_path(entry.key()).display().to_string(),
+                reason: "cache clear removes all entries".to_string(),
+            })
+            .collect()
+    }
+
+    /// Preview what `prune()` would do without actually deleting anything.
+    /// Returns a list of `DryRunAction` items for stale entries only.
+    pub fn dry_run_prune(&self) -> Vec<DryRunAction> {
+        self.entries
+            .iter()
+            .filter(|entry| !entry.value().ir.path.exists())
+            .map(|entry| DryRunAction {
+                action: "delete".to_string(),
+                target: self.disk_path(entry.key()).display().to_string(),
+                reason: format!(
+                    "source file deleted from disk: {}",
+                    entry.value().ir.path.display()
+                ),
+            })
+            .collect()
     }
 
     /// Evict least-recently-used entries until disk usage is within limits.
@@ -529,5 +568,99 @@ mod tests {
             .unwrap_or(0);
 
         assert!(after >= before);
+    }
+
+    #[test]
+    fn test_dry_run_clear_lists_all_entries() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+        let _ = cache.insert("a1".to_string(), make_ir("alpha"));
+        let _ = cache.insert("b2".to_string(), make_ir("beta"));
+
+        let actions = cache.dry_run_clear();
+        assert_eq!(actions.len(), 2);
+        for a in &actions {
+            assert_eq!(a.action, "delete");
+            assert!(a.target.ends_with(".bincode"));
+            assert!(a.reason.contains("cache clear"));
+        }
+
+        // Verify nothing was actually deleted
+        assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn test_dry_run_clear_empty_cache() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        let actions = cache.dry_run_clear();
+        assert!(actions.is_empty());
+    }
+
+    #[test]
+    fn test_dry_run_prune_lists_only_stale() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        // Entry with nonexistent source file (stale)
+        let stale_ir = IrFile::new(
+            PathBuf::from("/no/such/file.ts"),
+            Language::TypeScript,
+            "hash_stale".to_string(),
+            BuildStatus::Built,
+        );
+        let _ = cache.insert("stale_key".to_string(), stale_ir);
+
+        // Entry with existing source file (the cache dir itself exists)
+        let fresh_ir = IrFile::new(
+            dir.path().to_path_buf(),
+            Language::TypeScript,
+            "hash_fresh".to_string(),
+            BuildStatus::Built,
+        );
+        let _ = cache.insert("fresh_key".to_string(), fresh_ir);
+
+        let actions = cache.dry_run_prune();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].action, "delete");
+        assert!(actions[0].reason.contains("/no/such/file.ts"));
+
+        // Verify nothing was actually deleted
+        assert_eq!(cache.len(), 2);
+    }
+
+    #[test]
+    fn test_dry_run_prune_nothing_stale() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        // Entry with existing path
+        let fresh_ir = IrFile::new(
+            dir.path().to_path_buf(),
+            Language::TypeScript,
+            "hash_good".to_string(),
+            BuildStatus::Built,
+        );
+        let _ = cache.insert("good_key".to_string(), fresh_ir);
+
+        let actions = cache.dry_run_prune();
+        assert!(actions.is_empty());
     }
 }

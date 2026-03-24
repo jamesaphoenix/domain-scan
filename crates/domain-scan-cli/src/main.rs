@@ -250,9 +250,17 @@ enum CacheAction {
     /// Show cache statistics
     Stats,
     /// Clear all cached entries
-    Clear,
+    Clear {
+        /// Preview what would be deleted without actually deleting
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Remove entries for deleted files
-    Prune,
+    Prune {
+        /// Preview what would be pruned without actually deleting
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -420,13 +428,11 @@ struct MatchJsonInput {
     #[serde(default = "default_match_agents")]
     #[allow(dead_code)]
     agents: usize,
-    /// Accepted for schema completeness; write-back not yet wired through --json.
+    /// Write matched entities back to manifest.
     #[serde(default)]
-    #[allow(dead_code)]
     write_back: bool,
-    /// Accepted for schema completeness; dry-run not yet wired through --json.
+    /// Preview what --write-back would do without actually writing.
     #[serde(default)]
-    #[allow(dead_code)]
     dry_run: bool,
     #[serde(default)]
     fail_on_unmatched: bool,
@@ -749,8 +755,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             unmatched_only,
             prompt_unmatched: _,
             agents: _,
-            write_back: _,
-            dry_run: _,
+            write_back,
+            dry_run,
             fail_on_unmatched,
         } => {
             if let Some(ref json) = cli.json_input {
@@ -758,6 +764,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     ("--manifest", manifest_path.is_some()),
                     ("--unmatched-only", *unmatched_only),
                     ("--fail-on-unmatched", *fail_on_unmatched),
+                    ("--write-back", *write_back),
+                    ("--dry-run", *dry_run),
                 ])?;
                 let input: MatchJsonInput = parse_json_input(json, "match")?;
                 cmd_match(
@@ -766,12 +774,22 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     PathBuf::from(input.manifest),
                     input.unmatched_only,
                     input.fail_on_unmatched,
+                    input.write_back,
+                    input.dry_run,
                 )
             } else {
                 let path = manifest_path.clone().ok_or(
                     "Match requires --manifest <path>. Provide it as a flag or via --json",
                 )?;
-                cmd_match(&cli, format, path, *unmatched_only, *fail_on_unmatched)
+                cmd_match(
+                    &cli,
+                    format,
+                    path,
+                    *unmatched_only,
+                    *fail_on_unmatched,
+                    *write_back,
+                    *dry_run,
+                )
             }
         }
         Commands::Cache { ref action } => cmd_cache(&cli, action),
@@ -1749,10 +1767,53 @@ fn cmd_match(
     manifest_path: PathBuf,
     unmatched_only: bool,
     fail_on_unmatched: bool,
+    write_back: bool,
+    dry_run: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let scan_index = run_scan(cli)?;
     let manifest_data = manifest::parse_manifest_file(&manifest_path)?;
     let result = manifest::match_entities(&scan_index, &manifest_data);
+
+    // --write-back (with optional --dry-run)
+    if write_back {
+        let mut updated_manifest = manifest_data.clone();
+        manifest::write_back(&mut updated_manifest, &result, &scan_index);
+        let serialized = manifest::serialize_manifest(&updated_manifest)?;
+
+        if dry_run {
+            // Show what would be written as structured JSON
+            let actions = vec![serde_json::json!({
+                "action": "write",
+                "target": manifest_path.display().to_string(),
+                "reason": format!(
+                    "write-back would add {} matched entities to manifest",
+                    result.matched.len()
+                ),
+                "preview": serialized,
+            })];
+            let json = serde_json::to_string_pretty(&actions)?;
+            eprintln!(
+                "Dry run: would write back {} matched entities to {}",
+                result.matched.len(),
+                manifest_path.display()
+            );
+            print!("{json}");
+            return Ok(());
+        }
+
+        // Actually write the manifest
+        std::fs::write(&manifest_path, serialized.as_bytes()).map_err(|e| {
+            format!(
+                "failed to write manifest {}: {e}",
+                manifest_path.display()
+            )
+        })?;
+        eprintln!(
+            "Wrote back {} matched entities to {}",
+            result.matched.len(),
+            manifest_path.display()
+        );
+    }
 
     match format {
         OutputFormat::Json => {
@@ -1829,14 +1890,30 @@ fn cmd_cache(cli: &Cli, action: &CacheAction) -> Result<(), Box<dyn std::error::
             );
             print!("{json}");
         }
-        CacheAction::Clear => {
-            c.clear()?;
-            eprintln!("Cache cleared.");
+        CacheAction::Clear { dry_run } => {
+            if dry_run {
+                let actions = c.dry_run_clear();
+                let json = serde_json::to_string_pretty(&actions)?;
+                eprintln!("Dry run: would delete {} cache entries.", actions.len());
+                print!("{json}");
+            } else {
+                c.clear()?;
+                eprintln!("Cache cleared.");
+            }
         }
-        CacheAction::Prune => {
-            // Simple prune: clear for now (full impl would check file existence)
-            eprintln!("Prune not yet fully implemented; clearing cache.");
-            c.clear()?;
+        CacheAction::Prune { dry_run } => {
+            if dry_run {
+                let actions = c.dry_run_prune();
+                let json = serde_json::to_string_pretty(&actions)?;
+                eprintln!(
+                    "Dry run: would prune {} stale cache entries.",
+                    actions.len()
+                );
+                print!("{json}");
+            } else {
+                let pruned = c.prune();
+                eprintln!("Pruned {pruned} stale cache entries.");
+            }
         }
     }
     Ok(())
