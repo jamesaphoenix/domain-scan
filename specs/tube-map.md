@@ -1,0 +1,568 @@
+# Subsystem Tube Map — Spec for domain-scan Tauri App
+
+> Add a second tab to the domain-scan desktop app: a London Underground-style tube map showing subsystems as stations, domains as colored lines, and dependencies as edges. Powered by `domain-scan match --manifest` data rendered via React Flow.
+
+---
+
+## 1. Overview
+
+### 1.1 Current State
+
+The domain-scan Tauri app has a single view: a three-panel entity browser (Entity Tree | Source Preview | Details Panel). It scans codebases with tree-sitter and shows interfaces, services, classes, methods, schemas, and impls.
+
+It has **no graph visualization**, no subsystem grouping, and no dependency visualization. The manifest matching engine (`manifest.rs`) exists in the core library but is not exposed via Tauri IPC — it's CLI-only today.
+
+### 1.2 Target State
+
+Two tabs in the desktop app:
+
+- **Tab 1: Entities/Types** — the existing three-panel layout (unchanged)
+- **Tab 2: Subsystem Tube Map** — a React Flow canvas showing:
+  - Domains as colored "tube lines" (like the Central Line, District Line, etc.)
+  - Subsystems as "stations" placed along each line
+  - Dependencies as styled edges between stations
+  - Drill-in: click a station to see its entities
+  - Dependency trace: click a station to highlight all upstream/downstream connections
+  - Search, filter by domain/status, keyboard navigation
+
+### 1.3 Reference Implementation
+
+The octospark-visualizer (`/Users/jamesaphoenix/Desktop/projects/just-understanding-data/octospark-visualizer/`) is the design reference. It uses React Flow with custom SubsystemNode/DependencyEdge components, a hard-coded tube map layout, and a drill-in InterfaceExplorer. This spec generalizes that approach for dynamic data from domain-scan.
+
+---
+
+## 2. Bug Fix: Open Directory Button
+
+### 2.1 Root Cause
+
+The "Open Directory" button in App.tsx calls `@tauri-apps/plugin-dialog`'s `open()` function. The plugin is installed on both Rust and JS sides and registered in the Tauri builder. However, **the Tauri 2 capabilities file is missing**. Without `dialog:allow-open` permission, the IPC call is silently blocked.
+
+### 2.2 Fix
+
+Create `crates/domain-scan-tauri/capabilities/default.json`:
+
+```json
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for domain-scan",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "shell:allow-open"
+  ]
+}
+```
+
+Also add `shell:allow-open` for the "Open in Editor" feature which likely has the same issue.
+
+### 2.3 Acceptance Criteria
+
+- [ ] Clicking "Open Directory" opens a native macOS/Linux/Windows folder picker
+- [ ] Selecting a directory triggers a scan
+- [ ] No code changes needed — only the capabilities file
+
+---
+
+## 3. Tab System
+
+### 3.1 Insertion Point
+
+The tab bar inserts between the status bar (App.tsx line 222) and the three-panel div (line 225). The layout becomes:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ Status Bar: "domain-scan" | "Open Directory" | Stats     │
+├──────────────────────────────────────────────────────────┤
+│ [ Entities/Types ]  [ Subsystem Tube Map ]               │
+├──────────────────────────────────────────────────────────┤
+│ Tab content (full width, flex-1)                         │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 3.2 State
+
+```typescript
+type Tab = "entities" | "tube-map";
+const [activeTab, setActiveTab] = useState<Tab>("entities");
+```
+
+### 3.3 Shared vs Tab-Specific State
+
+**Shared (stays at App root):**
+- `useScan` hook — scan results, stats, entities, IPC methods
+- `currentFilters: FilterParams`
+- `handleOpenDirectory` — status bar + file dialog
+
+**Tab-specific (scoped to each tab component):**
+- Entities tab: `useTreeState`, `selectedDetail`, `sourceCode`, `promptOutput`, `exportOutput`
+- Tube Map tab: `useTubeMapState` (new hook), `focusedSubsystemId`, `breadcrumbs`, `manifestPath`
+
+### 3.4 Keyboard Shortcuts
+
+Add `activeTab` parameter to `useKeyboard`. Entities-tab shortcuts (j/k/h/l/p/e) only fire when `activeTab === "entities"`. Tube-map shortcuts (f/i/0/1-9/Escape) only fire when `activeTab === "tube-map"`. `/` (search) fires on both.
+
+### 3.5 Tab Bar Styling
+
+```
+flex items-center gap-1 bg-gray-800 border-b border-gray-700 px-4
+```
+
+Active tab: `bg-gray-700 text-white font-medium rounded-t-md px-4 py-2 text-sm`
+Inactive tab: `text-gray-400 hover:text-gray-200 px-4 py-2 text-sm`
+
+---
+
+## 4. New Tauri IPC Commands
+
+### 4.1 AppState Extension
+
+```rust
+pub struct AppState {
+    pub current_index: Mutex<Option<ScanIndex>>,
+    pub current_root: Mutex<Option<PathBuf>>,
+    // NEW:
+    pub current_manifest: Mutex<Option<SystemManifest>>,
+    pub current_match_result: Mutex<Option<MatchResult>>,
+}
+```
+
+### 4.2 Extended Manifest Parsing
+
+The current `Manifest` struct only reads `subsystems`. Extend it to a `SystemManifest` that also reads `meta`, `domains`, and `connections` from the system.json format:
+
+```rust
+pub struct SystemManifest {
+    pub meta: ManifestMeta,
+    pub domains: HashMap<String, DomainDef>,
+    pub subsystems: Vec<ManifestSubsystem>,  // existing
+    pub connections: Vec<Connection>,
+}
+
+pub struct ManifestMeta {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+}
+
+pub struct DomainDef {
+    pub label: String,
+    pub color: String,
+}
+
+pub struct Connection {
+    pub from: String,
+    pub to: String,
+    pub label: String,
+    pub connection_type: ConnectionType,  // depends_on | uses | triggers
+}
+```
+
+### 4.3 New Commands
+
+| Command | Params | Returns | Purpose |
+|---------|--------|---------|---------|
+| `load_manifest` | `path: String` | `SystemManifest` | Parse manifest file, store in AppState |
+| `match_manifest` | (none — uses AppState) | `MatchResult` | Run `match_entities` on loaded index + manifest |
+| `get_tube_map_data` | (none) | `TubeMapData` | Composite: returns subsystems, domains, connections, match counts |
+| `get_subsystem_entities` | `subsystem_id: String` | `Vec<EntitySummary>` | Entities belonging to a specific subsystem |
+| `get_subsystem_detail` | `subsystem_id: String` | `SubsystemDetail` | Full subsystem with children, matched entity counts |
+
+### 4.4 TubeMapData Type
+
+```rust
+pub struct TubeMapData {
+    pub meta: ManifestMeta,
+    pub domains: HashMap<String, DomainDef>,
+    pub subsystems: Vec<TubeMapSubsystem>,
+    pub connections: Vec<Connection>,
+    pub coverage_percent: f64,
+    pub unmatched_count: usize,
+}
+
+pub struct TubeMapSubsystem {
+    pub id: String,
+    pub name: String,
+    pub domain: String,
+    pub status: String,
+    pub description: String,
+    pub file_path: String,
+    pub matched_entity_count: usize,
+    pub interface_count: usize,
+    pub operation_count: usize,
+    pub table_count: usize,
+    pub event_count: usize,
+    pub has_children: bool,
+    pub child_count: usize,
+    pub dependency_count: usize,
+}
+```
+
+---
+
+## 5. Dynamic Tube Map Layout Engine
+
+### 5.1 Overview
+
+Replace octospark's hard-coded `TUBE_LINES` with a runtime-computed equivalent. The layout is fully deterministic (same input → same output) with no force-directed simulation.
+
+### 5.2 Constants
+
+```typescript
+const STATION_GAP = 420;       // px between station centers (inherited from octospark)
+const LINE_GAP = 320;          // px between parallel lines
+const NODE_WIDTH = 360;        // station node width
+const COL_MARGIN = 300;        // px between parallel line groups in same row
+const LINE_ROW_HEIGHT = 640;   // px per row (double LINE_GAP for edge room)
+const MAX_STATIONS_PER_SEGMENT = 10;  // U-bend wrapping threshold
+const BUNDLE_THRESHOLD = 3;    // edges between same two domains before bundling
+```
+
+### 5.3 Algorithm: Phase 1 — Domain Row Assignment
+
+1. **Count inter-domain edges.** Build `cross[di][dj] = count` from manifest connections.
+2. **Topological sort on domain DAG.** Use Kahn's algorithm. Break cycles by removing the lower-weight edge. Record breaks in `cycleBreaks[]`.
+3. **Grid packing.** `MAX_COLS = ceil(sqrt(N))`. Domains at the same topo layer share a row. Within a row, sort by descending station count. Assign `(row, col)` to each domain.
+4. **Compute origins.** `origin.x = col * (maxStationsInRow * STATION_GAP + COL_MARGIN)`, `origin.y = row * LINE_ROW_HEIGHT`.
+
+### 5.4 Algorithm: Phase 2 — Station Ordering
+
+Within each domain line, sort subsystems by:
+1. Topological depth within domain (Kahn's on intra-domain dependencies) — sources left, sinks right
+2. Cross-domain fan-out count (ascending) — highly-depended-on stations go to the middle
+3. Alphabetical ID as stable tiebreaker
+
+### 5.5 Algorithm: Phase 3 — U-Bend Wrapping
+
+For lines with more than `MAX_STATIONS_PER_SEGMENT` stations, generate segments that wrap:
+
+```typescript
+segments: [
+  { steps: 9, dx: 1, dy: 0 },   // right for 9
+  { steps: 1, dx: 0, dy: 1 },   // down
+  { steps: 9, dx: -1, dy: 0 },  // left for 9
+  { steps: 1, dx: 0, dy: 1 },   // down again
+  // ... repeat
+]
+```
+
+The existing `buildStationPositions()` segment walker handles this without modification.
+
+### 5.6 Algorithm: Compact Mode (Filtered)
+
+Same as octospark's compact algorithm:
+1. Group visible stations by computed line, preserving order
+2. `maxLineWidth = max(stationCount - 1) * STATION_GAP`
+3. Center each line: `offsetX = (maxLineWidth - lineWidth) / 2`
+4. Stack lines: `currentY += LINE_GAP`
+5. Fallback row for unrecognized stations
+
+### 5.7 Color Assignment
+
+If manifest has `domains` with colors: use them.
+Otherwise: assign from a 12-color static palette (`blue, green, orange, purple, red, yellow, cyan, pink, teal, amber, indigo, lime`). If N > 12, cycle with `d3.hsl(hue, 0.65, 0.55)` using `hue = (i / N) * 360`.
+
+### 5.8 Files to Create
+
+- `ui/src/layout/types.ts` — `ComputedLine`, `LayoutGrid`, `DomainLayer`
+- `ui/src/layout/colors.ts` — `assignDomainColors(domains) → Map<string, string>`
+- `ui/src/layout/tubeMap.ts` — `buildDynamicLayout(manifest, options) → { nodes, edges }`
+
+---
+
+## 6. React Flow Integration
+
+### 6.1 Dependencies
+
+```
+npm install @xyflow/react@^12.10.1
+```
+
+No dagre or elkjs needed. The layout is computed by the algorithm above.
+
+### 6.2 Provider Setup
+
+Wrap the tube map tab content in `<ReactFlowProvider>`:
+
+```tsx
+// Module-level (outside component)
+const nodeTypes = { subsystem: SubsystemNode };
+const edgeTypes = { dependency: DependencyEdge };
+
+// Inside TubeMapView component
+<ReactFlow
+  nodes={nodes}
+  edges={edges}
+  nodeTypes={nodeTypes}
+  edgeTypes={edgeTypes}
+  fitView
+  fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+  minZoom={0.1}
+  maxZoom={2}
+  proOptions={{ hideAttribution: true }}
+>
+  <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#1e293b" />
+  <Controls showInteractive={false} />
+  <MiniMap pannable zoomable />
+</ReactFlow>
+```
+
+### 6.3 CSP
+
+No changes needed. The existing `style-src 'self' 'unsafe-inline'` in `tauri.conf.json` is compatible with React Flow's runtime style injection.
+
+### 6.4 CSS
+
+Import once in `main.tsx` or `App.tsx`:
+```typescript
+import "@xyflow/react/dist/style.css";
+```
+
+---
+
+## 7. React Components
+
+### 7.1 Components to Port from octospark (adapted)
+
+| Component | Changes Needed |
+|-----------|---------------|
+| `SubsystemNode.tsx` | Replace octospark-specific type imports. Wire callbacks to Tauri IPC. Add `matchedEntityCount` display. |
+| `DependencyEdge.tsx` | Swap `ConnectionType` import to local type. No structural changes. |
+| `EdgeTooltip.tsx` | Swap type imports. No structural changes. |
+| `Legend.tsx` | Make `DomainId` a `string` (dynamic domains). No structural changes. |
+| `Breadcrumbs.tsx` | Reuse as-is. |
+| `TubeMapStatusBar.tsx` | Adapt from octospark's StatusBar. Add coverage % display. |
+| `SearchBar.tsx` | Adapt domain/status filters for dynamic domains. |
+
+### 7.2 New Components
+
+| Component | Purpose |
+|-----------|---------|
+| `TubeMapView.tsx` | Top-level tube map container. Wraps ReactFlowProvider + canvas. Manages tube map state. |
+| `TabBar.tsx` | Tab switcher (Entities/Types, Subsystem Tube Map). |
+| `ManifestLoader.tsx` | UI for loading a manifest file (button + file picker). Shown when no manifest is loaded. |
+| `SubsystemDrillIn.tsx` | Drill-in view when a subsystem station is clicked. Shows matched entities in a card grid. Replaces octospark's InterfaceExplorer with domain-scan entity data. |
+| `CoverageOverlay.tsx` | Shows match coverage %, unmatched entity count, and "Generate prompts for unmatched" button. |
+
+### 7.3 New Hooks
+
+| Hook | Purpose |
+|------|---------|
+| `useTubeMapState.ts` | Manages manifest loading, matching, tube map data, focused subsystem, breadcrumbs, dependency trace. Calls new Tauri IPC commands. |
+| `useTubeLayout.ts` | Computes React Flow nodes/edges from `TubeMapData` via the dynamic layout algorithm. Pure layout computation, memoized. |
+
+---
+
+## 8. Interaction Model
+
+### 8.1 Keyboard Shortcuts (Tube Map Tab)
+
+| Key | Action |
+|-----|--------|
+| `f` | Fit view (zoom to show all visible nodes) |
+| `i` / `I` | Toggle interface/entity side panel |
+| `/` | Focus search input |
+| `Escape` | Priority cascade: close panel → clear search → clear dependency trace → clear filters → pop breadcrumb |
+| `0` | Clear all filters |
+| `1`-`9` | Toggle domain filter (by order of domain in manifest) |
+| `?` | Toggle shortcut help overlay |
+
+### 8.2 Dependency Trace
+
+Click a station's "trace" button → sets `focusedSubsystemId`. BFS walks upstream/downstream connections (using the `connections[]` array). Nodes not in the chain are dimmed (`opacity: 0.2`). Edges not in the chain are hidden.
+
+Direction toggle: upstream / downstream / both (rendered in search bar when trace is active).
+
+### 8.3 View Switching
+
+- **Tube map** (default): React Flow canvas with all stations visible
+- **Drill-in**: Click a station with children → push to breadcrumbs → show children in a 3-column grid layout with entity cards
+- **Back**: Click breadcrumb ancestor or press Escape → pop back to tube map
+
+### 8.4 Manifest Loading Flow
+
+1. User clicks "Load Manifest" button (in tube map tab header, or prompted if no manifest loaded)
+2. Native file picker opens (via `@tauri-apps/plugin-dialog`)
+3. Selected path passed to `load_manifest` IPC command
+4. If scan is loaded, automatically runs `match_manifest`
+5. Tube map renders from `TubeMapData`
+
+If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA with explanation text.
+
+---
+
+## 9. Build Phases
+
+### Phase A: Foundation — Bug Fix + Tab Shell + IPC Commands
+
+- [ ] Create `capabilities/default.json` with `dialog:allow-open` and `shell:allow-open`
+- [ ] Add `TabBar.tsx` component
+- [ ] Add `activeTab` state to App.tsx, render tab bar between status bar and content
+- [ ] Wrap existing three-panel layout in entities tab conditional
+- [ ] Create placeholder `TubeMapView.tsx` (empty state: "Load a manifest to view the subsystem tube map")
+- [ ] Extend `Manifest` struct → `SystemManifest` (parse `meta`, `domains`, `connections`)
+- [ ] Extend `AppState` with `current_manifest` and `current_match_result`
+- [ ] Implement `load_manifest` IPC command
+- [ ] Implement `match_manifest` IPC command
+- [ ] Implement `get_tube_map_data` IPC command
+- [ ] Implement `get_subsystem_entities` IPC command
+- [ ] Implement `get_subsystem_detail` IPC command
+
+**Acceptance criteria:**
+- Open Directory button works (native file picker appears)
+- Tab bar renders, switching between entities view and tube map placeholder
+- `load_manifest` + `match_manifest` return valid data from Rust backend
+- `get_tube_map_data` returns subsystems with matched entity counts
+
+### Phase B: Layout Engine
+
+- [ ] Create `ui/src/layout/types.ts`
+- [ ] Create `ui/src/layout/colors.ts` with static palette + HSL cycling
+- [ ] Create `ui/src/layout/tubeMap.ts` with all 5 functions
+- [ ] Implement `assignDomainLayers` (Kahn's topo sort on domain DAG, cycle breaking)
+- [ ] Implement `assignDomainGrid` (bin-packing: MAX_COLS, row/col assignment)
+- [ ] Implement `orderStationsWithinLine` (intra-domain topo sort)
+- [ ] Implement `buildCanonicalPositions` (segment walker)
+- [ ] Implement `applyCompactLayout` (filtered compact mode)
+- [ ] Unit tests for all 5 functions
+- [ ] Test with octospark's system.json as a reference fixture
+
+**Acceptance criteria:**
+- `buildDynamicLayout(octosparkManifest)` produces positions that match the hand-crafted layout within ±1 station gap
+- Compact mode correctly centers filtered lines
+- Cycle-breaking produces a valid layout for circular dependencies
+- 20-domain, 50-station-per-domain synthetic fixture produces no overlapping lines
+
+### Phase C: React Flow Canvas
+
+- [ ] `npm install @xyflow/react@^12.10.1`
+- [ ] Import `@xyflow/react/dist/style.css` in `main.tsx`
+- [ ] Port `SubsystemNode.tsx` from octospark (adapt types, wire Tauri IPC callbacks)
+- [ ] Port `DependencyEdge.tsx` from octospark (swap type imports)
+- [ ] Port `EdgeTooltip.tsx` from octospark
+- [ ] Create `TubeMapView.tsx` with ReactFlowProvider, canvas, Background, Controls, MiniMap
+- [ ] Create `useTubeMapState.ts` hook (manifest loading, matching, focused subsystem, breadcrumbs)
+- [ ] Create `useTubeLayout.ts` hook (memoized layout computation)
+- [ ] Wire `ManifestLoader.tsx` (file picker + load button)
+- [ ] Render tube map nodes/edges from `useTubeLayout` output
+
+**Acceptance criteria:**
+- Loading a manifest renders stations on a React Flow canvas
+- Stations show name, status badge, domain color border, entity counts
+- Edges render between connected stations with correct styling (solid/dashed, colored)
+- Pan/zoom works with mouse, MiniMap renders
+- `fitView` fires on initial load
+
+### Phase D: Interaction — Search, Filter, Trace, Drill-In
+
+- [ ] Port `SearchBar.tsx` (adapt for dynamic domains)
+- [ ] Port `Legend.tsx` (dynamic domain colors)
+- [ ] Port `Breadcrumbs.tsx` (reuse as-is)
+- [ ] Create `TubeMapStatusBar.tsx` (zoom %, visible/total nodes, coverage %)
+- [ ] Implement domain filter (click legend line → filter to that domain)
+- [ ] Implement status filter (built/rebuild/new/boilerplate toggles)
+- [ ] Implement text search (filter stations by name/description/interfaces)
+- [ ] Implement compact re-layout on filter change
+- [ ] Implement dependency trace (BFS walk, dimming, edge filtering)
+- [ ] Implement direction toggle (upstream/downstream/both)
+- [ ] Create `SubsystemDrillIn.tsx` (click station → show entities in card grid)
+- [ ] Wire breadcrumb navigation (tube map ↔ drill-in)
+- [ ] Create `CoverageOverlay.tsx` (match coverage %, unmatched count)
+- [ ] Wire keyboard shortcuts for tube map tab
+- [ ] Create `ShortcutHelp.tsx` overlay
+
+**Acceptance criteria:**
+- Clicking a domain in the legend filters to that domain only
+- Searching "auth" highlights/filters stations matching "auth"
+- Clicking "trace" on a station highlights the full dependency chain
+- Direction toggle switches between upstream/downstream/both
+- Clicking a station with children opens drill-in view with entity cards
+- Breadcrumbs navigate back to tube map
+- Coverage overlay shows match % and unmatched count
+- All keyboard shortcuts work (f, i, /, Escape, 0, 1-9, ?)
+
+### Phase E: Polish
+
+- [ ] Edge bundling for dense inter-domain connections (>3 edges → single bundle edge with count)
+- [ ] Tube line stripe rendering (colored SVG paths behind stations)
+- [ ] Animate fitView transitions (duration: 300ms)
+- [ ] Toast notifications for file opening, manifest loading
+- [ ] Open in editor from station node (uses `open_in_editor` IPC command)
+- [ ] "Generate Prompt" button on drill-in view (scoped to subsystem entities)
+- [ ] Handle missing-domain case: unassigned entities on gray "unassigned" line
+- [ ] Performance: `onlyRenderVisibleElements={true}` when total nodes > 500
+- [ ] Snapshot tests for layout algorithm output
+
+**Acceptance criteria:**
+- Dense edges are bundled with count badges
+- Tube line stripes render behind stations with domain colors
+- Transitions are smooth (no flicker on filter/trace changes)
+- Open in editor works for station file paths
+- App remains responsive with 500+ nodes
+
+---
+
+## 10. Testing Strategy
+
+### Unit Tests
+
+- Layout algorithm: `assignDomainLayers`, `assignDomainGrid`, `orderStationsWithinLine`, `buildCanonicalPositions`, `applyCompactLayout`
+- Color assignment: palette cycling, d3-hsl fallback
+- Cycle breaking: mutual dependency between 2 domains, 3-way cycle
+
+### Integration Tests
+
+- Tauri IPC: `load_manifest` → `match_manifest` → `get_tube_map_data` pipeline
+- Octospark system.json as a reference fixture (18 subsystems, 50 connections, 7 domains)
+
+### Snapshot Tests (insta)
+
+- Layout positions for octospark fixture
+- Layout positions for a synthetic 20-domain fixture
+- Compact layout positions for a filtered subset
+
+### Manual Test Scenarios
+
+- Load octospark's system.json → tube map matches the octospark-visualizer layout
+- Scan domain-scan's own codebase → load a minimal manifest → see entities grouped by subsystem
+- Filter to single domain → compact layout centers correctly
+- Trace dependencies from a central station → upstream+downstream chain highlighted
+- Drill into a station with children → see entity cards → navigate back via breadcrumbs
+
+---
+
+## 11. Dependencies
+
+### New npm packages (Tauri UI)
+- `@xyflow/react: ^12.10.1`
+
+### New Rust crate dependencies
+- None — all manifest/matching logic already exists in `domain-scan-core`
+
+### Files to create (estimated)
+
+| File | Purpose | Est. LOC |
+|------|---------|----------|
+| `capabilities/default.json` | Tauri ACL permissions | 10 |
+| `ui/src/components/TabBar.tsx` | Tab switcher | 40 |
+| `ui/src/components/TubeMapView.tsx` | Tube map container | 200 |
+| `ui/src/components/SubsystemNode.tsx` | Custom React Flow node (ported) | 400 |
+| `ui/src/components/DependencyEdge.tsx` | Custom React Flow edge (ported) | 170 |
+| `ui/src/components/EdgeTooltip.tsx` | Edge hover tooltip (ported) | 90 |
+| `ui/src/components/Legend.tsx` | Domain legend (ported) | 130 |
+| `ui/src/components/TubeMapSearchBar.tsx` | Search + filters (ported) | 160 |
+| `ui/src/components/TubeMapStatusBar.tsx` | Bottom status bar | 80 |
+| `ui/src/components/Breadcrumbs.tsx` | Navigation breadcrumbs (ported) | 35 |
+| `ui/src/components/SubsystemDrillIn.tsx` | Drill-in entity card grid | 400 |
+| `ui/src/components/ManifestLoader.tsx` | Manifest file picker UI | 60 |
+| `ui/src/components/CoverageOverlay.tsx` | Match coverage display | 80 |
+| `ui/src/components/ShortcutHelp.tsx` | Keyboard shortcut overlay | 60 |
+| `ui/src/hooks/useTubeMapState.ts` | Tube map state + IPC | 150 |
+| `ui/src/hooks/useTubeLayout.ts` | Memoized layout computation | 80 |
+| `ui/src/layout/types.ts` | Layout type definitions | 30 |
+| `ui/src/layout/colors.ts` | Domain color assignment | 40 |
+| `ui/src/layout/tubeMap.ts` | Dynamic layout algorithm | 300 |
+| `src/commands.rs` (extend) | 5 new IPC commands | 200 |
+| `core/src/manifest.rs` (extend) | SystemManifest, Connection types | 100 |
+| **Total** | | **~2,815** |
