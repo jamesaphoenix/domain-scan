@@ -8,6 +8,8 @@ use domain_scan_core::ir::{
 use domain_scan_core::output::{self, OutputFormat};
 use domain_scan_core::{cache, index, manifest, parser, query_engine, validate, walker};
 
+mod tui;
+
 // ---------------------------------------------------------------------------
 // CLI argument definitions
 // ---------------------------------------------------------------------------
@@ -31,8 +33,12 @@ struct Cli {
     config: Option<PathBuf>,
 
     /// Output format: json | table | compact
-    #[arg(long, global = true, default_value = "table", value_enum)]
+    #[arg(long, global = true, default_value = "table", value_enum, conflicts_with = "interactive")]
     output: OutputFormatArg,
+
+    /// Launch TUI mode (ratatui). Single-keypress tree navigation.
+    #[arg(long, global = true, conflicts_with = "output")]
+    interactive: bool,
 
     /// Write output to file (default: stdout)
     #[arg(short = 'o', long = "out", global = true)]
@@ -336,16 +342,35 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let format: OutputFormat = cli.output.into();
 
     match &cli.command {
-        Commands::Scan => cmd_scan(&cli, format),
+        Commands::Scan => {
+            if cli.interactive {
+                let scan_index = run_scan(&cli)?;
+                run_tui(tui::TuiApp::from_entity_list(&scan_index, "Scan"))
+            } else {
+                cmd_scan(&cli, format)
+            }
+        }
         Commands::Interfaces { ref name, show_methods } => {
-            cmd_interfaces(&cli, format, name.clone(), *show_methods)
+            if cli.interactive {
+                let scan_index = run_scan(&cli)?;
+                run_tui(tui::TuiApp::from_interfaces(&scan_index))
+            } else {
+                cmd_interfaces(&cli, format, name.clone(), *show_methods)
+            }
         }
         Commands::Services {
             ref kind,
             ref name,
             show_routes,
             show_deps,
-        } => cmd_services(&cli, format, kind.clone(), name.clone(), *show_routes, *show_deps),
+        } => {
+            if cli.interactive {
+                let scan_index = run_scan(&cli)?;
+                run_tui(tui::TuiApp::from_services(&scan_index))
+            } else {
+                cmd_services(&cli, format, kind.clone(), name.clone(), *show_routes, *show_deps)
+            }
+        }
         Commands::Methods {
             ref owner,
             is_async,
@@ -357,7 +382,14 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             ref kind,
             ref name,
             show_fields,
-        } => cmd_schemas(&cli, format, framework.clone(), kind.clone(), name.clone(), *show_fields),
+        } => {
+            if cli.interactive {
+                let scan_index = run_scan(&cli)?;
+                run_tui(tui::TuiApp::from_schemas(&scan_index))
+            } else {
+                cmd_schemas(&cli, format, framework.clone(), kind.clone(), name.clone(), *show_fields)
+            }
+        }
         Commands::Impls {
             ref name,
             all,
@@ -393,6 +425,17 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// TUI launch helper
+// ---------------------------------------------------------------------------
+
+fn run_tui(mut app: tui::TuiApp) -> Result<(), Box<dyn std::error::Error>> {
+    let mut terminal = tui::setup_terminal()?;
+    let result = app.run(&mut terminal);
+    tui::teardown_terminal(&mut terminal)?;
+    result
 }
 
 // ---------------------------------------------------------------------------

@@ -2655,12 +2655,12 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - Snapshot tests pass for table/json/compact output of `interfaces`, `services`, `schemas`
 
 ### Phase 6b: TUI Interactive Mode
-- [ ] `--interactive` flag (mutually exclusive with `--output`)
-- [ ] ratatui TUI with `crossterm` backend
-- [ ] TuiApp struct with `handle_event` and `render` methods (testable without terminal)
-- [ ] Tree state: `Vec<(entity, expanded: bool)>`, Enter toggles expanded
-- [ ] Arrow keys navigate, right expands, left collapses, `/` focuses search, `q` quits
-- [ ] TUI tests using `ratatui::backend::TestBackend` (single Enter expands, second Enter collapses)
+- [x] `--interactive` flag (mutually exclusive with `--output`)
+- [x] ratatui TUI with `crossterm` backend
+- [x] TuiApp struct with `handle_event` and `render` methods (testable without terminal)
+- [x] Tree state: `Vec<(entity, expanded: bool)>`, Enter toggles expanded
+- [x] Arrow keys navigate, right expands, left collapses, `/` focuses search, `q` quits
+- [x] TUI tests using `ratatui::backend::TestBackend` (single Enter expands, second Enter collapses)
 
 **Acceptance criteria:**
 - `domain-scan interfaces --interactive` launches a TUI
