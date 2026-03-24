@@ -728,20 +728,37 @@ Scan → Agent reads entity census → Agent proposes system.json → Validate �
 user> build me a tube map for this repo
 
 claude> [reads skills/domain-scan-init.md]
-        1. Running: domain-scan scan --root . --output json --fields files.path,files.language,stats
-        2. [sees 45 interfaces across src/auth/, src/billing/, src/media/...]
-        3. [proposes system.json based on directory structure and entity names]
-        4. Running: domain-scan init --apply-manifest system.json --dry-run
-        5. [shows: "5 domains, 12 subsystems, 18 connections — 87% coverage"]
-        6. User approves
-        7. Running: domain-scan init --apply-manifest system.json
 
-user> the auth subsystem is too big, split JWT and OAuth
+        Step 1 — Scan + Bootstrap:
+        Running: domain-scan scan --root . --output json -o /tmp/scan.json
+        Running: domain-scan init --bootstrap -o system.json
+        [bootstrap produces: 5 domains, 12 subsystems, 18 connections — rough draft]
 
-claude> [edits system.json directly: splits auth into auth-jwt and auth-oauth]
+        Step 2 — Refine each domain (sub-agents in parallel):
+        [spawns sub-agent for "auth" domain: reviews auth-jwt, auth-sessions boundaries]
+        [spawns sub-agent for "billing" domain: reviews billing-stripe, billing-plans]
+        [spawns sub-agent for "media" domain: reviews media-uploader, media-enrichment]
+        ... one sub-agent per domain, each refining names, descriptions, entity placement
+
+        Step 3 — Merge sub-agent proposals, validate:
+        Running: domain-scan init --apply-manifest system.json --dry-run
+        [shows: "5 domains, 14 subsystems, 22 connections — 91% coverage"]
+
+        Step 4 — Confirm with user (REQUIRED):
+        "Here are the proposed subsystems. 3 are marked 'built' — these need your confirmation:
+         - auth-jwt (built): 4 interfaces, 2 operations — correct?
+         - billing-stripe (built): 3 interfaces — correct?
+         - media-uploader (built): 5 interfaces — correct?
+        The rest are marked 'new' (unconfirmed). Approve?"
+
+        User: "yes, but move SessionToken from auth-jwt to auth-sessions"
+
+        Step 5 — Apply edits, re-validate:
+        [edits system.json, moves SessionToken]
         Running: domain-scan match --manifest system.json --output json --fields coverage_percent
-        Coverage: 87% → 89%
-        [writes updated system.json]
+        Coverage: 91% → 92%
+        Running: domain-scan init --apply-manifest system.json
+        Done.
 ```
 
 ### 12.2 Skill Files
@@ -749,12 +766,20 @@ claude> [edits system.json directly: splits auth into auth-jwt and auth-oauth]
 Two skill files teach the agent the full workflow and what good manifests look like:
 
 **`skills/domain-scan-init.md`** — Build/refine manifests:
-- First-time workflow (scan → propose domains → map entities → infer connections → save)
-- Refining workflow (edit system.json → re-match → verify coverage)
+- **Always start with `--bootstrap`** — never write system.json from scratch
+- **Use sub-agents per domain** — each sub-agent focuses on one domain's subsystem boundaries
+- **Never auto-confirm `built` status** — `built` means "source code is truth, high confidence". Only the user can mark a subsystem as `built`. The agent proposes `new` for everything, and the user upgrades to `built` after review.
 - Naming conventions (kebab-case IDs, verb-first connection labels)
 - Grouping principles (independently deployable, one responsibility, 3-8 per domain, schemas anchor subsystems)
 - Connection semantics (`depends_on` vs `uses` vs `triggers`)
 - Anti-patterns (no utility domains, no duplicates, no test-only connections)
+
+**Critical rule: `built` status requires human confirmation.**
+- `--bootstrap` sets all subsystems to `new` by default
+- Sub-agents refine boundaries but NEVER upgrade status to `built`
+- The agent presents subsystem candidates and asks: "which of these are `built`?"
+- Only after explicit user confirmation does the manifest get `status: "built"`
+- This is non-negotiable — `built` means the tube map treats source code as authoritative. A wrong `built` label causes the system to skip LLM enrichment on entities that need it.
 
 **`skills/domain-scan-tube-map.md`** — View/interact with tube map data:
 - `domain-scan match --manifest system.json` for coverage checking
