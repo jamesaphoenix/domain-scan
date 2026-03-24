@@ -45,9 +45,16 @@ Phase E (Polish):
 - Edge bundling, tube line stripes, animations, performance
 - Snapshot tests for layout algorithm
 
+Phase F (Hardening — E2E Tests, Bug Hunting, Edge Cases):
+- crates/domain-scan-tauri/ui/e2e/ - Playwright E2E test suite
+- crates/domain-scan-tauri/ui/e2e/fixtures/ - test manifests (minimal, large, circular, malformed, etc.)
+- Test all flows: Open Directory, tab switching, manifest loading, tube map interactions, keyboard shortcuts
+- Stress tests: 200 subsystems, circular deps, orphan domains, rapid tab switching
+- Data integrity: entity counts match, coverage % consistent, no cross-tab state corruption
+
 ## Step 3: Pick the most important unchecked task and implement it
 
-CRITICAL: Complete phases sequentially (Phase A -> B -> C -> D -> E). Do NOT skip ahead to a later phase while earlier phases have unchecked tasks.
+CRITICAL: Complete phases sequentially (Phase A -> B -> C -> D -> E -> F). Do NOT skip ahead to a later phase while earlier phases have unchecked tasks.
 
 ## Housekeeping
 

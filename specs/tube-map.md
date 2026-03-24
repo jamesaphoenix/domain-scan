@@ -501,6 +501,111 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 - Open in editor works for station file paths
 - App remains responsive with 500+ nodes
 
+### Phase F: Hardening — E2E Tests, Bug Hunting, Edge Cases
+
+Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus targeted stress tests and adversarial scenarios.
+
+#### F.1 E2E Test Infrastructure
+
+- [ ] Add `@playwright/test` and `@tauri-apps/driver` to `ui/` dev dependencies
+- [ ] Create `e2e/` directory in `crates/domain-scan-tauri/ui/`
+- [ ] Create `e2e/fixtures/` with test manifests:
+  - `octospark-system.json` — copy of real octospark manifest (7 domains, 18 subsystems, 50 connections)
+  - `minimal.json` — 1 domain, 2 subsystems, 1 connection (smoke test)
+  - `large.json` — 20 domains, 200 subsystems, 500 connections (stress test)
+  - `empty.json` — valid manifest with zero subsystems
+  - `malformed.json` — invalid JSON for error handling
+  - `circular-deps.json` — subsystems with mutual circular dependencies
+  - `no-domains.json` — manifest with subsystems but no `domains` field
+  - `orphan-subsystems.json` — subsystems whose `domain` doesn't exist in `domains` map
+- [ ] Create `e2e/helpers.ts` with utilities: `launchApp()`, `openDirectory(path)`, `loadManifest(path)`, `switchTab(name)`, `waitForScan()`, `waitForTubeMap()`
+- [ ] Configure Playwright to launch the Tauri app via `cargo tauri dev` with `TAURI_TEST=1` env var
+
+#### F.2 E2E: Open Directory & Scan Flow
+
+- [ ] Test: click "Open Directory" → native dialog appears (or mock path injection in test mode)
+- [ ] Test: scan a fixture directory → stats bar shows correct file/entity counts
+- [ ] Test: scan completes → entities tab shows tree with nodes
+- [ ] Test: scan empty directory → structured error shown (not a crash)
+- [ ] Test: scan non-existent path → structured error shown
+
+#### F.3 E2E: Tab Switching
+
+- [ ] Test: app starts on Entities tab by default
+- [ ] Test: click Tube Map tab → tube map placeholder renders (no manifest loaded)
+- [ ] Test: switch back to Entities → tree state preserved (selection, expansion)
+- [ ] Test: rapid tab switching (10x in 1 second) → no crash, no leaked state
+
+#### F.4 E2E: Manifest Loading & Matching
+
+- [ ] Test: load `minimal.json` → 2 subsystem nodes render on canvas
+- [ ] Test: load `octospark-system.json` → 18 nodes render, 50 edges visible
+- [ ] Test: load `empty.json` → "No subsystems found" message, no crash
+- [ ] Test: load `malformed.json` → structured error toast, tube map stays on loader view
+- [ ] Test: load manifest before scan → matching skipped gracefully, entities show as unmatched
+- [ ] Test: load manifest after scan → matching runs, coverage % shown
+- [ ] Test: reload different manifest → old match results cleared, new data renders
+
+#### F.5 E2E: Tube Map Interactions
+
+- [ ] Test: pan canvas with mouse drag → viewport moves
+- [ ] Test: zoom with scroll wheel → zoom level changes, StatusBar updates
+- [ ] Test: click station node → details panel shows subsystem info
+- [ ] Test: click station with children → drill-in view opens, breadcrumbs update
+- [ ] Test: click breadcrumb → navigates back, tube map restores
+- [ ] Test: click domain in legend → filters to that domain only, compact layout triggers
+- [ ] Test: type in search bar → stations filter by name, layout re-compacts
+- [ ] Test: clear search → all stations reappear at canonical positions
+- [ ] Test: click "trace" on a station → dependency chain highlighted, non-chain nodes dimmed
+- [ ] Test: press Escape during trace → trace clears, all nodes restore opacity
+
+#### F.6 E2E: Keyboard Shortcuts (Tube Map Tab)
+
+- [ ] Test: press `f` → fitView fires, all nodes visible
+- [ ] Test: press `/` → search input focused
+- [ ] Test: press `1`-`7` → corresponding domain filter toggles
+- [ ] Test: press `0` → all filters cleared
+- [ ] Test: press `?` → shortcut help overlay appears
+- [ ] Test: press `Escape` → overlay/search/trace/filter cleared in priority order
+- [ ] Test: keyboard shortcuts do NOT fire when typing in search input
+
+#### F.7 Stress Tests & Edge Cases
+
+- [ ] Test: load `large.json` (200 subsystems) → renders within 3 seconds, pan/zoom stays smooth
+- [ ] Test: load `circular-deps.json` → cycle-breaking produces valid layout, warning badge shown
+- [ ] Test: load `no-domains.json` → all subsystems render on gray "unassigned" line
+- [ ] Test: load `orphan-subsystems.json` → orphan subsystems placed in fallback row, no crash
+- [ ] Test: window resize → layout reflows, no overlapping nodes, MiniMap updates
+- [ ] Test: minimize/restore window → React Flow canvas re-renders correctly
+- [ ] Test: scan a 1000-file codebase → match against large manifest → tube map renders without OOM
+- [ ] Test: double-click station rapidly → no duplicate drill-in views, breadcrumbs don't double-push
+
+#### F.8 Data Integrity Checks
+
+- [ ] Test: `get_tube_map_data` entity counts match `filter_entities` counts for each subsystem
+- [ ] Test: `match_manifest` coverage % is consistent: `matched.len() / total_entities * 100`
+- [ ] Test: `get_subsystem_entities(id)` returns only entities whose files fall under subsystem filePath
+- [ ] Test: connections reference only valid subsystem IDs (no dangling `from`/`to`)
+- [ ] Test: after scan + match, switching to Entities tab still works (shared state not corrupted)
+- [ ] Test: generate prompt from tube map drill-in → valid prompt text, scoped to subsystem entities
+
+#### F.9 Error Recovery
+
+- [ ] Test: Tauri IPC command fails (e.g., file deleted mid-scan) → structured error shown, app stays functional
+- [ ] Test: manifest file deleted after loading → next `match_manifest` call returns error, tube map shows "reload manifest" CTA
+- [ ] Test: corrupt cache directory → scan falls back to no-cache mode, completes successfully
+- [ ] Test: extremely long subsystem names (500+ chars) → node renders without overflow, tooltip shows full name
+
+**Acceptance criteria:**
+- All E2E tests pass in CI (GitHub Actions with `cargo tauri build` + Playwright)
+- Zero crashes across all adversarial fixtures
+- Circular dependencies produce valid layouts with warning badges
+- 200-subsystem manifest renders and is interactive within 3 seconds
+- Tab switching preserves state correctly (no cross-tab contamination)
+- All keyboard shortcuts work only in their correct tab context
+- Error states show structured messages (never blank screens or stack traces)
+- Data integrity: entity counts, coverage %, and match results are all consistent
+
 ---
 
 ## 10. Testing Strategy
