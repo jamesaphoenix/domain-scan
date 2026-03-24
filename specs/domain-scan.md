@@ -2837,7 +2837,7 @@ metadata:
 - [x] `--verbose` output with timing details
 - [x] Error messages for common mistakes (wrong path, no files found, bad config)
 - [x] `domain-scan validate --self-test` (validates domain-scan's own codebase)
-- [ ] README.md with usage examples
+- [x] README.md with usage examples
 - [ ] rayon parallelism tuning
 - [ ] No deadlocks under parallel load
 
