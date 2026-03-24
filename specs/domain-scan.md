@@ -2834,7 +2834,7 @@ metadata:
 - [x] Benchmark: parse throughput (target: >500 files/sec on 8 cores)
 - [x] Benchmark: cached re-scan (target: >5000 files/sec)
 - [x] Benchmark: CLI startup (target: <100ms for <50 files)
-- [ ] `--verbose` output with timing details
+- [x] `--verbose` output with timing details
 - [ ] Error messages for common mistakes (wrong path, no files found, bad config)
 - [ ] `domain-scan validate --self-test` (validates domain-scan's own codebase)
 - [ ] README.md with usage examples

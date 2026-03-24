@@ -530,7 +530,8 @@ fn main() {
 
     if cli.verbose {
         env_logger::Builder::from_default_env()
-            .filter_level(log::LevelFilter::Debug)
+            .filter_module("domain_scan", log::LevelFilter::Debug)
+            .filter_level(log::LevelFilter::Warn)
             .init();
     } else if !cli.quiet {
         env_logger::Builder::from_default_env()
@@ -855,10 +856,12 @@ fn build_scan_config(cli: &Cli) -> ScanConfig {
 
 fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::error::Error>> {
     let config = build_scan_config(cli);
-    let start = std::time::Instant::now();
+    let total_start = std::time::Instant::now();
 
     // Step 1: Walk
+    let walk_start = std::time::Instant::now();
     let walked = walker::walk_directory(&config)?;
+    let walk_ms = walk_start.elapsed().as_millis();
 
     if walked.is_empty() {
         if !cli.quiet {
@@ -871,7 +874,23 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
         eprintln!("Found {} files", walked.len());
     }
 
+    if cli.verbose {
+        // Per-language file counts
+        let mut lang_counts: std::collections::HashMap<domain_scan_core::ir::Language, usize> =
+            std::collections::HashMap::new();
+        for wf in &walked {
+            *lang_counts.entry(wf.language).or_insert(0) += 1;
+        }
+        let mut lang_parts: Vec<String> = lang_counts
+            .iter()
+            .map(|(lang, count)| format!("{lang:?}: {count}"))
+            .collect();
+        lang_parts.sort();
+        eprintln!("[verbose] walk: {}ms, files by language: {}", walk_ms, lang_parts.join(", "));
+    }
+
     // Step 2: Optional cache
+    let cache_start = std::time::Instant::now();
     let disk_cache = if config.cache_enabled {
         let c = cache::Cache::new(config.cache_dir.clone(), 100);
         let _ = c.load_from_disk();
@@ -879,8 +898,15 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
     } else {
         None
     };
+    let cache_load_ms = cache_start.elapsed().as_millis();
+
+    if cli.verbose && config.cache_enabled {
+        let entries = disk_cache.as_ref().map_or(0, |c| c.len());
+        eprintln!("[verbose] cache load: {}ms, {} entries", cache_load_ms, entries);
+    }
 
     // Step 3: Parse + Extract
+    let parse_start = std::time::Instant::now();
     let mut ir_files = Vec::new();
     let mut cache_hits: usize = 0;
     let mut cache_misses: usize = 0;
@@ -920,26 +946,50 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
 
         ir_files.push(ir);
     }
-
-    let duration_ms = start.elapsed().as_millis() as u64;
+    let parse_ms = parse_start.elapsed().as_millis();
 
     if cli.verbose {
+        let files_per_sec = if parse_ms > 0 {
+            (walked.len() as f64 / parse_ms as f64 * 1000.0) as u64
+        } else {
+            0
+        };
         eprintln!(
-            "Parsed {} files in {}ms ({} cached, {} parsed)",
+            "[verbose] parse+extract: {}ms, {} files ({} cached, {} parsed), ~{} files/sec",
+            parse_ms,
             walked.len(),
-            duration_ms,
             cache_hits,
             cache_misses,
+            files_per_sec,
         );
     }
 
-    Ok(index::build_index(
+    // Step 4: Build Index
+    let index_start = std::time::Instant::now();
+    let duration_ms = total_start.elapsed().as_millis() as u64;
+    let scan_index = index::build_index(
         config.root,
         ir_files,
         duration_ms,
         cache_hits,
         cache_misses,
-    ))
+    );
+    let index_ms = index_start.elapsed().as_millis();
+
+    if cli.verbose {
+        eprintln!(
+            "[verbose] index build: {}ms ({} interfaces, {} classes, {} services, {} schemas)",
+            index_ms,
+            scan_index.stats.total_interfaces,
+            scan_index.stats.total_classes,
+            scan_index.stats.total_services,
+            scan_index.stats.total_schemas,
+        );
+        let total_ms = total_start.elapsed().as_millis();
+        eprintln!("[verbose] total: {}ms", total_ms);
+    }
+
+    Ok(scan_index)
 }
 
 // ---------------------------------------------------------------------------
