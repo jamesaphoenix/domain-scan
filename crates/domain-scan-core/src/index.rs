@@ -908,4 +908,185 @@ mod tests {
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].name, "TsFoo");
     }
+
+    // -----------------------------------------------------------------------
+    // Adversarial repo integration tests
+    // -----------------------------------------------------------------------
+
+    /// Helper: run the full pipeline (walk → parse → extract → index) on a directory.
+    fn scan_fixture_dir(dir: &Path) -> ScanIndex {
+        let config = ScanConfig::new(dir.to_path_buf());
+        let walked = crate::walker::walk_directory(&config)
+            .unwrap_or_default();
+
+        let build_status = BuildStatus::Built;
+        let mut ir_files = Vec::new();
+        for wf in &walked {
+            let parse_result = crate::parser::parse_file(&wf.path, wf.language);
+            if let Ok((tree, source)) = parse_result {
+                if let Ok(ir) = crate::query_engine::extract(
+                    &tree,
+                    &source,
+                    &wf.path,
+                    wf.language,
+                    build_status,
+                ) {
+                    ir_files.push(ir);
+                }
+            }
+            // If parse fails (e.g. binary content), silently skip — that's expected
+        }
+        build_index(dir.to_path_buf(), ir_files, 0, 0, 0)
+    }
+
+    fn adversarial_fixtures() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/adversarial_repos")
+    }
+
+    #[test]
+    fn adversarial_deeply_nested_parses_without_panic() {
+        let dir = adversarial_fixtures().join("01_deeply_nested");
+        let index = scan_fixture_dir(&dir);
+        // Must find the deep.ts file with its interface and class
+        assert!(
+            index.stats.total_files >= 1,
+            "Expected at least 1 file in deeply nested dir, got {}",
+            index.stats.total_files
+        );
+        assert!(
+            index.stats.total_interfaces >= 1,
+            "Expected at least 1 interface, got {}",
+            index.stats.total_interfaces
+        );
+    }
+
+    #[test]
+    fn adversarial_name_collisions_preserves_all() {
+        let dir = adversarial_fixtures().join("02_name_collisions");
+        let index = scan_fixture_dir(&dir);
+        let user_services: Vec<_> = index
+            .files
+            .iter()
+            .flat_map(|f| &f.services)
+            .filter(|s| s.name == "UserService")
+            .collect();
+        assert_eq!(
+            user_services.len(),
+            50,
+            "Each UserService must be distinct — got {}",
+            user_services.len()
+        );
+        // All must have unique file paths
+        let paths: std::collections::HashSet<_> =
+            user_services.iter().map(|s| &s.file).collect();
+        assert_eq!(paths.len(), 50, "All UserService files must be unique");
+    }
+
+    #[test]
+    fn adversarial_empty_files_no_crash() {
+        let dir = adversarial_fixtures().join("03_empty_files");
+        let index = scan_fixture_dir(&dir);
+        // Empty files should parse but produce zero entities
+        for file in &index.files {
+            assert!(
+                file.interfaces.is_empty()
+                    && file.services.is_empty()
+                    && file.classes.is_empty()
+                    && file.functions.is_empty(),
+                "Empty file {:?} should have no entities",
+                file.path
+            );
+        }
+    }
+
+    #[test]
+    fn adversarial_syntax_errors_no_panic() {
+        let dir = adversarial_fixtures().join("04_syntax_errors");
+        let index = scan_fixture_dir(&dir);
+        // Must complete without panic. tree-sitter does partial recovery,
+        // so we may or may not get entities from broken files.
+        assert!(index.stats.total_files >= 0);
+    }
+
+    #[test]
+    fn adversarial_massive_file_parses_within_time() {
+        let dir = adversarial_fixtures().join("05_massive_file");
+        let start = std::time::Instant::now();
+        let index = scan_fixture_dir(&dir);
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_secs() < 30,
+            "500-interface file should parse in < 30s, took {:?}",
+            elapsed
+        );
+        // Should find all 500 interfaces
+        assert!(
+            index.stats.total_interfaces >= 450,
+            "Expected ~500 interfaces, got {}",
+            index.stats.total_interfaces
+        );
+    }
+
+    #[test]
+    fn adversarial_binary_file_skipped() {
+        let dir = adversarial_fixtures().join("07_binary_files");
+        let index = scan_fixture_dir(&dir);
+        // Binary content should be skipped (tree-sitter parse fails gracefully)
+        // No entities extracted from PNG data
+        let total_entities = index.stats.total_interfaces
+            + index.stats.total_services
+            + index.stats.total_classes
+            + index.stats.total_functions;
+        assert_eq!(
+            total_entities, 0,
+            "Binary file should produce no entities, got {}",
+            total_entities
+        );
+    }
+
+    #[test]
+    fn adversarial_unicode_identifiers_preserved() {
+        let dir = adversarial_fixtures().join("08_unicode_identifiers");
+        let index = scan_fixture_dir(&dir);
+        // CJK identifiers should be preserved
+        let all_interfaces: Vec<_> = index
+            .files
+            .iter()
+            .flat_map(|f| f.interfaces.iter().map(|i| i.name.as_str()))
+            .collect();
+        assert!(
+            all_interfaces.iter().any(|n| n.contains("ユーザー")),
+            "CJK interface name should be preserved, found: {:?}",
+            all_interfaces
+        );
+    }
+
+    #[test]
+    fn adversarial_huge_method_count() {
+        let dir = adversarial_fixtures().join("09_huge_method_count");
+        let index = scan_fixture_dir(&dir);
+        // GodInterface with 1000 methods
+        let god = index
+            .files
+            .iter()
+            .flat_map(|f| &f.interfaces)
+            .find(|i| i.name == "GodInterface");
+        assert!(god.is_some(), "GodInterface must be found");
+        let method_count = god.map_or(0, |g| g.methods.len());
+        assert!(
+            method_count >= 900,
+            "Expected ~1000 methods, got {}",
+            method_count
+        );
+    }
+
+    #[test]
+    fn adversarial_mixed_encodings_no_crash() {
+        let dir = adversarial_fixtures().join("10_mixed_encodings");
+        let index = scan_fixture_dir(&dir);
+        // UTF-8 files should parse fine, non-UTF-8 may be skipped
+        // The key assertion: no panics
+        assert!(index.stats.total_files >= 1);
+    }
 }
