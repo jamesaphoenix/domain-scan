@@ -13,6 +13,7 @@ pub mod config;
 pub mod index;
 pub mod ir;
 pub mod lang;
+pub mod manifest;
 pub mod output;
 pub mod parser;
 pub mod query_engine;
