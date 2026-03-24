@@ -76,6 +76,41 @@ const KT_SERVICES_SCM: &str = include_str!("../queries/kotlin/services.scm");
 const KT_SCHEMAS_SCM: &str = include_str!("../queries/kotlin/schemas.scm");
 
 // ---------------------------------------------------------------------------
+// C++ .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const CPP_CLASSES_SCM: &str = include_str!("../queries/cpp/classes.scm");
+const CPP_FUNCTIONS_SCM: &str = include_str!("../queries/cpp/functions.scm");
+const CPP_IMPORTS_SCM: &str = include_str!("../queries/cpp/imports.scm");
+#[allow(dead_code)]
+const CPP_METHODS_SCM: &str = include_str!("../queries/cpp/methods.scm");
+#[allow(dead_code)]
+const CPP_TEMPLATES_SCM: &str = include_str!("../queries/cpp/templates.scm");
+const CPP_VIRTUAL_SCM: &str = include_str!("../queries/cpp/virtual.scm");
+const CPP_SCHEMAS_SCM: &str = include_str!("../queries/cpp/schemas.scm");
+
+// ---------------------------------------------------------------------------
+// PHP .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const PHP_INTERFACES_SCM: &str = include_str!("../queries/php/interfaces.scm");
+const PHP_CLASSES_SCM: &str = include_str!("../queries/php/classes.scm");
+#[allow(dead_code)]
+const PHP_METHODS_SCM: &str = include_str!("../queries/php/methods.scm");
+const PHP_TRAITS_SCM: &str = include_str!("../queries/php/traits.scm");
+const PHP_IMPORTS_SCM: &str = include_str!("../queries/php/imports.scm");
+
+// ---------------------------------------------------------------------------
+// Ruby .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const RB_MODULES_SCM: &str = include_str!("../queries/ruby/modules.scm");
+const RB_CLASSES_SCM: &str = include_str!("../queries/ruby/classes.scm");
+#[allow(dead_code)]
+const RB_METHODS_SCM: &str = include_str!("../queries/ruby/methods.scm");
+const RB_IMPORTS_SCM: &str = include_str!("../queries/ruby/imports.scm");
+
+// ---------------------------------------------------------------------------
 // Scala .scm sources (embedded at compile time)
 // ---------------------------------------------------------------------------
 
@@ -193,6 +228,26 @@ static SW_EXTENSIONS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static SC_TRAITS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static SC_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static SC_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// C++ query statics
+static CPP_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CPP_FUNCTIONS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CPP_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+#[allow(dead_code)]
+static CPP_TEMPLATES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CPP_VIRTUAL_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CPP_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// PHP query statics
+static PHP_INTERFACES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static PHP_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static PHP_TRAITS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static PHP_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// Ruby query statics
+static RB_MODULES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static RB_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static RB_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 
 // TypeScript query statics
 static TS_INTERFACES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
@@ -339,6 +394,51 @@ fn get_sc_query(
         .map_err(|e| DomainScanError::QueryCompile(e.clone()))
 }
 
+fn compile_cpp_query(source: &str) -> Result<Query, String> {
+    let lang = crate::parser::cpp_language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_cpp_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_cpp_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
+fn compile_php_query(source: &str) -> Result<Query, String> {
+    let lang = crate::parser::php_language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_php_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_php_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
+fn compile_rb_query(source: &str) -> Result<Query, String> {
+    let lang = crate::parser::ruby_language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_rb_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_rb_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -364,7 +464,9 @@ pub fn extract(
         Language::Scala => extract_scala(tree, source, path, &mut ir)?,
         Language::CSharp => extract_csharp(tree, source, path, &mut ir)?,
         Language::Swift => extract_swift(tree, source, path, &mut ir)?,
-        other => return Err(DomainScanError::UnsupportedLanguage(other)),
+        Language::Cpp => extract_cpp(tree, source, path, &mut ir)?,
+        Language::PHP => extract_php(tree, source, path, &mut ir)?,
+        Language::Ruby => extract_ruby(tree, source, path, &mut ir)?,
     }
 
     Ok(ir)
@@ -6575,6 +6677,1713 @@ fn extract_sw_attributes(node: Node<'_>, source: &[u8]) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// C++ extraction
+// ---------------------------------------------------------------------------
+
+fn extract_cpp(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    ir.interfaces = extract_cpp_interfaces(tree, source, path)?;
+    ir.classes = extract_cpp_classes(tree, source, path)?;
+    ir.functions = extract_cpp_functions(tree, source, path)?;
+    ir.imports = extract_cpp_imports(tree, source)?;
+    ir.schemas = extract_cpp_schemas(tree, source, path)?;
+    Ok(())
+}
+
+// --- C++ Interfaces (abstract base classes with pure virtual methods) ---
+
+fn extract_cpp_interfaces(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_cpp_query(&CPP_VIRTUAL_Q, CPP_VIRTUAL_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut interfaces = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "interface.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "interface.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "interface.body");
+
+        // Only consider classes that have at least one pure virtual method
+        let has_pure_virtual = body_node
+            .map(|b| cpp_has_pure_virtual(b, source))
+            .unwrap_or(false);
+        if !has_pure_virtual {
+            continue;
+        }
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let generics = cpp_extract_template_params(def_node, source);
+        let extends = cpp_extract_base_classes(def_node, source);
+
+        let methods = body_node
+            .map(|b| cpp_extract_method_signatures(b, source))
+            .unwrap_or_default();
+
+        interfaces.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            generics,
+            extends,
+            methods,
+            properties: Vec::new(),
+            language_kind: InterfaceKind::PureVirtual,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(interfaces)
+}
+
+fn cpp_has_pure_virtual(body: Node<'_>, source: &[u8]) -> bool {
+    let mut cursor = body.walk();
+    for child in body.named_children(&mut cursor) {
+        if cpp_is_pure_virtual_decl(child, source) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if a field_declaration or declaration represents a pure virtual method.
+/// In tree-sitter-cpp, `= 0` is parsed as `default_value: number_literal("0")`
+/// on a field_declaration that has a `virtual` keyword child and a function_declarator.
+fn cpp_is_pure_virtual_decl(node: Node<'_>, source: &[u8]) -> bool {
+    if node.kind() != "field_declaration" && node.kind() != "declaration" {
+        return false;
+    }
+
+    // Must have virtual keyword
+    let has_virtual = cpp_child_has_kind(node, "virtual");
+    if !has_virtual {
+        return false;
+    }
+
+    // Must have a function declarator (not a field)
+    let decl = node.child_by_field_name("declarator");
+    let is_func = decl
+        .map(|d| {
+            d.kind() == "function_declarator"
+                || d.kind() == "abstract_function_declarator"
+        })
+        .unwrap_or(false);
+    if !is_func {
+        return false;
+    }
+
+    // Must have `= 0` (pure_virtual_clause or default_value of "0")
+    // tree-sitter-cpp may parse this as pure_virtual_clause or as default_value: number_literal("0")
+    let mut cc = node.walk();
+    for child in node.children(&mut cc) {
+        if child.kind() == "pure_virtual_clause" {
+            return true;
+        }
+    }
+    if let Some(dv) = node.child_by_field_name("default_value") {
+        let text = node_text(dv, source);
+        if text.trim() == "0" {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn cpp_extract_method_signatures(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        // field_declaration is used for member function declarations (without body)
+        if child.kind() == "field_declaration" || child.kind() == "declaration" {
+            let decl = child.child_by_field_name("declarator");
+            let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
+            let Some(name) = name else { continue; };
+
+            // Skip destructors
+            if name.starts_with('~') {
+                continue;
+            }
+
+            let span = node_span(child);
+            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+
+            let params = decl
+                .and_then(|d| cpp_find_parameter_list(d))
+                .map(|p| extract_cpp_parameters(p, source))
+                .unwrap_or_default();
+
+            // Pure virtual methods (= 0) have no default implementation
+            let is_pure_virtual = cpp_is_pure_virtual_decl(child, source);
+
+            methods.push(MethodSignature {
+                name,
+                span,
+                is_async: false,
+                parameters: params,
+                return_type,
+                has_default: !is_pure_virtual,
+            });
+        }
+        // function_definition inside class body = method with implementation
+        if child.kind() == "function_definition" {
+            let decl = child.child_by_field_name("declarator");
+            let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
+            let Some(name) = name else { continue; };
+
+            // Skip destructors
+            if name.starts_with('~') {
+                continue;
+            }
+
+            let span = node_span(child);
+            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+
+            let params = decl
+                .and_then(|d| cpp_find_parameter_list(d))
+                .map(|p| extract_cpp_parameters(p, source))
+                .unwrap_or_default();
+
+            methods.push(MethodSignature {
+                name,
+                span,
+                is_async: false,
+                parameters: params,
+                return_type,
+                has_default: true,
+            });
+        }
+    }
+
+    methods
+}
+
+fn cpp_function_declarator_name(node: Node<'_>, source: &[u8]) -> Option<String> {
+    // function_declarator has declarator field which is the name (identifier or destructor_name)
+    if node.kind() == "function_declarator" || node.kind() == "abstract_function_declarator" {
+        if let Some(decl) = node.child_by_field_name("declarator") {
+            return Some(node_text(decl, source));
+        }
+    }
+    // If the node itself is an identifier
+    if node.kind() == "identifier" || node.kind() == "destructor_name" || node.kind() == "field_identifier" {
+        return Some(node_text(node, source));
+    }
+    // Search children for function_declarator
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "function_declarator" || child.kind() == "abstract_function_declarator" {
+            if let Some(decl) = child.child_by_field_name("declarator") {
+                return Some(node_text(decl, source));
+            }
+        }
+    }
+    None
+}
+
+fn cpp_find_parameter_list(node: Node<'_>) -> Option<Node<'_>> {
+    if node.kind() == "function_declarator" || node.kind() == "abstract_function_declarator" {
+        return node.child_by_field_name("parameters");
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "function_declarator" || child.kind() == "abstract_function_declarator" {
+            return child.child_by_field_name("parameters");
+        }
+    }
+    None
+}
+
+fn cpp_child_has_kind(node: Node<'_>, kind: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == kind {
+            return true;
+        }
+    }
+    false
+}
+
+// --- C++ Classes ---
+
+fn extract_cpp_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_cpp_query(&CPP_CLASSES_Q, CPP_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+    let mut seen = HashSet::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "class.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        // Deduplicate (class_specifier and struct_specifier can overlap in template_declaration)
+        let key = (name.clone(), span.start_line);
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.insert(key);
+
+        let is_struct = def_node.kind() == "struct_specifier";
+        let generics = cpp_extract_template_params(def_node, source);
+        let base_classes = cpp_extract_base_classes(def_node, source);
+        let extends = base_classes.first().cloned();
+        let implements = if base_classes.len() > 1 {
+            base_classes[1..].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        let is_abstract = body_node.map(|b| cpp_has_pure_virtual(b, source)).unwrap_or(false);
+
+        let mut methods = body_node
+            .map(|b| extract_cpp_class_methods(b, source, path, is_struct))
+            .unwrap_or_default();
+        let properties = body_node
+            .map(|b| extract_cpp_class_properties(b, source, is_struct))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            generics,
+            extends,
+            implements,
+            methods,
+            properties,
+            is_abstract,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(classes)
+}
+
+fn extract_cpp_class_methods(
+    body: Node<'_>,
+    source: &[u8],
+    path: &Path,
+    is_struct: bool,
+) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut current_visibility = if is_struct {
+        Visibility::Public
+    } else {
+        Visibility::Private
+    };
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        // Track access specifier sections
+        if child.kind() == "access_specifier" {
+            let text = node_text(child, source);
+            current_visibility = match text.trim_end_matches(':').trim() {
+                "public" => Visibility::Public,
+                "private" => Visibility::Private,
+                "protected" => Visibility::Protected,
+                _ => current_visibility,
+            };
+            continue;
+        }
+
+        // function_definition = method with body
+        if child.kind() == "function_definition" {
+            let decl = child.child_by_field_name("declarator");
+            let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
+            let Some(name) = name else { continue; };
+
+            // Skip destructors
+            if name.starts_with('~') {
+                continue;
+            }
+
+            let span = node_span(child);
+            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let is_static = cpp_has_storage_class_in(child, source, "static");
+
+            let params = decl
+                .and_then(|d| cpp_find_parameter_list(d))
+                .map(|p| extract_cpp_parameters(p, source))
+                .unwrap_or_default();
+
+            methods.push(MethodDef {
+                name,
+                file: path.to_path_buf(),
+                span,
+                visibility: current_visibility,
+                is_async: false,
+                is_static,
+                is_generator: false,
+                parameters: params,
+                return_type,
+                decorators: Vec::new(),
+                owner: None,
+                implements: None,
+            });
+        }
+
+        // field_declaration or declaration = method declaration (no body)
+        if child.kind() == "field_declaration" || child.kind() == "declaration" {
+            let decl = child.child_by_field_name("declarator");
+            let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
+            let Some(ref name_str) = name else { continue; };
+
+            // Only include if it has a function declarator (not a field)
+            let has_func_decl = decl
+                .map(|d| {
+                    d.kind() == "function_declarator"
+                        || d.kind() == "abstract_function_declarator"
+                })
+                .unwrap_or(false);
+            if !has_func_decl {
+                continue;
+            }
+
+            // Skip destructors
+            if name_str.starts_with('~') {
+                continue;
+            }
+
+            let span = node_span(child);
+            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let is_static = cpp_has_storage_class_in(child, source, "static");
+
+            let params = decl
+                .and_then(|d| cpp_find_parameter_list(d))
+                .map(|p| extract_cpp_parameters(p, source))
+                .unwrap_or_default();
+
+            methods.push(MethodDef {
+                name: name_str.clone(),
+                file: path.to_path_buf(),
+                span,
+                visibility: current_visibility,
+                is_async: false,
+                is_static,
+                is_generator: false,
+                parameters: params,
+                return_type,
+                decorators: Vec::new(),
+                owner: None,
+                implements: None,
+            });
+        }
+    }
+
+    methods
+}
+
+fn extract_cpp_class_properties(
+    body: Node<'_>,
+    source: &[u8],
+    is_struct: bool,
+) -> Vec<PropertyDef> {
+    let mut props = Vec::new();
+    let mut current_visibility = if is_struct {
+        Visibility::Public
+    } else {
+        Visibility::Private
+    };
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() == "access_specifier" {
+            let text = node_text(child, source);
+            current_visibility = match text.trim_end_matches(':').trim() {
+                "public" => Visibility::Public,
+                "private" => Visibility::Private,
+                "protected" => Visibility::Protected,
+                _ => current_visibility,
+            };
+            continue;
+        }
+
+        if child.kind() == "field_declaration" {
+            let decl = child.child_by_field_name("declarator");
+
+            // Skip if it's a function declarator (method, not property)
+            let is_func = decl
+                .map(|d| {
+                    d.kind() == "function_declarator"
+                        || d.kind() == "abstract_function_declarator"
+                })
+                .unwrap_or(false);
+            if is_func {
+                continue;
+            }
+
+            let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let is_const = cpp_has_type_qualifier(child, "const");
+
+            // Get the declarator name (could be identifier, field_identifier, pointer_declarator, etc.)
+            let name = decl.map(|d| {
+                if d.kind() == "field_identifier" || d.kind() == "identifier" {
+                    node_text(d, source)
+                } else {
+                    // For pointer_declarator etc., get the innermost identifier
+                    cpp_innermost_identifier(d, source)
+                }
+            });
+            let Some(name) = name else { continue; };
+            if name.is_empty() {
+                continue;
+            }
+
+            props.push(PropertyDef {
+                name,
+                type_annotation,
+                is_optional: false,
+                is_readonly: is_const,
+                visibility: current_visibility,
+            });
+        }
+    }
+
+    props
+}
+
+fn cpp_innermost_identifier(node: Node<'_>, source: &[u8]) -> String {
+    if node.kind() == "identifier" || node.kind() == "field_identifier" {
+        return node_text(node, source);
+    }
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        let result = cpp_innermost_identifier(child, source);
+        if !result.is_empty() {
+            return result;
+        }
+    }
+    String::new()
+}
+
+// --- C++ Functions ---
+
+fn extract_cpp_functions(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<FunctionDef>, DomainScanError> {
+    let query = get_cpp_query(&CPP_FUNCTIONS_Q, CPP_FUNCTIONS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut functions = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "function.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "function.def") else {
+            continue;
+        };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let return_type = find_capture(&m, query, "function.return_type")
+            .map(|rt| node_text(rt, source));
+
+        let params_node = find_capture(&m, query, "function.params");
+        let parameters = params_node
+            .map(|p| extract_cpp_parameters(p, source))
+            .unwrap_or_default();
+
+        let is_static = cpp_has_storage_class_in(def_node, source, "static");
+
+        functions.push(FunctionDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            is_async: false,
+            is_generator: false,
+            parameters,
+            return_type,
+            decorators: Vec::new(),
+        });
+
+        // Suppress unused variable warning
+        let _ = is_static;
+    }
+
+    Ok(functions)
+}
+
+// --- C++ Imports ---
+
+fn extract_cpp_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_cpp_query(&CPP_IMPORTS_Q, CPP_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+        let source_node = find_capture(&m, query, "import.source");
+
+        let span = node_span(def_node);
+        let import_source = source_node
+            .map(|s| {
+                let text = node_text(s, source);
+                // Strip quotes: "header.h" -> header.h, <vector> -> vector
+                text.trim_matches('"')
+                    .trim_start_matches('<')
+                    .trim_end_matches('>')
+                    .to_string()
+            })
+            .unwrap_or_default();
+
+        imports.push(ImportDef {
+            source: import_source,
+            symbols: Vec::new(),
+            is_wildcard: false,
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- C++ Schemas ---
+
+fn extract_cpp_schemas(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<SchemaDef>, DomainScanError> {
+    let query = get_cpp_query(&CPP_SCHEMAS_Q, CPP_SCHEMAS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut schemas = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "schema.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "schema.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "schema.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        // Only include structs that look like POD/data-transfer objects
+        // (have field declarations but no methods)
+        let has_methods = body_node.map(|b| cpp_body_has_methods(b)).unwrap_or(false);
+        if has_methods {
+            continue;
+        }
+
+        let fields = body_node
+            .map(|b| extract_cpp_schema_fields(b, source))
+            .unwrap_or_default();
+
+        if fields.is_empty() {
+            continue;
+        }
+
+        schemas.push(SchemaDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind: SchemaKind::DataTransfer,
+            fields,
+            source_framework: "cpp-struct".to_string(),
+            table_name: None,
+            derives: Vec::new(),
+            visibility: Visibility::Public,
+        });
+    }
+
+    Ok(schemas)
+}
+
+fn cpp_body_has_methods(body: Node<'_>) -> bool {
+    let mut cursor = body.walk();
+    for child in body.named_children(&mut cursor) {
+        if child.kind() == "function_definition" {
+            return true;
+        }
+        if child.kind() == "field_declaration" || child.kind() == "declaration" {
+            let decl = child.child_by_field_name("declarator");
+            let is_func = decl
+                .map(|d| {
+                    d.kind() == "function_declarator"
+                        || d.kind() == "abstract_function_declarator"
+                })
+                .unwrap_or(false);
+            if is_func {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn extract_cpp_schema_fields(body: Node<'_>, source: &[u8]) -> Vec<SchemaField> {
+    let mut fields = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() == "field_declaration" {
+            let decl = child.child_by_field_name("declarator");
+            let name = decl
+                .map(|d| cpp_innermost_identifier(d, source))
+                .unwrap_or_default();
+            if name.is_empty() {
+                continue;
+            }
+            let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+
+            fields.push(SchemaField {
+                name,
+                type_annotation,
+                is_optional: false,
+                is_primary_key: false,
+                constraints: Vec::new(),
+            });
+        }
+    }
+
+    fields
+}
+
+// --- C++ Helpers ---
+
+fn cpp_extract_template_params(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    // Check parent for template_declaration
+    if let Some(parent) = node.parent() {
+        if parent.kind() == "template_declaration" {
+            if let Some(params) = parent.child_by_field_name("parameters") {
+                return cpp_parse_template_params(params, source);
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn cpp_parse_template_params(params: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut cursor = params.walk();
+
+    for child in params.named_children(&mut cursor) {
+        match child.kind() {
+            "type_parameter_declaration" | "variadic_type_parameter_declaration" => {
+                // typename T or class T
+                let mut pc = child.walk();
+                for param_child in child.named_children(&mut pc) {
+                    if param_child.kind() == "type_identifier" {
+                        result.push(node_text(param_child, source));
+                    }
+                }
+            }
+            "parameter_declaration" => {
+                // Non-type template parameter (e.g., int N)
+                if let Some(decl) = child.child_by_field_name("declarator") {
+                    result.push(node_text(decl, source));
+                }
+            }
+            "optional_type_parameter_declaration" => {
+                let mut pc = child.walk();
+                for param_child in child.named_children(&mut pc) {
+                    if param_child.kind() == "type_identifier" {
+                        result.push(node_text(param_child, source));
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    result
+}
+
+fn cpp_extract_base_classes(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut bases = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "base_class_clause" {
+            let mut bc = child.walk();
+            for base in child.named_children(&mut bc) {
+                if base.kind() == "type_identifier"
+                    || base.kind() == "template_type"
+                    || base.kind() == "qualified_identifier"
+                {
+                    bases.push(node_text(base, source));
+                }
+            }
+        }
+    }
+
+    bases
+}
+
+fn extract_cpp_parameters(params: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = params.walk();
+
+    for child in params.named_children(&mut cursor) {
+        match child.kind() {
+            "parameter_declaration" | "optional_parameter_declaration" => {
+                let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+                let name = child
+                    .child_by_field_name("declarator")
+                    .map(|d| cpp_innermost_identifier(d, source))
+                    .unwrap_or_default();
+
+                let has_default = child.child_by_field_name("default_value").is_some()
+                    || child.kind() == "optional_parameter_declaration";
+
+                parameters.push(Parameter {
+                    name,
+                    type_annotation,
+                    is_optional: has_default,
+                    has_default,
+                    is_rest: false,
+                });
+            }
+            "variadic_parameter_declaration" => {
+                let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+                let name = child
+                    .child_by_field_name("declarator")
+                    .map(|d| cpp_innermost_identifier(d, source))
+                    .unwrap_or("...".to_string());
+
+                parameters.push(Parameter {
+                    name,
+                    type_annotation,
+                    is_optional: false,
+                    has_default: false,
+                    is_rest: true,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    parameters
+}
+
+fn cpp_has_storage_class_in(node: Node<'_>, source: &[u8], class_name: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "storage_class_specifier" && node_text(child, source) == class_name {
+            return true;
+        }
+    }
+    false
+}
+
+fn cpp_has_type_qualifier(node: Node<'_>, qualifier: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "type_qualifier" {
+            // type_qualifier might wrap the actual keyword
+            let mut qc = child.walk();
+            for qchild in child.children(&mut qc) {
+                if qchild.kind() == qualifier {
+                    return true;
+                }
+            }
+            // Or the type_qualifier itself could be the keyword text
+        }
+    }
+    false
+}
+
+// ---------------------------------------------------------------------------
+// PHP extraction
+// ---------------------------------------------------------------------------
+
+fn extract_php(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    ir.interfaces = extract_php_interfaces(tree, source, path)?;
+    ir.classes = extract_php_classes(tree, source, path)?;
+    ir.functions = extract_php_functions(tree, source, path)?;
+    ir.imports = extract_php_imports(tree, source)?;
+    // PHP traits are stored as interfaces with InterfaceKind::Trait
+    let mut traits = extract_php_traits(tree, source, path)?;
+    ir.interfaces.append(&mut traits);
+    Ok(())
+}
+
+// --- PHP Interfaces ---
+
+fn extract_php_interfaces(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_php_query(&PHP_INTERFACES_Q, PHP_INTERFACES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut interfaces = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "interface.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "interface.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "interface.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let extends = php_extract_base_clause(def_node, source);
+
+        let methods = body_node
+            .map(|b| php_extract_method_signatures(b, source))
+            .unwrap_or_default();
+
+        interfaces.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            generics: Vec::new(),
+            extends,
+            methods,
+            properties: Vec::new(),
+            language_kind: InterfaceKind::Interface,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(interfaces)
+}
+
+fn php_extract_method_signatures(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "method_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+
+        let params = child
+            .child_by_field_name("parameters")
+            .map(|p| extract_php_parameters(p, source))
+            .unwrap_or_default();
+
+        let return_type = child
+            .child_by_field_name("return_type")
+            .map(|rt| node_text(rt, source));
+
+        let has_body = child.child_by_field_name("body").is_some();
+
+        methods.push(MethodSignature {
+            name,
+            span,
+            is_async: false,
+            parameters: params,
+            return_type,
+            has_default: has_body,
+        });
+    }
+
+    methods
+}
+
+// --- PHP Classes ---
+
+fn extract_php_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_php_query(&PHP_CLASSES_Q, PHP_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "class.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let is_abstract = php_has_modifier(def_node, "abstract_modifier");
+        let extends = php_extract_base_clause(def_node, source);
+        let implements = php_extract_implements(def_node, source);
+
+        let mut methods = body_node
+            .map(|b| extract_php_class_methods(b, source, path))
+            .unwrap_or_default();
+        let properties = body_node
+            .map(|b| extract_php_properties(b, source))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            generics: Vec::new(),
+            extends: extends.first().cloned(),
+            implements,
+            methods,
+            properties,
+            is_abstract,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(classes)
+}
+
+fn extract_php_class_methods(body: Node<'_>, source: &[u8], path: &Path) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "method_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+        let visibility = php_member_visibility(child);
+        let is_static = php_has_modifier(child, "static_modifier");
+
+        let params = child
+            .child_by_field_name("parameters")
+            .map(|p| extract_php_parameters(p, source))
+            .unwrap_or_default();
+
+        let return_type = child
+            .child_by_field_name("return_type")
+            .map(|rt| node_text(rt, source));
+
+        methods.push(MethodDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            is_async: false,
+            is_static,
+            is_generator: false,
+            parameters: params,
+            return_type,
+            decorators: Vec::new(),
+            owner: None,
+            implements: None,
+        });
+    }
+
+    methods
+}
+
+fn extract_php_properties(body: Node<'_>, source: &[u8]) -> Vec<PropertyDef> {
+    let mut props = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "property_declaration" {
+            continue;
+        }
+
+        let visibility = php_member_visibility(child);
+        let is_readonly = php_has_modifier(child, "readonly_modifier");
+        let type_annotation = child
+            .child_by_field_name("type")
+            .map(|t| node_text(t, source));
+
+        // property_declaration can have multiple property_elements
+        let mut pc = child.walk();
+        for pchild in child.named_children(&mut pc) {
+            if pchild.kind() == "property_element" {
+                let name = pchild
+                    .child_by_field_name("name")
+                    .map(|n| {
+                        let t = node_text(n, source);
+                        // Strip $ prefix
+                        t.trim_start_matches('$').to_string()
+                    })
+                    .unwrap_or_default();
+
+                props.push(PropertyDef {
+                    name,
+                    type_annotation: type_annotation.clone(),
+                    is_optional: false,
+                    is_readonly,
+                    visibility,
+                });
+            }
+        }
+    }
+
+    props
+}
+
+// --- PHP Functions (top-level) ---
+
+fn extract_php_functions(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<FunctionDef>, DomainScanError> {
+    let mut functions = Vec::new();
+    let root = tree.root_node();
+    let mut cursor = root.walk();
+
+    // Walk top-level children looking for function_definition
+    for child in root.named_children(&mut cursor) {
+        // In PHP with <?php, the root is "program" and functions are direct children
+        if child.kind() == "function_definition" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| node_text(n, source))
+                .unwrap_or_default();
+            let span = node_span(child);
+            let return_type = child
+                .child_by_field_name("return_type")
+                .map(|rt| node_text(rt, source));
+            let params = child
+                .child_by_field_name("parameters")
+                .map(|p| extract_php_parameters(p, source))
+                .unwrap_or_default();
+
+            functions.push(FunctionDef {
+                name,
+                file: path.to_path_buf(),
+                span,
+                visibility: Visibility::Public,
+                is_async: false,
+                is_generator: false,
+                parameters: params,
+                return_type,
+                decorators: Vec::new(),
+            });
+        }
+    }
+
+    Ok(functions)
+}
+
+// --- PHP Traits ---
+
+fn extract_php_traits(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_php_query(&PHP_TRAITS_Q, PHP_TRAITS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut traits = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "trait.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "trait.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "trait.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        let methods = body_node
+            .map(|b| php_extract_method_signatures(b, source))
+            .unwrap_or_default();
+
+        traits.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            generics: Vec::new(),
+            extends: Vec::new(),
+            methods,
+            properties: Vec::new(),
+            language_kind: InterfaceKind::Trait,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(traits)
+}
+
+// --- PHP Imports ---
+
+fn extract_php_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_php_query(&PHP_IMPORTS_Q, PHP_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+
+        let full_text = node_text(def_node, source);
+        let span = node_span(def_node);
+
+        // Parse "use Namespace\Class;" or "use Namespace\{A, B};"
+        let trimmed = full_text
+            .trim()
+            .trim_start_matches("use")
+            .trim()
+            .trim_end_matches(';')
+            .trim();
+
+        let import_source = trimmed.to_string();
+        let symbols = if let Some(pos) = import_source.rfind('\\') {
+            vec![ImportedSymbol {
+                name: import_source[pos + 1..].to_string(),
+                alias: None,
+                is_default: false,
+                is_namespace: true,
+            }]
+        } else {
+            Vec::new()
+        };
+
+        imports.push(ImportDef {
+            source: import_source,
+            symbols,
+            is_wildcard: false,
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- PHP Helpers ---
+
+fn php_extract_base_clause(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut bases = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "base_clause" {
+            let mut bc = child.walk();
+            for base in child.named_children(&mut bc) {
+                if base.kind() == "name" || base.kind() == "qualified_name" {
+                    bases.push(node_text(base, source));
+                }
+            }
+        }
+    }
+
+    bases
+}
+
+fn php_extract_implements(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut impls = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "class_interface_clause" {
+            let mut ic = child.walk();
+            for iface in child.named_children(&mut ic) {
+                if iface.kind() == "name" || iface.kind() == "qualified_name" {
+                    impls.push(node_text(iface, source));
+                }
+            }
+        }
+    }
+
+    impls
+}
+
+fn extract_php_parameters(params: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = params.walk();
+
+    for child in params.named_children(&mut cursor) {
+        if child.kind() == "simple_parameter" || child.kind() == "property_promotion_parameter" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| {
+                    let t = node_text(n, source);
+                    t.trim_start_matches('$').to_string()
+                })
+                .unwrap_or_default();
+            let type_annotation = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
+            let has_default = child.child_by_field_name("default_value").is_some();
+
+            parameters.push(Parameter {
+                name,
+                type_annotation,
+                is_optional: has_default,
+                has_default,
+                is_rest: false,
+            });
+        }
+        if child.kind() == "variadic_parameter" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| {
+                    let t = node_text(n, source);
+                    t.trim_start_matches('$').to_string()
+                })
+                .unwrap_or_default();
+            let type_annotation = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
+
+            parameters.push(Parameter {
+                name,
+                type_annotation,
+                is_optional: false,
+                has_default: false,
+                is_rest: true,
+            });
+        }
+    }
+
+    parameters
+}
+
+fn php_has_modifier(node: Node<'_>, modifier_kind: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == modifier_kind {
+            return true;
+        }
+    }
+    false
+}
+
+fn php_member_visibility(node: Node<'_>) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "visibility_modifier" {
+            // visibility_modifier is a keyword node, check the kind of its child
+            let mut mc = child.walk();
+            for mchild in child.children(&mut mc) {
+                match mchild.kind() {
+                    "public" => return Visibility::Public,
+                    "private" => return Visibility::Private,
+                    "protected" => return Visibility::Protected,
+                    _ => {}
+                }
+            }
+        }
+    }
+    Visibility::Public
+}
+
+// ---------------------------------------------------------------------------
+// Ruby extraction
+// ---------------------------------------------------------------------------
+
+fn extract_ruby(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    // Ruby modules are stored as interfaces with InterfaceKind::Module
+    ir.interfaces = extract_rb_modules(tree, source, path)?;
+    ir.classes = extract_rb_classes(tree, source, path)?;
+    ir.imports = extract_rb_imports(tree, source)?;
+    Ok(())
+}
+
+// --- Ruby Modules ---
+
+fn extract_rb_modules(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_rb_query(&RB_MODULES_Q, RB_MODULES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut modules = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "module.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "module.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "module.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        let methods = body_node
+            .map(|b| rb_extract_method_signatures(b, source))
+            .unwrap_or_default();
+
+        modules.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            generics: Vec::new(),
+            extends: Vec::new(),
+            methods,
+            properties: Vec::new(),
+            language_kind: InterfaceKind::Module,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(modules)
+}
+
+fn rb_extract_method_signatures(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() == "method" || child.kind() == "singleton_method" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| node_text(n, source))
+                .unwrap_or_default();
+            let span = node_span(child);
+
+            let params = child
+                .child_by_field_name("parameters")
+                .map(|p| extract_rb_parameters(p, source))
+                .unwrap_or_default();
+
+            methods.push(MethodSignature {
+                name,
+                span,
+                is_async: false,
+                parameters: params,
+                return_type: None,
+                has_default: true,
+            });
+        }
+    }
+
+    methods
+}
+
+// --- Ruby Classes ---
+
+fn extract_rb_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_rb_query(&RB_CLASSES_Q, RB_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "class.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        // Ruby superclass: class Foo < Bar
+        let extends = rb_extract_superclass(def_node, source);
+
+        let mut methods = body_node
+            .map(|b| rb_extract_class_methods(b, source, path))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility: Visibility::Public,
+            generics: Vec::new(),
+            extends,
+            implements: Vec::new(),
+            methods,
+            properties: Vec::new(),
+            is_abstract: false,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(classes)
+}
+
+fn rb_extract_class_methods(body: Node<'_>, source: &[u8], path: &Path) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() == "method" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| node_text(n, source))
+                .unwrap_or_default();
+            let span = node_span(child);
+
+            let params = child
+                .child_by_field_name("parameters")
+                .map(|p| extract_rb_parameters(p, source))
+                .unwrap_or_default();
+
+            methods.push(MethodDef {
+                name,
+                file: path.to_path_buf(),
+                span,
+                visibility: Visibility::Public,
+                is_async: false,
+                is_static: false,
+                is_generator: false,
+                parameters: params,
+                return_type: None,
+                decorators: Vec::new(),
+                owner: None,
+                implements: None,
+            });
+        }
+        if child.kind() == "singleton_method" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| node_text(n, source))
+                .unwrap_or_default();
+            let span = node_span(child);
+
+            let params = child
+                .child_by_field_name("parameters")
+                .map(|p| extract_rb_parameters(p, source))
+                .unwrap_or_default();
+
+            methods.push(MethodDef {
+                name,
+                file: path.to_path_buf(),
+                span,
+                visibility: Visibility::Public,
+                is_async: false,
+                is_static: true, // singleton/class methods
+                is_generator: false,
+                parameters: params,
+                return_type: None,
+                decorators: Vec::new(),
+                owner: None,
+                implements: None,
+            });
+        }
+    }
+
+    methods
+}
+
+// --- Ruby Imports ---
+
+fn extract_rb_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_rb_query(&RB_IMPORTS_Q, RB_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(method_node) = find_capture(&m, query, "import.method") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+
+        let method_name = node_text(method_node, source);
+
+        // Only capture require, require_relative, include, extend, load
+        if !matches!(
+            method_name.as_str(),
+            "require" | "require_relative" | "include" | "extend" | "load"
+        ) {
+            continue;
+        }
+
+        let span = node_span(def_node);
+
+        let args_node = find_capture(&m, query, "import.args");
+        let import_source = args_node
+            .map(|a| {
+                let text = node_text(a, source);
+                // Extract string argument: require "foo" or require("foo")
+                text.trim_matches(|c: char| c == '(' || c == ')')
+                    .trim()
+                    .trim_matches(|c: char| c == '"' || c == '\'')
+                    .to_string()
+            })
+            .unwrap_or_default();
+
+        imports.push(ImportDef {
+            source: import_source,
+            symbols: Vec::new(),
+            is_wildcard: method_name == "include" || method_name == "extend",
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- Ruby Helpers ---
+
+fn rb_extract_superclass(node: Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "superclass" {
+            // superclass has a child which is the class name expression
+            let mut sc = child.walk();
+            let first = child.named_children(&mut sc).next().map(|n| node_text(n, source));
+            if let Some(name) = first {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
+fn extract_rb_parameters(params: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = params.walk();
+
+    for child in params.named_children(&mut cursor) {
+        match child.kind() {
+            "identifier" => {
+                parameters.push(Parameter {
+                    name: node_text(child, source),
+                    type_annotation: None,
+                    is_optional: false,
+                    has_default: false,
+                    is_rest: false,
+                });
+            }
+            "optional_parameter" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or_default();
+                parameters.push(Parameter {
+                    name,
+                    type_annotation: None,
+                    is_optional: true,
+                    has_default: true,
+                    is_rest: false,
+                });
+            }
+            "splat_parameter" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or("*".to_string());
+                parameters.push(Parameter {
+                    name,
+                    type_annotation: None,
+                    is_optional: false,
+                    has_default: false,
+                    is_rest: true,
+                });
+            }
+            "hash_splat_parameter" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or("**".to_string());
+                parameters.push(Parameter {
+                    name,
+                    type_annotation: None,
+                    is_optional: false,
+                    has_default: false,
+                    is_rest: true,
+                });
+            }
+            "keyword_parameter" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or_default();
+                let has_default = child.child_by_field_name("value").is_some();
+                parameters.push(Parameter {
+                    name,
+                    type_annotation: None,
+                    is_optional: has_default,
+                    has_default,
+                    is_rest: false,
+                });
+            }
+            "block_parameter" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or("&block".to_string());
+                parameters.push(Parameter {
+                    name,
+                    type_annotation: None,
+                    is_optional: true,
+                    has_default: false,
+                    is_rest: false,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    parameters
+}
+
+// ---------------------------------------------------------------------------
 // Helper: Node text extraction
 // ---------------------------------------------------------------------------
 
@@ -7649,6 +9458,55 @@ mod tests {
         for (name, source) in queries {
             let result = Query::new(&lang, source);
             assert!(result.is_ok(), "Failed to compile kotlin/{name}.scm: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_cpp_query_compilation() {
+        let lang = crate::parser::cpp_language();
+        let queries = [
+            ("classes", CPP_CLASSES_SCM),
+            ("functions", CPP_FUNCTIONS_SCM),
+            ("imports", CPP_IMPORTS_SCM),
+            ("methods", CPP_METHODS_SCM),
+            ("templates", CPP_TEMPLATES_SCM),
+            ("virtual", CPP_VIRTUAL_SCM),
+            ("schemas", CPP_SCHEMAS_SCM),
+        ];
+        for (name, source) in queries {
+            let result = Query::new(&lang, source);
+            assert!(result.is_ok(), "Failed to compile cpp/{name}.scm: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_php_query_compilation() {
+        let lang = crate::parser::php_language();
+        let queries = [
+            ("interfaces", PHP_INTERFACES_SCM),
+            ("classes", PHP_CLASSES_SCM),
+            ("methods", PHP_METHODS_SCM),
+            ("traits", PHP_TRAITS_SCM),
+            ("imports", PHP_IMPORTS_SCM),
+        ];
+        for (name, source) in queries {
+            let result = Query::new(&lang, source);
+            assert!(result.is_ok(), "Failed to compile php/{name}.scm: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_ruby_query_compilation() {
+        let lang = crate::parser::ruby_language();
+        let queries = [
+            ("modules", RB_MODULES_SCM),
+            ("classes", RB_CLASSES_SCM),
+            ("methods", RB_METHODS_SCM),
+            ("imports", RB_IMPORTS_SCM),
+        ];
+        for (name, source) in queries {
+            let result = Query::new(&lang, source);
+            assert!(result.is_ok(), "Failed to compile ruby/{name}.scm: {:?}", result.err());
         }
     }
 

@@ -44,6 +44,21 @@ pub fn swift_language() -> tree_sitter::Language {
     tree_sitter_swift::language()
 }
 
+/// Get tree-sitter Language for C++ (exposed for query compilation).
+pub fn cpp_language() -> tree_sitter::Language {
+    language_from_fn(tree_sitter_cpp::LANGUAGE)
+}
+
+/// Get tree-sitter Language for PHP (exposed for query compilation).
+pub fn php_language() -> tree_sitter::Language {
+    language_from_fn(tree_sitter_php::LANGUAGE_PHP)
+}
+
+/// Get tree-sitter Language for Ruby (exposed for query compilation).
+pub fn ruby_language() -> tree_sitter::Language {
+    language_from_fn(tree_sitter_ruby::LANGUAGE)
+}
+
 thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
 }
@@ -84,7 +99,9 @@ fn get_tree_sitter_language(language: Language) -> Result<tree_sitter::Language,
         Language::Scala => Ok(language_from_fn(tree_sitter_scala::LANGUAGE)),
         Language::CSharp => Ok(language_from_fn(tree_sitter_c_sharp::LANGUAGE)),
         Language::Swift => Ok(tree_sitter_swift::language()),
-        other => Err(DomainScanError::UnsupportedLanguage(other)),
+        Language::Cpp => Ok(language_from_fn(tree_sitter_cpp::LANGUAGE)),
+        Language::PHP => Ok(language_from_fn(tree_sitter_php::LANGUAGE_PHP)),
+        Language::Ruby => Ok(language_from_fn(tree_sitter_ruby::LANGUAGE)),
     }
 }
 
@@ -157,6 +174,30 @@ mod tests {
     fn test_parse_swift() -> Result<(), Box<dyn std::error::Error>> {
         let source = b"protocol Foo { func bar() }";
         let tree = parse_source(source, Language::Swift)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_cpp() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"class Foo { public: void bar() {} };";
+        let tree = parse_source(source, Language::Cpp)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_php() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"<?php class Foo { public function bar(): void {} }";
+        let tree = parse_source(source, Language::PHP)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_ruby() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"class Foo\n  def bar\n    42\n  end\nend";
+        let tree = parse_source(source, Language::Ruby)?;
         assert!(!tree.root_node().has_error());
         Ok(())
     }
