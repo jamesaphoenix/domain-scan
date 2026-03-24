@@ -738,6 +738,182 @@ fn test_json_works_with_fields() {
 }
 
 // ---------------------------------------------------------------------------
+// --page-all flag (NDJSON pagination)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_page_all_interfaces_emits_ndjson() {
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("interfaces")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Each line should be a valid JSON object
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(lines.len() >= 3, "should have at least 3 interfaces, got {}", lines.len());
+
+    for line in &lines {
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("line should be valid JSON: {e}\nline: {line}"));
+        assert!(parsed.is_object(), "each line should be a JSON object");
+        assert!(parsed.get("name").is_some(), "each object should have a name field");
+    }
+}
+
+#[test]
+fn test_page_all_interfaces_with_name_filter() {
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("interfaces")
+        .arg("--name")
+        .arg("Event")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 1, "only EventHandler should match");
+
+    let parsed: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON");
+    assert_eq!(parsed["name"], "EventHandler");
+}
+
+#[test]
+fn test_page_all_services() {
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("services")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Each non-empty line should be valid JSON
+    for line in stdout.lines() {
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("line should be valid JSON: {e}"));
+        assert!(parsed.is_object());
+    }
+}
+
+#[test]
+fn test_page_all_schemas() {
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("schemas")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    for line in stdout.lines() {
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("line should be valid JSON: {e}"));
+        assert!(parsed.is_object());
+    }
+}
+
+#[test]
+fn test_page_all_search() {
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("search")
+        .arg("Handler")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(lines.len() >= 3, "should find at least 3 Handler entities");
+
+    for line in &lines {
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("line should be valid JSON: {e}"));
+        assert!(parsed.is_object());
+        assert!(parsed.get("name").is_some());
+    }
+}
+
+#[test]
+fn test_page_all_impls() {
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("impls")
+        .arg("--all")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Each line (if any) should be valid JSON
+    for line in stdout.lines() {
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("line should be valid JSON: {e}"));
+        assert!(parsed.is_object());
+    }
+}
+
+#[test]
+fn test_page_all_with_fields() {
+    // --page-all should work with --fields to limit output per entity
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("--fields")
+        .arg("name")
+        .arg("interfaces")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(!lines.is_empty(), "should have at least one interface");
+
+    for line in &lines {
+        let parsed: serde_json::Value =
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("line should be valid JSON: {e}"));
+        let obj = parsed.as_object().expect("should be object");
+        assert_eq!(obj.len(), 1, "should have exactly 1 field after masking");
+        assert!(obj.contains_key("name"));
+    }
+}
+
+#[test]
+fn test_page_all_compact_one_per_line() {
+    // Verify that NDJSON is compact (not pretty-printed)
+    let output = base_cmd()
+        .arg("--page-all")
+        .arg("interfaces")
+        .arg("--name")
+        .arg("Event")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should be exactly one non-empty line (compact JSON, not pretty)
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 1, "should be exactly one line");
+
+    // The line should parse as JSON and should not contain newlines within
+    let parsed: serde_json::Value = serde_json::from_str(lines[0]).expect("valid JSON");
+    assert_eq!(parsed["name"], "EventHandler");
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot tests for output format stability
 // ---------------------------------------------------------------------------
 

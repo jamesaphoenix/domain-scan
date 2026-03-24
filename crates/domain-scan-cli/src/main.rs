@@ -72,6 +72,12 @@ struct Cli {
     #[arg(long, global = true)]
     fields: Option<String>,
 
+    /// Emit one JSON object per entity (NDJSON / JSON Lines), one per line.
+    /// Works with interfaces, services, methods, schemas, impls, search.
+    /// Compatible with --fields (field mask applied per line).
+    #[arg(long, global = true)]
+    page_all: bool,
+
     /// Raw JSON payload input that replaces individual filter flags for the subcommand.
     /// Structure mirrors `domain-scan schema <command>` output.
     /// Mutually exclusive with individual filter flags (--name, --kind, etc.).
@@ -972,6 +978,98 @@ fn emit_json<T: serde::Serialize>(
     emit(cli, &content)
 }
 
+/// Validate `--fields` against the schema for a command, returning the parsed mask if valid.
+///
+/// Returns `None` if `--fields` is not set. Exits with a structured error if fields are invalid.
+fn validate_fields_mask(
+    cli: &Cli,
+    schema_command: Option<&str>,
+) -> Result<Option<domain_scan_core::field_mask::FieldMask>, Box<dyn std::error::Error>> {
+    let fields = match cli.fields {
+        Some(ref f) => f,
+        None => return Ok(None),
+    };
+    let parsed = domain_scan_core::field_mask::FieldMask::parse(fields)?;
+    if let Some(cmd) = schema_command {
+        if let Some(cmd_schema) = domain_scan_core::schema::schema_for_command(cmd) {
+            let invalid = domain_scan_core::field_mask::validate_fields_against_schema(
+                &parsed,
+                &cmd_schema.output,
+            );
+            if !invalid.is_empty() {
+                let valid = domain_scan_core::field_mask::extract_valid_fields_from_schema(
+                    &cmd_schema.output,
+                );
+                let valid_list: Vec<&str> = valid.iter().map(|s| s.as_str()).collect();
+                let err = CliError {
+                    code: "INVALID_FIELDS",
+                    message: format!("Unknown field(s): {}", invalid.join(", ")),
+                    suggestion: Some(format!(
+                        "Valid fields for '{}': {}",
+                        cmd,
+                        valid_list.join(", ")
+                    )),
+                };
+                let json = serde_json::to_string_pretty(&err)?;
+                eprintln!("{json}");
+                std::process::exit(1);
+            }
+        }
+    }
+    Ok(Some(parsed))
+}
+
+/// Emit NDJSON output (one JSON object per line) for a slice of serializable items.
+///
+/// If `--fields` is set, the field mask is applied to each individual entity.
+/// Each entity is serialized as compact JSON (no pretty-printing) on its own line.
+fn emit_ndjson<T: serde::Serialize>(
+    cli: &Cli,
+    items: &[T],
+    schema_command: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mask = validate_fields_mask(cli, schema_command)?;
+
+    let mut output = String::new();
+    for item in items {
+        let json_value = serde_json::to_value(item)?;
+        let filtered = if let Some(ref m) = mask {
+            m.apply(&json_value)
+        } else {
+            json_value
+        };
+        let line = serde_json::to_string(&filtered)?;
+        output.push_str(&line);
+        output.push('\n');
+    }
+
+    emit(cli, &output)
+}
+
+/// Emit NDJSON for a slice of references.
+fn emit_ndjson_refs<T: serde::Serialize>(
+    cli: &Cli,
+    items: &[&T],
+    schema_command: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mask = validate_fields_mask(cli, schema_command)?;
+
+    let mut output = String::new();
+    for item in items {
+        let json_value = serde_json::to_value(item)?;
+        let filtered = if let Some(ref m) = mask {
+            m.apply(&json_value)
+        } else {
+            json_value
+        };
+        let line = serde_json::to_string(&filtered)?;
+        output.push_str(&line);
+        output.push('\n');
+    }
+
+    emit(cli, &output)
+}
+
 // ---------------------------------------------------------------------------
 // Subcommand: scan
 // ---------------------------------------------------------------------------
@@ -997,6 +1095,10 @@ fn cmd_interfaces(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let scan_index = run_scan(cli)?;
     let interfaces = scan_index.get_interfaces(name.as_deref());
+
+    if cli.page_all {
+        return emit_ndjson(cli, &interfaces, Some("interfaces"));
+    }
 
     match format {
         OutputFormat::Json => {
@@ -1070,6 +1172,10 @@ fn cmd_services(
 
     if let Some(ref n) = name {
         services.retain(|s| s.name.contains(n.as_str()));
+    }
+
+    if cli.page_all {
+        return emit_ndjson(cli, &services, Some("services"));
     }
 
     match format {
@@ -1171,6 +1277,10 @@ fn cmd_methods(
         methods.retain(|m| m.name.contains(n.as_str()));
     }
 
+    if cli.page_all {
+        return emit_ndjson_refs(cli, &methods, Some("methods"));
+    }
+
     match format {
         OutputFormat::Json => {
             return emit_json(cli, &methods, format, Some("methods"));
@@ -1231,6 +1341,10 @@ fn cmd_schemas(
 
     if let Some(ref n) = name {
         schemas.retain(|s| s.name.contains(n.as_str()));
+    }
+
+    if cli.page_all {
+        return emit_ndjson(cli, &schemas, Some("schemas"));
     }
 
     match format {
@@ -1303,6 +1417,10 @@ fn cmd_impls(
             all_impls.extend(file.implementations.iter());
         }
 
+        if cli.page_all {
+            return emit_ndjson_refs(cli, &all_impls, Some("impls"));
+        }
+
         match format {
             OutputFormat::Json => {
                 return emit_json(cli, &all_impls, format, Some("impls"));
@@ -1353,6 +1471,10 @@ fn cmd_impls(
         // Show implementations of a specific trait
         let impls = scan_index.get_implementations(trait_name);
         let implementors = scan_index.get_implementors(trait_name);
+
+        if cli.page_all {
+            return emit_ndjson(cli, &impls, Some("impls"));
+        }
 
         match format {
             OutputFormat::Json => {
@@ -1442,6 +1564,10 @@ fn cmd_search(
     }
 
     let summaries = scan_index.get_entity_summaries(&filter);
+
+    if cli.page_all {
+        return emit_ndjson(cli, &summaries, Some("search"));
+    }
 
     match format {
         OutputFormat::Json => {

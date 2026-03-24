@@ -2723,10 +2723,10 @@ Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CL
 
 #### 6c.4 NDJSON Pagination — `--page-all`
 
-- [ ] `--page-all` flag emits one JSON object per entity (NDJSON / JSON Lines), one per line
-- [ ] Works with `domain-scan interfaces`, `services`, `methods`, `schemas`, `impls`, `search`
-- [ ] Agents can stream-process results without buffering the full array
-- [ ] Compatible with `--fields` (field mask applied per line)
+- [x] `--page-all` flag emits one JSON object per entity (NDJSON / JSON Lines), one per line
+- [x] Works with `domain-scan interfaces`, `services`, `methods`, `schemas`, `impls`, `search`
+- [x] Agents can stream-process results without buffering the full array
+- [x] Compatible with `--fields` (field mask applied per line)
 
 #### 6c.5 Auto-Detect JSON Output
 
