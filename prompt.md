@@ -2,84 +2,52 @@
 
 1. CLAUDE.md - project summary, architecture, conventions
 2. specs/readme.md - spec index
-3. specs/domain-scan.md - the full spec (sections 1-16). Find the first phase (section 11) with unchecked `- [ ]` tasks
+3. specs/tube-map.md - the Subsystem Tube Map spec (sections 1-11). Find the first phase (section 9) with unchecked `- [ ]` tasks
 
 ## Step 2: Read the code you'll need for the current phase
 
-Phase 1 (Foundation):
-- Cargo.toml - workspace setup
-- crates/domain-scan-core/src/lib.rs - public API + clippy deny wall
-- crates/domain-scan-core/src/walker.rs - filesystem traversal
-- crates/domain-scan-core/src/lang.rs - language detection
-- crates/domain-scan-core/src/parser.rs - tree-sitter parsing
-- crates/domain-scan-core/src/ir.rs - intermediate representation types
-- crates/domain-scan-core/src/build_status.rs - build status detection
-- crates/domain-scan-core/src/output.rs - serialization skeleton
-- crates/domain-scan-core/src/types.rs - public types
+Phase A (Foundation — Bug Fix + Tab Shell + IPC Commands):
+- crates/domain-scan-tauri/tauri.conf.json - Tauri config, CSP, window settings
+- crates/domain-scan-tauri/src/commands.rs - existing IPC commands, AppState
+- crates/domain-scan-tauri/src/lib.rs - Tauri builder, plugin registration
+- crates/domain-scan-tauri/ui/src/App.tsx - current layout, Open Directory button
+- crates/domain-scan-tauri/ui/src/hooks/useScan.ts - existing Tauri IPC hook
+- crates/domain-scan-tauri/ui/src/types.ts - TypeScript type definitions
+- crates/domain-scan-core/src/manifest.rs - manifest parsing, matching
+- crates/domain-scan-core/src/ir.rs - IR types (MatchResult, ManifestSubsystem, etc.)
 
-Phase 2 (Query Engine + TypeScript):
-- crates/domain-scan-core/src/query_engine.rs - .scm loading/dispatch
-- crates/domain-scan-core/queries/typescript/ - all .scm files
-- crates/domain-scan-core/tests/fixtures/typescript/ - test fixtures
-- crates/domain-scan-core/tests/integration/ - integration tests
+Phase B (Layout Engine):
+- ui/src/layout/types.ts - (create) ComputedLine, LayoutGrid, DomainLayer
+- ui/src/layout/colors.ts - (create) domain color assignment
+- ui/src/layout/tubeMap.ts - (create) dynamic layout algorithm
+- Reference: /Users/jamesaphoenix/Desktop/projects/just-understanding-data/octospark-visualizer/src/layout.ts
 
-Phase 3 (Rust + Go + Python):
-- crates/domain-scan-core/queries/rust/ - all .scm files
-- crates/domain-scan-core/queries/go/ - all .scm files (uses method_elem not method_spec)
-- crates/domain-scan-core/queries/python/ - all .scm files
-- crates/domain-scan-core/tests/fixtures/rust/, go/, python/
+Phase C (React Flow Canvas):
+- crates/domain-scan-tauri/ui/package.json - add @xyflow/react dependency
+- ui/src/components/TubeMapView.tsx - (create) ReactFlow container
+- ui/src/components/SubsystemNode.tsx - (create, port from octospark)
+- ui/src/components/DependencyEdge.tsx - (create, port from octospark)
+- ui/src/hooks/useTubeMapState.ts - (create) manifest + match state
+- ui/src/hooks/useTubeLayout.ts - (create) memoized layout
+- Reference: /Users/jamesaphoenix/Desktop/projects/just-understanding-data/octospark-visualizer/src/App.tsx
+- Reference: /Users/jamesaphoenix/Desktop/projects/just-understanding-data/octospark-visualizer/src/components/SubsystemNode.tsx
+- Reference: /Users/jamesaphoenix/Desktop/projects/just-understanding-data/octospark-visualizer/src/components/DependencyEdge.tsx
 
-Phase 4a (JVM: Java, Kotlin, Scala):
-- crates/domain-scan-core/queries/java/ - including schemas.scm (@Entity, records)
-- crates/domain-scan-core/queries/kotlin/ - uses (identifier) not (type_identifier) for names
-- crates/domain-scan-core/queries/scala/
-- crates/domain-scan-core/tests/fixtures/java/, kotlin/, scala/
+Phase D (Interaction — Search, Filter, Trace, Drill-In):
+- ui/src/components/TubeMapSearchBar.tsx - (create, port from octospark SearchBar)
+- ui/src/components/Legend.tsx - (create, port from octospark)
+- ui/src/components/Breadcrumbs.tsx - (create, port from octospark)
+- ui/src/components/SubsystemDrillIn.tsx - (create) drill-in entity cards
+- ui/src/components/CoverageOverlay.tsx - (create) match coverage display
+- Reference: /Users/jamesaphoenix/Desktop/projects/just-understanding-data/octospark-visualizer/src/components/
 
-Phase 4b (Systems/Scripting: C#, Swift, C++, PHP, Ruby):
-- crates/domain-scan-core/queries/<lang>/ - all remaining language dirs
-- crates/domain-scan-core/tests/fixtures/<lang>/
-
-Phase 5 (Cross-File Resolution + Index + Config + Cache):
-- crates/domain-scan-core/src/config.rs - .domain-scan.toml parsing
-- crates/domain-scan-core/src/cache.rs - content-addressed cache
-- crates/domain-scan-core/src/resolver.rs - import/export tracking
-- crates/domain-scan-core/src/index.rs - ScanIndex construction
-- crates/domain-scan-core/src/manifest.rs - manifest parsing, match, validate, write-back
-- crates/domain-scan-core/src/validate.rs - validation rules
-
-Phase 6a (CLI Core):
-- crates/domain-scan-cli/src/main.rs - clap subcommands
-- crates/domain-scan-core/src/output.rs - JSON + table + compact formatting
-
-Phase 6b (TUI Interactive Mode):
-- crates/domain-scan-cli/src/tui.rs - ratatui TUI app
-- TuiApp struct with handle_event + render (testable via TestBackend)
-
-Phase 7 (LLM Prompt Generation):
-- crates/domain-scan-core/src/output.rs - prompt template
-- Partition strategy, build-status-aware instructions
-
-Phase 8 (MCP Server):
-- crates/domain-scan-mcp/src/main.rs - MCP stdio server using rmcp
-- ServerState with tokio::sync::RwLock
-- All 14+ tools delegating to domain-scan-core
-
-Phase 9 (Tauri Backend):
-- crates/domain-scan-tauri/src/main.rs - Tauri setup
-- crates/domain-scan-tauri/src/commands.rs - IPC commands with AppState + CommandError
-- crates/domain-scan-tauri/tauri.conf.json
-
-Phase 10 (Tauri Frontend):
-- crates/domain-scan-tauri/ui/src/App.tsx - three-panel layout
-- crates/domain-scan-tauri/ui/src/components/ - EntityTree, SourcePreview, DetailsPanel
-- crates/domain-scan-tauri/ui/src/hooks/ - useScan, useTreeState, useKeyboard
-
-Phase 11 (Polish + Performance):
-- Benchmarks, --verbose, README, self-test
+Phase E (Polish):
+- Edge bundling, tube line stripes, animations, performance
+- Snapshot tests for layout algorithm
 
 ## Step 3: Pick the most important unchecked task and implement it
 
-CRITICAL: Complete phases sequentially (Phase 1 -> 2 -> 3 -> 4a -> 4b -> 5 -> 6a -> 6b -> 7 -> 8 -> 9 -> 10 -> 11). Do NOT skip ahead to a later phase while earlier phases have unchecked tasks.
+CRITICAL: Complete phases sequentially (Phase A -> B -> C -> D -> E). Do NOT skip ahead to a later phase while earlier phases have unchecked tasks.
 
 ## Housekeeping
 
@@ -88,12 +56,17 @@ CRITICAL: Complete phases sequentially (Phase 1 -> 2 -> 3 -> 4a -> 4b -> 5 -> 6a
 ## Workflow (MUST follow this order for every task)
 
 1. **Write the code** for the task
-2. **Compile**: run `cargo build -p domain-scan-core` (or the relevant crate). Fix all compiler errors before proceeding.
-3. **Run clippy**: `cargo clippy -p domain-scan-core -- -D warnings`. Fix all warnings.
+2. **Compile/Build**:
+   - Rust: `cargo build -p domain-scan-core` (or `domain-scan-tauri`). Fix all compiler errors.
+   - Frontend: `cd crates/domain-scan-tauri/ui && npx tsc --noEmit`. Fix all type errors.
+3. **Lint**:
+   - Rust: `cargo clippy -p domain-scan-core -- -D warnings`. Fix all warnings.
 4. **Write the tests** for the code you just wrote
-5. **Run the tests**: `cargo test -p domain-scan-core`. Fix any failures.
+5. **Run the tests**:
+   - Rust: `cargo test -p domain-scan-core`. Fix any failures.
+   - Frontend: TypeScript type-check is sufficient (no Jest/Vitest setup yet).
 6. **All tests pass**: verify zero failures before committing.
-7. **Update the spec**: check off `- [x]` for the completed task in `specs/domain-scan.md`
+7. **Update the spec**: check off `- [x]` for the completed task in `specs/tube-map.md`
 8. **Commit and push**: `git add -A && git commit -m "<descriptive message>" && git push`
 
 Do NOT skip steps. Do NOT commit code that doesn't compile. Do NOT commit tests that don't pass.
