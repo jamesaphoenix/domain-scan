@@ -3,8 +3,36 @@ use std::path::Path;
 
 use tree_sitter::Parser;
 
+use tree_sitter_language::LanguageFn;
+
 use crate::ir::Language;
 use crate::DomainScanError;
+
+/// Convert a `LanguageFn` (from newer grammar crates) to a tree-sitter `Language`.
+///
+/// The `LanguageFn` wraps `extern "C" fn() -> *const ()` which returns a `*const TSLanguage`.
+/// The tree-sitter `Language` struct is a newtype around the same pointer.
+///
+/// # Safety
+/// This relies on `Language` being a transparent wrapper around `*const TSLanguage`,
+/// which is guaranteed by tree-sitter's stable C ABI.
+fn language_from_fn(lang_fn: LanguageFn) -> tree_sitter::Language {
+    let raw_fn = lang_fn.into_raw();
+    let ptr = unsafe { raw_fn() };
+    // SAFETY: Language is repr(transparent) over *const TSLanguage,
+    // and the grammar function returns a valid *const TSLanguage as *const ().
+    unsafe { std::mem::transmute(ptr) }
+}
+
+/// Get tree-sitter Language for Kotlin (exposed for query compilation).
+pub fn kotlin_language() -> tree_sitter::Language {
+    language_from_fn(tree_sitter_kotlin_ng::LANGUAGE)
+}
+
+/// Get tree-sitter Language for Scala (exposed for query compilation).
+pub fn scala_language() -> tree_sitter::Language {
+    language_from_fn(tree_sitter_scala::LANGUAGE)
+}
 
 thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
@@ -41,6 +69,9 @@ fn get_tree_sitter_language(language: Language) -> Result<tree_sitter::Language,
         Language::Rust => Ok(tree_sitter_rust::language()),
         Language::Go => Ok(tree_sitter_go::language()),
         Language::Python => Ok(tree_sitter_python::language()),
+        Language::Java => Ok(tree_sitter_java::language()),
+        Language::Kotlin => Ok(language_from_fn(tree_sitter_kotlin_ng::LANGUAGE)),
+        Language::Scala => Ok(language_from_fn(tree_sitter_scala::LANGUAGE)),
         other => Err(DomainScanError::UnsupportedLanguage(other)),
     }
 }
@@ -80,12 +111,36 @@ mod tests {
 
     #[test]
     fn test_parse_unsupported_language() {
-        let result = parse_source(b"class Foo {}", Language::Java);
+        let result = parse_source(b"class Foo {}", Language::CSharp);
         assert!(result.is_err());
         let err = result.err();
         assert!(
-            matches!(err, Some(DomainScanError::UnsupportedLanguage(Language::Java)))
+            matches!(err, Some(DomainScanError::UnsupportedLanguage(Language::CSharp)))
         );
+    }
+
+    #[test]
+    fn test_parse_java() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"public class Foo { public void bar() {} }";
+        let tree = parse_source(source, Language::Java)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_kotlin() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"fun main(args: Array<String>) { println(\"Hello\") }";
+        let tree = parse_source(source, Language::Kotlin)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_scala() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"object Main { def main(args: Array[String]): Unit = {} }";
+        let tree = parse_source(source, Language::Scala)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
     }
 
     #[test]

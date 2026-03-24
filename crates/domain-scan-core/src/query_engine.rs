@@ -52,6 +52,40 @@ const PY_SERVICES_SCM: &str = include_str!("../queries/python/services.scm");
 const PY_SCHEMAS_SCM: &str = include_str!("../queries/python/schemas.scm");
 
 // ---------------------------------------------------------------------------
+// Java .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const JV_INTERFACES_SCM: &str = include_str!("../queries/java/interfaces.scm");
+const JV_CLASSES_SCM: &str = include_str!("../queries/java/classes.scm");
+#[allow(dead_code)]
+const JV_METHODS_SCM: &str = include_str!("../queries/java/methods.scm");
+const JV_IMPORTS_SCM: &str = include_str!("../queries/java/imports.scm");
+const JV_SERVICES_SCM: &str = include_str!("../queries/java/services.scm");
+const JV_SCHEMAS_SCM: &str = include_str!("../queries/java/schemas.scm");
+
+// ---------------------------------------------------------------------------
+// Kotlin .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const KT_INTERFACES_SCM: &str = include_str!("../queries/kotlin/interfaces.scm");
+const KT_CLASSES_SCM: &str = include_str!("../queries/kotlin/classes.scm");
+#[allow(dead_code)]
+const KT_METHODS_SCM: &str = include_str!("../queries/kotlin/methods.scm");
+const KT_IMPORTS_SCM: &str = include_str!("../queries/kotlin/imports.scm");
+const KT_SERVICES_SCM: &str = include_str!("../queries/kotlin/services.scm");
+const KT_SCHEMAS_SCM: &str = include_str!("../queries/kotlin/schemas.scm");
+
+// ---------------------------------------------------------------------------
+// Scala .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const SC_TRAITS_SCM: &str = include_str!("../queries/scala/traits.scm");
+const SC_CLASSES_SCM: &str = include_str!("../queries/scala/classes.scm");
+#[allow(dead_code)]
+const SC_METHODS_SCM: &str = include_str!("../queries/scala/methods.scm");
+const SC_IMPORTS_SCM: &str = include_str!("../queries/scala/imports.scm");
+
+// ---------------------------------------------------------------------------
 // TypeScript .scm sources (embedded at compile time)
 // ---------------------------------------------------------------------------
 
@@ -95,6 +129,26 @@ static PY_PROTOCOLS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static PY_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static PY_SERVICES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static PY_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// Java query statics
+static JV_INTERFACES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static JV_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static JV_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static JV_SERVICES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static JV_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// Kotlin query statics
+static KT_INTERFACES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static KT_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static KT_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static KT_SERVICES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static KT_METHODS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static KT_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// Scala query statics
+static SC_TRAITS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static SC_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static SC_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 
 // TypeScript query statics
 static TS_INTERFACES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
@@ -166,6 +220,51 @@ fn get_py_query(
         .map_err(|e| DomainScanError::QueryCompile(e.clone()))
 }
 
+fn compile_jv_query(source: &str) -> Result<Query, String> {
+    let lang = tree_sitter_java::language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_jv_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_jv_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
+fn compile_kt_query(source: &str) -> Result<Query, String> {
+    let lang = crate::parser::kotlin_language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_kt_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_kt_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
+fn compile_sc_query(source: &str) -> Result<Query, String> {
+    let lang = crate::parser::scala_language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_sc_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_sc_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -186,6 +285,9 @@ pub fn extract(
         Language::Rust => extract_rust(tree, source, path, &mut ir)?,
         Language::Go => extract_go(tree, source, path, &mut ir)?,
         Language::Python => extract_python(tree, source, path, &mut ir)?,
+        Language::Java => extract_java(tree, source, path, &mut ir)?,
+        Language::Kotlin => extract_kotlin(tree, source, path, &mut ir)?,
+        Language::Scala => extract_scala(tree, source, path, &mut ir)?,
         other => return Err(DomainScanError::UnsupportedLanguage(other)),
     }
 
@@ -2853,6 +2955,1858 @@ fn extract_py_routes(decorator: &str, handler_name: &str) -> Vec<RouteDef> {
     }]
 }
 
+// ===========================================================================
+// Java extraction
+// ===========================================================================
+
+fn extract_java(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    ir.interfaces = extract_jv_interfaces(tree, source, path)?;
+    ir.classes = extract_jv_classes(tree, source, path)?;
+    ir.functions = extract_jv_functions(tree, source, path)?;
+    ir.imports = extract_jv_imports(tree, source)?;
+    ir.services = extract_jv_services(tree, source, path)?;
+    ir.schemas = extract_jv_schemas(tree, source, path)?;
+    Ok(())
+}
+
+// --- Java Interfaces ---
+
+fn extract_jv_interfaces(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_jv_query(&JV_INTERFACES_Q, JV_INTERFACES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut interfaces = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "interface.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "interface.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "interface.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = jv_visibility(def_node);
+        let generics = extract_jv_generics(def_node, source);
+        let extends = extract_jv_interface_extends(def_node, source);
+
+        let methods = body_node
+            .map(|b| extract_jv_interface_methods(b, source))
+            .unwrap_or_default();
+
+        interfaces.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            methods,
+            properties: Vec::new(),
+            language_kind: InterfaceKind::Interface,
+            decorators: extract_jv_annotations(def_node, source),
+        });
+    }
+
+    Ok(interfaces)
+}
+
+fn extract_jv_interface_methods(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "method_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+
+        let params_node = child.child_by_field_name("parameters");
+        let parameters = params_node
+            .map(|p| extract_jv_parameters(p, source))
+            .unwrap_or_default();
+
+        let return_type = child
+            .child_by_field_name("type")
+            .map(|rt| node_text(rt, source));
+
+        // Has body = default method
+        let has_default = child.child_by_field_name("body").is_some();
+
+        methods.push(MethodSignature {
+            name,
+            span,
+            is_async: false,
+            parameters,
+            return_type,
+            has_default,
+        });
+    }
+
+    methods
+}
+
+// --- Java Classes ---
+
+fn extract_jv_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_jv_query(&JV_CLASSES_Q, JV_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = jv_visibility(def_node);
+        let is_abstract = jv_has_modifier(def_node, "abstract");
+        let generics = extract_jv_generics(def_node, source);
+        let decorators = extract_jv_annotations(def_node, source);
+
+        let extends = def_node
+            .child_by_field_name("superclass")
+            .and_then(|sc| {
+                let mut c = sc.walk();
+                let result = sc.named_children(&mut c).next().map(|n| node_text(n, source));
+                result
+            });
+
+        let implements = extract_jv_implements(def_node, source);
+
+        let body_node = find_capture(&m, query, "class.body");
+        let mut methods = body_node
+            .map(|b| extract_jv_class_methods(b, source, path))
+            .unwrap_or_default();
+        let properties = body_node
+            .map(|b| extract_jv_class_fields(b, source))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            implements,
+            methods,
+            properties,
+            is_abstract,
+            decorators,
+        });
+    }
+
+    Ok(classes)
+}
+
+fn extract_jv_class_methods(body: Node<'_>, source: &[u8], path: &Path) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "method_declaration" && child.kind() != "constructor_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+        let visibility = jv_member_visibility(child);
+        let is_static = jv_has_modifier(child, "static");
+        let decorators = extract_jv_annotations(child, source);
+
+        let params_node = child.child_by_field_name("parameters");
+        let parameters = params_node
+            .map(|p| extract_jv_parameters(p, source))
+            .unwrap_or_default();
+
+        let return_type = child
+            .child_by_field_name("type")
+            .map(|rt| node_text(rt, source));
+
+        methods.push(MethodDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            is_async: false,
+            is_static,
+            is_generator: false,
+            parameters,
+            return_type,
+            decorators,
+            owner: None,
+            implements: None,
+        });
+    }
+
+    methods
+}
+
+fn extract_jv_class_fields(body: Node<'_>, source: &[u8]) -> Vec<PropertyDef> {
+    let mut fields = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "field_declaration" {
+            continue;
+        }
+
+        let type_text = child
+            .child_by_field_name("type")
+            .map(|t| node_text(t, source));
+        let visibility = jv_member_visibility(child);
+        let is_readonly = jv_has_modifier(child, "final");
+
+        // field_declaration can have multiple declarators
+        let mut dcursor = child.walk();
+        for dchild in child.named_children(&mut dcursor) {
+            if dchild.kind() == "variable_declarator" {
+                let name = dchild
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or_default();
+                fields.push(PropertyDef {
+                    name,
+                    type_annotation: type_text.clone(),
+                    is_optional: false,
+                    is_readonly,
+                    visibility,
+                });
+            }
+        }
+    }
+
+    fields
+}
+
+// --- Java Functions (top-level static methods in classes) ---
+
+fn extract_jv_functions(
+    _tree: &Tree,
+    _source: &[u8],
+    _path: &Path,
+) -> Result<Vec<FunctionDef>, DomainScanError> {
+    // Java has no top-level functions; methods are always in classes
+    Ok(Vec::new())
+}
+
+// --- Java Imports ---
+
+fn extract_jv_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_jv_query(&JV_IMPORTS_Q, JV_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+
+        let full_text = node_text(def_node, source);
+        let span = node_span(def_node);
+
+        // Parse "import static? <path>.*?" or "import static? <path>.<symbol>"
+        let trimmed = full_text
+            .trim()
+            .trim_start_matches("import")
+            .trim()
+            .trim_start_matches("static")
+            .trim()
+            .trim_end_matches(';')
+            .trim();
+
+        let is_wildcard = trimmed.ends_with(".*");
+        let source_path = if is_wildcard {
+            trimmed.trim_end_matches(".*").to_string()
+        } else if let Some(pos) = trimmed.rfind('.') {
+            trimmed[..pos].to_string()
+        } else {
+            trimmed.to_string()
+        };
+
+        let symbols = if is_wildcard {
+            Vec::new()
+        } else if let Some(pos) = trimmed.rfind('.') {
+            vec![ImportedSymbol {
+                name: trimmed[pos + 1..].to_string(),
+                alias: None,
+                is_default: false,
+                is_namespace: false,
+            }]
+        } else {
+            Vec::new()
+        };
+
+        imports.push(ImportDef {
+            source: source_path,
+            symbols,
+            is_wildcard,
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- Java Services ---
+
+fn extract_jv_services(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ServiceDef>, DomainScanError> {
+    let query = get_jv_query(&JV_SERVICES_Q, JV_SERVICES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut services = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "service.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "service.def") else {
+            continue;
+        };
+
+        let decorators = extract_jv_annotations(def_node, source);
+        let kind = classify_jv_service_kind(&decorators);
+        let Some(kind) = kind else { continue; };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        let body_node = find_capture(&m, query, "service.body");
+        let methods = body_node
+            .map(|b| extract_jv_class_methods(b, source, path))
+            .unwrap_or_default();
+
+        let routes = extract_jv_routes(&methods);
+
+        services.push(ServiceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind,
+            methods,
+            dependencies: Vec::new(),
+            decorators,
+            routes,
+        });
+    }
+
+    Ok(services)
+}
+
+fn classify_jv_service_kind(annotations: &[String]) -> Option<ServiceKind> {
+    for ann in annotations {
+        match ann.as_str() {
+            "RestController" | "Controller" => return Some(ServiceKind::HttpController),
+            "Service" => return Some(ServiceKind::Microservice),
+            "Repository" => return Some(ServiceKind::Repository),
+            "Component" => return Some(ServiceKind::Microservice),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn extract_jv_routes(methods: &[MethodDef]) -> Vec<RouteDef> {
+    let mut routes = Vec::new();
+    for method in methods {
+        for dec in &method.decorators {
+            let ann_name = dec.split('(').next().unwrap_or_default();
+            let http_method = match ann_name {
+                "GetMapping" => Some(HttpMethod::Get),
+                "PostMapping" => Some(HttpMethod::Post),
+                "PutMapping" => Some(HttpMethod::Put),
+                "PatchMapping" => Some(HttpMethod::Patch),
+                "DeleteMapping" => Some(HttpMethod::Delete),
+                _ => None,
+            };
+            if let Some(http_method) = http_method {
+                let path = extract_decorator_string_arg(dec);
+                routes.push(RouteDef {
+                    method: http_method,
+                    path,
+                    handler: method.name.clone(),
+                });
+            }
+        }
+    }
+    routes
+}
+
+// --- Java Schemas ---
+
+fn extract_jv_schemas(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<SchemaDef>, DomainScanError> {
+    let query = get_jv_query(&JV_SCHEMAS_Q, JV_SCHEMAS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut schemas = Vec::new();
+    let mut seen = HashSet::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "schema.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "schema.def") else {
+            continue;
+        };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        // Deduplicate (same name can match both record and class patterns)
+        let key = (name.clone(), span.start_line);
+        if seen.contains(&key) {
+            continue;
+        }
+
+        let is_record = def_node.kind() == "record_declaration";
+        let annotations = extract_jv_annotations(def_node, source);
+        let has_entity_annotation = annotations.iter().any(|a| a == "Entity");
+
+        if !is_record && !has_entity_annotation {
+            continue;
+        }
+
+        let (kind, framework) = if is_record {
+            (SchemaKind::DataTransfer, "java-record".to_string())
+        } else {
+            (SchemaKind::OrmModel, "jpa".to_string())
+        };
+
+        let fields = if is_record {
+            let params = def_node.child_by_field_name("parameters");
+            params
+                .map(|p| extract_jv_record_fields(p, source))
+                .unwrap_or_default()
+        } else {
+            let body = find_capture(&m, query, "schema.body");
+            body.map(|b| extract_jv_schema_class_fields(b, source))
+                .unwrap_or_default()
+        };
+
+        seen.insert(key);
+        schemas.push(SchemaDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind,
+            fields,
+            source_framework: framework,
+            table_name: None,
+            derives: Vec::new(),
+            visibility: jv_visibility(def_node),
+        });
+    }
+
+    Ok(schemas)
+}
+
+fn extract_jv_record_fields(params: Node<'_>, source: &[u8]) -> Vec<SchemaField> {
+    let mut fields = Vec::new();
+    let mut cursor = params.walk();
+
+    for child in params.named_children(&mut cursor) {
+        if child.kind() != "formal_parameter" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let type_annotation = child
+            .child_by_field_name("type")
+            .map(|t| node_text(t, source));
+
+        fields.push(SchemaField {
+            name,
+            type_annotation,
+            is_optional: false,
+            is_primary_key: false,
+            constraints: Vec::new(),
+        });
+    }
+
+    fields
+}
+
+fn extract_jv_schema_class_fields(body: Node<'_>, source: &[u8]) -> Vec<SchemaField> {
+    let mut fields = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "field_declaration" {
+            continue;
+        }
+
+        let type_text = child
+            .child_by_field_name("type")
+            .map(|t| node_text(t, source));
+        let annotations = extract_jv_annotations(child, source);
+        let is_primary_key = annotations.iter().any(|a| a == "Id");
+
+        let mut dcursor = child.walk();
+        for dchild in child.named_children(&mut dcursor) {
+            if dchild.kind() == "variable_declarator" {
+                let name = dchild
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or_default();
+                fields.push(SchemaField {
+                    name,
+                    type_annotation: type_text.clone(),
+                    is_optional: false,
+                    is_primary_key,
+                    constraints: Vec::new(),
+                });
+            }
+        }
+    }
+
+    fields
+}
+
+// --- Java Helpers ---
+
+fn jv_visibility(node: Node<'_>) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.children(&mut mc) {
+                match modifier.kind() {
+                    "public" => return Visibility::Public,
+                    "private" => return Visibility::Private,
+                    "protected" => return Visibility::Protected,
+                    _ => {}
+                }
+            }
+        }
+    }
+    // Java default: package-private → map to Unknown
+    Visibility::Unknown
+}
+
+fn jv_member_visibility(node: Node<'_>) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.children(&mut mc) {
+                match modifier.kind() {
+                    "public" => return Visibility::Public,
+                    "private" => return Visibility::Private,
+                    "protected" => return Visibility::Protected,
+                    _ => {}
+                }
+            }
+        }
+    }
+    Visibility::Unknown
+}
+
+fn jv_has_modifier(node: Node<'_>, modifier_name: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.children(&mut mc) {
+                if modifier.kind() == modifier_name {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn extract_jv_generics(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let Some(type_params) = node.child_by_field_name("type_parameters") else {
+        return Vec::new();
+    };
+    let mut generics = Vec::new();
+    let mut cursor = type_params.walk();
+    for child in type_params.named_children(&mut cursor) {
+        if child.kind() == "type_parameter" {
+            let mut inner = child.walk();
+            for inner_child in child.named_children(&mut inner) {
+                if inner_child.kind() == "identifier" || inner_child.kind() == "type_identifier" {
+                    generics.push(node_text(inner_child, source));
+                    break;
+                }
+            }
+        }
+    }
+    generics
+}
+
+fn extract_jv_interface_extends(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut extends = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "extends_interfaces" {
+            let mut inner = child.walk();
+            for inner_child in child.named_children(&mut inner) {
+                if inner_child.kind() == "type_list" {
+                    let mut tl = inner_child.walk();
+                    for t in inner_child.named_children(&mut tl) {
+                        extends.push(node_text(t, source));
+                    }
+                }
+            }
+        }
+    }
+    extends
+}
+
+fn extract_jv_implements(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut implements = Vec::new();
+    if let Some(ifaces) = node.child_by_field_name("interfaces") {
+        let mut cursor = ifaces.walk();
+        for child in ifaces.named_children(&mut cursor) {
+            if child.kind() == "type_list" {
+                let mut tl = child.walk();
+                for t in child.named_children(&mut tl) {
+                    implements.push(node_text(t, source));
+                }
+            }
+        }
+    }
+    implements
+}
+
+fn extract_jv_parameters(params: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = params.walk();
+
+    for child in params.named_children(&mut cursor) {
+        match child.kind() {
+            "formal_parameter" | "spread_parameter" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or_default();
+                let type_annotation = child
+                    .child_by_field_name("type")
+                    .map(|t| node_text(t, source));
+                let is_rest = child.kind() == "spread_parameter";
+
+                parameters.push(Parameter {
+                    name,
+                    type_annotation,
+                    is_optional: false,
+                    has_default: false,
+                    is_rest,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    parameters
+}
+
+fn extract_jv_annotations(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut annotations = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.named_children(&mut mc) {
+                match modifier.kind() {
+                    "annotation" => {
+                        if let Some(name_node) = modifier.child_by_field_name("name") {
+                            annotations.push(node_text(name_node, source));
+                        }
+                    }
+                    "marker_annotation" => {
+                        // marker_annotation has the name as a direct child
+                        let mut inner = modifier.walk();
+                        for inner_child in modifier.named_children(&mut inner) {
+                            if inner_child.kind() == "identifier" {
+                                annotations.push(node_text(inner_child, source));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    annotations
+}
+
+// ===========================================================================
+// Kotlin extraction
+// ===========================================================================
+
+fn extract_kotlin(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    ir.interfaces = extract_kt_interfaces(tree, source, path)?;
+    ir.classes = extract_kt_classes(tree, source, path)?;
+    ir.functions = extract_kt_functions(tree, source, path)?;
+    ir.imports = extract_kt_imports(tree, source)?;
+    ir.services = extract_kt_services(tree, source, path)?;
+    ir.schemas = extract_kt_schemas(tree, source, path)?;
+    Ok(())
+}
+
+// --- Kotlin Interfaces ---
+
+fn extract_kt_interfaces(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_kt_query(&KT_INTERFACES_Q, KT_INTERFACES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut interfaces = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "interface.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "interface.def") else {
+            continue;
+        };
+
+        // Only match actual interfaces (class_declaration with "interface" keyword)
+        if !kt_is_interface(def_node) {
+            continue;
+        }
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = kt_visibility(def_node, source);
+        let generics = extract_kt_generics(def_node, source);
+        let extends = extract_kt_supertypes(def_node, source);
+
+        let body = kt_class_body(def_node);
+        let methods = body
+            .map(|b| extract_kt_interface_methods(b, source))
+            .unwrap_or_default();
+
+        interfaces.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            methods,
+            properties: Vec::new(),
+            language_kind: InterfaceKind::Interface,
+            decorators: extract_kt_annotations(def_node, source),
+        });
+    }
+
+    Ok(interfaces)
+}
+
+fn extract_kt_interface_methods(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "function_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+
+        let parameters = extract_kt_function_params(child, source);
+        let return_type = extract_kt_return_type(child, source);
+        let has_default = kt_has_function_body(child);
+
+        methods.push(MethodSignature {
+            name,
+            span,
+            is_async: false,
+            parameters,
+            return_type,
+            has_default,
+        });
+    }
+
+    methods
+}
+
+// --- Kotlin Classes ---
+
+fn extract_kt_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_kt_query(&KT_CLASSES_Q, KT_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+
+        // Skip interfaces (handled separately)
+        if kt_is_interface(def_node) {
+            continue;
+        }
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = kt_visibility(def_node, source);
+        let is_abstract = kt_has_class_modifier(def_node, source, "abstract");
+        let generics = extract_kt_generics(def_node, source);
+        let decorators = extract_kt_annotations(def_node, source);
+
+        let supertypes = extract_kt_supertypes(def_node, source);
+        let extends = supertypes.first().cloned();
+        let implements = if supertypes.len() > 1 {
+            supertypes[1..].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        let body = kt_class_body(def_node);
+        let mut methods = body
+            .map(|b| extract_kt_class_methods(b, source, path))
+            .unwrap_or_default();
+        let properties = body
+            .map(|b| extract_kt_class_properties(b, source))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            implements,
+            methods,
+            properties,
+            is_abstract,
+            decorators,
+        });
+    }
+
+    Ok(classes)
+}
+
+fn extract_kt_class_methods(body: Node<'_>, source: &[u8], path: &Path) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "function_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+        let visibility = kt_visibility(child, source);
+        let decorators = extract_kt_annotations(child, source);
+        let parameters = extract_kt_function_params(child, source);
+        let return_type = extract_kt_return_type(child, source);
+
+        methods.push(MethodDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            is_async: false,
+            is_static: false,
+            is_generator: false,
+            parameters,
+            return_type,
+            decorators,
+            owner: None,
+            implements: None,
+        });
+    }
+
+    methods
+}
+
+fn extract_kt_class_properties(body: Node<'_>, source: &[u8]) -> Vec<PropertyDef> {
+    let mut properties = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "property_declaration" {
+            continue;
+        }
+
+        // Get variable_declaration child for name
+        if let Some(var_decl) = find_named_child(child, "variable_declaration") {
+            let name = var_decl
+                .child_by_field_name("name")
+                .or_else(|| find_named_child_any(var_decl, &["simple_identifier", "identifier"]))
+                .map(|n| node_text(n, source))
+                .unwrap_or_default();
+
+            let type_annotation = extract_kt_property_type(child, source);
+            let is_readonly = kt_property_is_val(child, source);
+
+            properties.push(PropertyDef {
+                name,
+                type_annotation,
+                is_optional: false,
+                is_readonly,
+                visibility: kt_visibility(child, source),
+            });
+        }
+    }
+
+    properties
+}
+
+// --- Kotlin Functions ---
+
+fn extract_kt_functions(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<FunctionDef>, DomainScanError> {
+    let query = get_kt_query(&KT_METHODS_Q, KT_METHODS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut functions = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "method.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "method.def") else {
+            continue;
+        };
+
+        // Only top-level functions (parent is source_file)
+        if let Some(parent) = def_node.parent() {
+            if parent.kind() != "source_file" {
+                continue;
+            }
+        }
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = kt_visibility(def_node, source);
+        let decorators = extract_kt_annotations(def_node, source);
+        let parameters = extract_kt_function_params(def_node, source);
+        let return_type = extract_kt_return_type(def_node, source);
+
+        functions.push(FunctionDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            is_async: false,
+            is_generator: false,
+            parameters,
+            return_type,
+            decorators,
+        });
+    }
+
+    Ok(functions)
+}
+
+// --- Kotlin Imports ---
+
+fn extract_kt_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_kt_query(&KT_IMPORTS_Q, KT_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+
+        let full_text = node_text(def_node, source);
+        let span = node_span(def_node);
+
+        let trimmed = full_text
+            .trim()
+            .trim_start_matches("import")
+            .trim();
+
+        let is_wildcard = trimmed.ends_with(".*");
+        let source_path = if is_wildcard {
+            trimmed.trim_end_matches(".*").to_string()
+        } else if let Some(pos) = trimmed.rfind('.') {
+            trimmed[..pos].to_string()
+        } else {
+            trimmed.to_string()
+        };
+
+        let symbols = if is_wildcard {
+            Vec::new()
+        } else if let Some(pos) = trimmed.rfind('.') {
+            vec![ImportedSymbol {
+                name: trimmed[pos + 1..].to_string(),
+                alias: None,
+                is_default: false,
+                is_namespace: false,
+            }]
+        } else {
+            Vec::new()
+        };
+
+        imports.push(ImportDef {
+            source: source_path,
+            symbols,
+            is_wildcard,
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- Kotlin Services ---
+
+fn extract_kt_services(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ServiceDef>, DomainScanError> {
+    let query = get_kt_query(&KT_SERVICES_Q, KT_SERVICES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut services = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "service.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "service.def") else {
+            continue;
+        };
+
+        let decorators = extract_kt_annotations(def_node, source);
+        let kind = classify_jv_service_kind(&decorators);
+        let Some(kind) = kind else { continue; };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        let body = kt_class_body(def_node);
+        let methods = body
+            .map(|b| extract_kt_class_methods(b, source, path))
+            .unwrap_or_default();
+
+        services.push(ServiceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind,
+            methods,
+            dependencies: Vec::new(),
+            decorators,
+            routes: Vec::new(),
+        });
+    }
+
+    Ok(services)
+}
+
+// --- Kotlin Schemas ---
+
+fn extract_kt_schemas(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<SchemaDef>, DomainScanError> {
+    let query = get_kt_query(&KT_SCHEMAS_Q, KT_SCHEMAS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut schemas = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "schema.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "schema.def") else {
+            continue;
+        };
+
+        // Only data classes are schemas
+        if !kt_has_class_modifier(def_node, source, "data") {
+            continue;
+        }
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = kt_visibility(def_node, source);
+
+        let fields = extract_kt_data_class_fields(def_node, source);
+
+        schemas.push(SchemaDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind: SchemaKind::DataTransfer,
+            fields,
+            source_framework: "kotlin-data-class".to_string(),
+            table_name: None,
+            derives: Vec::new(),
+            visibility,
+        });
+    }
+
+    Ok(schemas)
+}
+
+fn extract_kt_data_class_fields(node: Node<'_>, source: &[u8]) -> Vec<SchemaField> {
+    let mut fields = Vec::new();
+
+    // Find primary_constructor -> class_parameters -> class_parameter
+    let Some(constructor) = find_named_child(node, "primary_constructor") else {
+        return fields;
+    };
+    let Some(class_params) = find_named_child(constructor, "class_parameters") else {
+        return fields;
+    };
+
+    let mut cp = class_params.walk();
+    for param in class_params.named_children(&mut cp) {
+        if param.kind() != "class_parameter" {
+            continue;
+        }
+
+        let name = find_named_child_any(param, &["simple_identifier", "identifier"])
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let type_annotation = find_named_child_any(param, &["user_type", "nullable_type", "type"])
+            .map(|n| node_text(n, source));
+
+        fields.push(SchemaField {
+            name,
+            type_annotation,
+            is_optional: false,
+            is_primary_key: false,
+            constraints: Vec::new(),
+        });
+    }
+
+    fields
+}
+
+// --- Kotlin Helpers ---
+
+fn kt_is_interface(node: Node<'_>) -> bool {
+    // Check if the class_declaration has "interface" keyword
+    let full_text_start = node.start_byte();
+    // Walk children to check for "interface" keyword token
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "interface" && child.start_byte() >= full_text_start {
+            return true;
+        }
+    }
+    false
+}
+
+fn kt_class_body(node: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = node.walk();
+    let result = node.named_children(&mut cursor)
+        .find(|c| c.kind() == "class_body");
+    result
+}
+
+fn kt_visibility(node: Node<'_>, source: &[u8]) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.named_children(&mut mc) {
+                if modifier.kind() == "visibility_modifier" {
+                    let text = node_text(modifier, source);
+                    return match text.as_str() {
+                        "public" => Visibility::Public,
+                        "private" => Visibility::Private,
+                        "protected" => Visibility::Protected,
+                        "internal" => Visibility::Internal,
+                        _ => Visibility::Public,
+                    };
+                }
+            }
+        }
+    }
+    // Kotlin default visibility is public
+    Visibility::Public
+}
+
+fn kt_has_class_modifier(node: Node<'_>, source: &[u8], modifier_name: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.named_children(&mut mc) {
+                if modifier.kind() == "class_modifier" || modifier.kind() == "inheritance_modifier" {
+                    let text = node_text(modifier, source);
+                    if text == modifier_name {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+fn extract_kt_generics(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut generics = Vec::new();
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "type_parameters" {
+            let mut tc = child.walk();
+            for tp in child.named_children(&mut tc) {
+                if tp.kind() == "type_parameter" {
+                    let mut inner = tp.walk();
+                    for inner_child in tp.named_children(&mut inner) {
+                        if inner_child.kind() == "type_identifier" || inner_child.kind() == "identifier" {
+                            generics.push(node_text(inner_child, source));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    generics
+}
+
+fn extract_kt_supertypes(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut supertypes = Vec::new();
+
+    let Some(deleg_specs) = find_named_child(node, "delegation_specifiers") else {
+        return supertypes;
+    };
+
+    let mut dc = deleg_specs.walk();
+    for ds in deleg_specs.named_children(&mut dc) {
+        if ds.kind() != "delegation_specifier" {
+            continue;
+        }
+
+        if let Some(user_type) = find_named_child(ds, "user_type") {
+            supertypes.push(node_text(user_type, source));
+        } else if let Some(ctor_inv) = find_named_child(ds, "constructor_invocation") {
+            // e.g. `BaseClass(args)` - extract just the type name
+            if let Some(type_node) = ctor_inv.named_child(0) {
+                supertypes.push(node_text(type_node, source));
+            }
+        }
+    }
+
+    supertypes
+}
+
+fn extract_kt_function_params(node: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+
+    let Some(fvp) = find_named_child(node, "function_value_parameters") else {
+        return parameters;
+    };
+
+    let mut pc = fvp.walk();
+    for param in fvp.named_children(&mut pc) {
+        if param.kind() != "parameter" {
+            continue;
+        }
+
+        let name = find_named_child_any(param, &["simple_identifier", "identifier"])
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let type_annotation = find_named_child_any(param, &["user_type", "nullable_type", "type"])
+            .map(|n| node_text(n, source));
+        let has_default = find_named_child(param, "expression").is_some();
+
+        parameters.push(Parameter {
+            name,
+            type_annotation,
+            is_optional: has_default,
+            has_default,
+            is_rest: false,
+        });
+    }
+
+    parameters
+}
+
+fn extract_kt_return_type(node: Node<'_>, source: &[u8]) -> Option<String> {
+    // In Kotlin, return type follows the parameters, indicated by ":"
+    // Look for a type child that is NOT inside type_parameters
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "user_type" || child.kind() == "nullable_type" {
+            return Some(node_text(child, source));
+        }
+    }
+    None
+}
+
+fn kt_has_function_body(node: Node<'_>) -> bool {
+    let mut cursor = node.walk();
+    let result = node.named_children(&mut cursor)
+        .any(|c| c.kind() == "function_body");
+    result
+}
+
+fn kt_property_is_val(node: Node<'_>, source: &[u8]) -> bool {
+    // Check if property starts with "val" (immutable)
+    let text = node_text(node, source);
+    let trimmed = text.trim_start();
+    trimmed.starts_with("val ")
+}
+
+fn extract_kt_property_type(node: Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "user_type" || child.kind() == "nullable_type" {
+            return Some(node_text(child, source));
+        }
+    }
+    None
+}
+
+fn extract_kt_annotation_from_node(ann: Node<'_>, source: &[u8]) -> Option<String> {
+    if let Some(user_type) = find_named_child(ann, "user_type") {
+        Some(node_text(user_type, source))
+    } else if let Some(ctor_inv) = find_named_child(ann, "constructor_invocation") {
+        ctor_inv.named_child(0).map(|type_node| node_text(type_node, source))
+    } else {
+        None
+    }
+}
+
+fn extract_kt_annotations(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut annotations = Vec::new();
+
+    // Check modifiers child (normal case: annotations attached to the class)
+    if let Some(modifiers) = find_named_child(node, "modifiers") {
+        let mut mc = modifiers.walk();
+        for modifier in modifiers.named_children(&mut mc) {
+            if modifier.kind() != "annotation" {
+                continue;
+            }
+            if let Some(name) = extract_kt_annotation_from_node(modifier, source) {
+                annotations.push(name);
+            }
+        }
+    }
+
+    // Also check preceding siblings for annotations that tree-sitter-kotlin-ng
+    // parses as separate nodes (happens when annotation has arguments like
+    // @RequestMapping("/api/users") before a class — these get wrapped in
+    // annotated_expression nodes)
+    let mut sibling = node.prev_named_sibling();
+    while let Some(sib) = sibling {
+        if sib.kind() == "annotation" {
+            if let Some(name) = extract_kt_annotation_from_node(sib, source) {
+                annotations.push(name);
+            }
+            sibling = sib.prev_named_sibling();
+        } else if sib.kind() == "annotated_expression" {
+            // Recursively collect annotations from annotated_expression trees
+            collect_kt_annotations_from_expr(sib, source, &mut annotations);
+            sibling = sib.prev_named_sibling();
+        } else {
+            break;
+        }
+    }
+
+    annotations
+}
+
+fn collect_kt_annotations_from_expr(node: Node<'_>, source: &[u8], annotations: &mut Vec<String>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "annotation" {
+            if let Some(name) = extract_kt_annotation_from_node(child, source) {
+                annotations.push(name);
+            }
+        } else if child.kind() == "annotated_expression" {
+            collect_kt_annotations_from_expr(child, source, annotations);
+        }
+    }
+}
+
+// ===========================================================================
+// Scala extraction
+// ===========================================================================
+
+fn extract_scala(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    ir.interfaces = extract_sc_traits(tree, source, path)?;
+    ir.classes = extract_sc_classes(tree, source, path)?;
+    ir.functions = extract_sc_functions(tree, source, path)?;
+    ir.imports = extract_sc_imports(tree, source)?;
+    Ok(())
+}
+
+// --- Scala Traits ---
+
+fn extract_sc_traits(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_sc_query(&SC_TRAITS_Q, SC_TRAITS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut traits = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "interface.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "interface.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "interface.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = sc_visibility(def_node, source);
+        let generics = extract_sc_generics(def_node, source);
+        let extends = extract_sc_extends(def_node, source);
+
+        let methods = body_node
+            .map(|b| extract_sc_trait_methods(b, source))
+            .unwrap_or_default();
+
+        traits.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            methods,
+            properties: Vec::new(),
+            language_kind: InterfaceKind::Trait,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(traits)
+}
+
+fn extract_sc_trait_methods(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "function_definition" && child.kind() != "function_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+
+        let parameters = extract_sc_parameters(child, source);
+        let return_type = child
+            .child_by_field_name("return_type")
+            .map(|rt| node_text(rt, source));
+
+        let has_default = child.child_by_field_name("body").is_some();
+
+        methods.push(MethodSignature {
+            name,
+            span,
+            is_async: false,
+            parameters,
+            return_type,
+            has_default,
+        });
+    }
+
+    methods
+}
+
+// --- Scala Classes & Objects ---
+
+fn extract_sc_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_sc_query(&SC_CLASSES_Q, SC_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = sc_visibility(def_node, source);
+        let is_abstract = sc_has_modifier(def_node, source, "abstract");
+        let generics = extract_sc_generics(def_node, source);
+        let extends = extract_sc_extends(def_node, source);
+
+        let extends_first = extends.first().cloned();
+        let implements = if extends.len() > 1 {
+            extends[1..].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        let body_node = find_capture(&m, query, "class.body");
+        let mut methods = body_node
+            .map(|b| extract_sc_class_methods(b, source, path))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        let is_object = def_node.kind() == "object_definition";
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends: extends_first,
+            implements,
+            methods,
+            properties: Vec::new(),
+            is_abstract: is_abstract || is_object,
+            decorators: Vec::new(),
+        });
+    }
+
+    Ok(classes)
+}
+
+fn extract_sc_class_methods(body: Node<'_>, source: &[u8], path: &Path) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "function_definition" && child.kind() != "function_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+        let visibility = sc_visibility(child, source);
+        let parameters = extract_sc_parameters(child, source);
+        let return_type = child
+            .child_by_field_name("return_type")
+            .map(|rt| node_text(rt, source));
+
+        methods.push(MethodDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            is_async: false,
+            is_static: false,
+            is_generator: false,
+            parameters,
+            return_type,
+            decorators: Vec::new(),
+            owner: None,
+            implements: None,
+        });
+    }
+
+    methods
+}
+
+// --- Scala Functions ---
+
+fn extract_sc_functions(
+    _tree: &Tree,
+    _source: &[u8],
+    _path: &Path,
+) -> Result<Vec<FunctionDef>, DomainScanError> {
+    // Scala top-level functions only exist in Scala 3 and are rare.
+    // Methods inside objects/classes are handled via class extraction.
+    Ok(Vec::new())
+}
+
+// --- Scala Imports ---
+
+fn extract_sc_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_sc_query(&SC_IMPORTS_Q, SC_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+
+        let full_text = node_text(def_node, source);
+        let span = node_span(def_node);
+
+        let trimmed = full_text
+            .trim()
+            .trim_start_matches("import")
+            .trim();
+
+        let is_wildcard = trimmed.ends_with("._") || trimmed.ends_with(".*");
+        let source_path = if is_wildcard {
+            trimmed
+                .trim_end_matches("._")
+                .trim_end_matches(".*")
+                .to_string()
+        } else if trimmed.contains('{') {
+            // Multi-import: import java.util.{List, Map}
+            if let Some(pos) = trimmed.find('{') {
+                trimmed[..pos].trim_end_matches('.').to_string()
+            } else {
+                trimmed.to_string()
+            }
+        } else if let Some(pos) = trimmed.rfind('.') {
+            trimmed[..pos].to_string()
+        } else {
+            trimmed.to_string()
+        };
+
+        let symbols = if is_wildcard {
+            Vec::new()
+        } else if trimmed.contains('{') {
+            // Parse {List, Map} or {List => JList}
+            if let Some(start) = trimmed.find('{') {
+                if let Some(end) = trimmed.find('}') {
+                    let inner = &trimmed[start + 1..end];
+                    inner
+                        .split(',')
+                        .map(|s| {
+                            let s = s.trim();
+                            if let Some((name, alias)) = s.split_once("=>") {
+                                ImportedSymbol {
+                                    name: name.trim().to_string(),
+                                    alias: Some(alias.trim().to_string()),
+                                    is_default: false,
+                                    is_namespace: false,
+                                }
+                            } else {
+                                ImportedSymbol {
+                                    name: s.to_string(),
+                                    alias: None,
+                                    is_default: false,
+                                    is_namespace: false,
+                                }
+                            }
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            } else {
+                Vec::new()
+            }
+        } else if let Some(pos) = trimmed.rfind('.') {
+            vec![ImportedSymbol {
+                name: trimmed[pos + 1..].to_string(),
+                alias: None,
+                is_default: false,
+                is_namespace: false,
+            }]
+        } else {
+            Vec::new()
+        };
+
+        imports.push(ImportDef {
+            source: source_path,
+            symbols,
+            is_wildcard,
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- Scala Helpers ---
+
+fn sc_visibility(node: Node<'_>, source: &[u8]) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "access_modifier" {
+            let text = node_text(child, source);
+            if text.contains("private") {
+                return Visibility::Private;
+            } else if text.contains("protected") {
+                return Visibility::Protected;
+            }
+        }
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.named_children(&mut mc) {
+                if modifier.kind() == "access_modifier" {
+                    let text = node_text(modifier, source);
+                    if text.contains("private") {
+                        return Visibility::Private;
+                    } else if text.contains("protected") {
+                        return Visibility::Protected;
+                    }
+                }
+            }
+        }
+    }
+    Visibility::Public
+}
+
+fn sc_has_modifier(node: Node<'_>, source: &[u8], modifier_name: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let text = node_text(child, source);
+            if text.contains(modifier_name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn extract_sc_generics(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let Some(type_params) = node.child_by_field_name("type_parameters") else {
+        return Vec::new();
+    };
+    let mut generics = Vec::new();
+    let mut cursor = type_params.walk();
+    for child in type_params.named_children(&mut cursor) {
+        if child.kind() == "identifier" || child.kind() == "type_identifier" {
+            generics.push(node_text(child, source));
+        } else if child.kind() == "type_parameter" {
+            if let Some(name) = child.child_by_field_name("name") {
+                generics.push(node_text(name, source));
+            }
+        }
+    }
+    generics
+}
+
+fn extract_sc_extends(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut extends = Vec::new();
+    if let Some(extend_clause) = node.child_by_field_name("extend") {
+        let mut cursor = extend_clause.walk();
+        for child in extend_clause.named_children(&mut cursor) {
+            match child.kind() {
+                "type_identifier" | "generic_type" | "stable_type_identifier" => {
+                    extends.push(node_text(child, source));
+                }
+                _ => {}
+            }
+        }
+    }
+    extends
+}
+
+fn extract_sc_parameters(node: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.children_by_field_name("parameters", &mut cursor) {
+        if child.kind() == "parameters" {
+            let mut pc = child.walk();
+            for param in child.named_children(&mut pc) {
+                if param.kind() == "parameter" {
+                    let name = param
+                        .child_by_field_name("name")
+                        .or_else(|| find_named_child(param, "identifier"))
+                        .map(|n| node_text(n, source))
+                        .unwrap_or_default();
+                    let type_annotation = param
+                        .child_by_field_name("type")
+                        .map(|t| node_text(t, source));
+                    let has_default = param
+                        .child_by_field_name("default")
+                        .is_some();
+
+                    parameters.push(Parameter {
+                        name,
+                        type_annotation,
+                        is_optional: has_default,
+                        has_default,
+                        is_rest: false,
+                    });
+                }
+            }
+        }
+    }
+
+    parameters
+}
+
 // ---------------------------------------------------------------------------
 // Helper: Node text extraction
 // ---------------------------------------------------------------------------
@@ -3515,6 +5469,32 @@ fn has_child_of_kind(node: Node<'_>, kind: &str) -> bool {
     result
 }
 
+/// Find first named child of a given kind.
+fn find_named_child<'a>(node: Node<'a>, kind: &str) -> Option<Node<'a>> {
+    let count = node.named_child_count();
+    for i in 0..count {
+        if let Some(child) = node.named_child(i) {
+            if child.kind() == kind {
+                return Some(child);
+            }
+        }
+    }
+    None
+}
+
+/// Find first named child matching any of the given kinds.
+fn find_named_child_any<'a>(node: Node<'a>, kinds: &[&str]) -> Option<Node<'a>> {
+    let count = node.named_child_count();
+    for i in 0..count {
+        if let Some(child) = node.named_child(i) {
+            if kinds.contains(&child.kind()) {
+                return Some(child);
+            }
+        }
+    }
+    None
+}
+
 // ---------------------------------------------------------------------------
 // Helper: Member visibility
 // ---------------------------------------------------------------------------
@@ -3868,6 +5848,55 @@ mod tests {
         for (name, source) in queries {
             let result = Query::new(&lang, source);
             assert!(result.is_ok(), "Failed to compile {name}.scm: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_java_query_compilation() {
+        let lang = tree_sitter_java::language();
+        let queries = [
+            ("interfaces", JV_INTERFACES_SCM),
+            ("classes", JV_CLASSES_SCM),
+            ("methods", JV_METHODS_SCM),
+            ("imports", JV_IMPORTS_SCM),
+            ("services", JV_SERVICES_SCM),
+            ("schemas", JV_SCHEMAS_SCM),
+        ];
+        for (name, source) in queries {
+            let result = Query::new(&lang, source);
+            assert!(result.is_ok(), "Failed to compile java/{name}.scm: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_kotlin_query_compilation() {
+        let lang = crate::parser::kotlin_language();
+        let queries = [
+            ("interfaces", KT_INTERFACES_SCM),
+            ("classes", KT_CLASSES_SCM),
+            ("methods", KT_METHODS_SCM),
+            ("imports", KT_IMPORTS_SCM),
+            ("services", KT_SERVICES_SCM),
+            ("schemas", KT_SCHEMAS_SCM),
+        ];
+        for (name, source) in queries {
+            let result = Query::new(&lang, source);
+            assert!(result.is_ok(), "Failed to compile kotlin/{name}.scm: {:?}", result.err());
+        }
+    }
+
+    #[test]
+    fn test_scala_query_compilation() {
+        let lang = crate::parser::scala_language();
+        let queries = [
+            ("traits", SC_TRAITS_SCM),
+            ("classes", SC_CLASSES_SCM),
+            ("methods", SC_METHODS_SCM),
+            ("imports", SC_IMPORTS_SCM),
+        ];
+        for (name, source) in queries {
+            let result = Query::new(&lang, source);
+            assert!(result.is_ok(), "Failed to compile scala/{name}.scm: {:?}", result.err());
         }
     }
 }

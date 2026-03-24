@@ -207,7 +207,7 @@ fn test_rust_function_parameters() {
 fn test_rust_types_structs() {
     let ir = extract_fixture("types.rs");
     let struct_names: Vec<&str> = ir.classes.iter()
-        .filter(|c| !c.decorators.is_empty() || c.properties.len() > 0 || c.name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
+        .filter(|c| !c.decorators.is_empty() || !c.properties.is_empty() || c.name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
         .map(|c| c.name.as_str())
         .collect();
     assert!(struct_names.contains(&"User"));

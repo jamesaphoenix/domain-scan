@@ -41,6 +41,18 @@ crates/
 - Content-addressed caching: SHA-256(path + content) as cache key
 - All IR types derive Serialize, Deserialize, Debug, Clone, PartialEq
 
+## Effect.ts — First-Class Framework
+
+Effect.ts is a first-class framework with deep extraction via a dedicated `queries/typescript/effect.scm`. Beyond `Schema.Struct` (handled in `schemas.scm`), the Effect query file extracts:
+
+- **Services**: `Context.Tag`, `Effect.Service`, `Context.GenericTag` → `ServiceDef` with `kind: EffectService`
+- **Layers**: `Layer.effect`, `Layer.sync`, `Layer.succeed`, `Layer.merge`, pipe composition → `EffectLayerDef` (provides/requires/composition graph)
+- **Errors**: `Data.TaggedError`, `Schema.TaggedError` → `EffectErrorChannelDef` (tag + structured fields)
+- **Schemas**: `Schema.Class`, `Schema.TaggedStruct`, `Schema.Union` → `SchemaDef` with `kind: EffectSchema`
+- **Pipelines**: `pipe`, `flow`, `Effect.gen`, `.pipe()` → `EffectPipelineDef` (combinator steps + dependency tracking)
+
+The CLI exposes these via `domain-scan effect [services|layers|errors|schemas|pipelines|graph]`.
+
 ## Module Build Status Model
 
 Every scanned module/crate/package has a `BuildStatus` that determines how its structural data is treated:

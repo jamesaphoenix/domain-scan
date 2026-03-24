@@ -2586,10 +2586,10 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - Rust traits.scm uses `(_)` wildcards for return_type/trait/type fields
 
 ### Phase 4a: JVM Languages (Java, Kotlin, Scala)
-- [ ] Java queries: interfaces, classes, methods, annotations, services, imports, `schemas.scm` (@Entity, records)
-- [ ] Kotlin queries: interfaces, classes, methods, services, imports, `schemas.scm` (data class, uses `(identifier)` not `(type_identifier)` for names)
-- [ ] Scala queries: traits, classes, methods, objects, imports
-- [ ] 4-5 fixtures per language with expected JSON
+- [x] Java queries: interfaces, classes, methods, annotations, services, imports, `schemas.scm` (@Entity, records)
+- [x] Kotlin queries: interfaces, classes, methods, services, imports, `schemas.scm` (data class, uses `(identifier)` not `(type_identifier)` for names)
+- [x] Scala queries: traits, classes, methods, objects, imports
+- [x] 4-5 fixtures per language with expected JSON
 
 **Acceptance criteria:**
 - Java @Entity and records detected as schemas
