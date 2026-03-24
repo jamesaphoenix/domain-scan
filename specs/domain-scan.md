@@ -2838,7 +2838,7 @@ metadata:
 - [x] Error messages for common mistakes (wrong path, no files found, bad config)
 - [x] `domain-scan validate --self-test` (validates domain-scan's own codebase)
 - [x] README.md with usage examples
-- [ ] rayon parallelism tuning
+- [x] rayon parallelism tuning
 - [ ] No deadlocks under parallel load
 
 **Acceptance criteria:**

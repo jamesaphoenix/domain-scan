@@ -1,6 +1,7 @@
 use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use domain_scan_core::ir::{
@@ -1044,48 +1045,57 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
         eprintln!("[verbose] cache load: {}ms, {} entries", cache_load_ms, entries);
     }
 
-    // Step 3: Parse + Extract
+    // Step 3: Parse + Extract (parallel via rayon)
     let parse_start = std::time::Instant::now();
-    let mut ir_files = Vec::new();
-    let mut cache_hits: usize = 0;
-    let mut cache_misses: usize = 0;
+    let cache_hits = AtomicUsize::new(0);
+    let cache_misses = AtomicUsize::new(0);
+    let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
 
-    for walked_file in &walked {
-        let build_status = config
-            .build_status_override
-            .unwrap_or(BuildStatus::Built);
+    use rayon::prelude::*;
+    let ir_results: Vec<Result<domain_scan_core::ir::IrFile, Box<dyn std::error::Error + Send + Sync>>> =
+        walked
+            .par_iter()
+            .map(|walked_file| {
+                // Try cache first
+                let source_bytes = std::fs::read(&walked_file.path)?;
+                let hash = domain_scan_core::content_hash(&source_bytes);
 
-        // Try cache first
-        let source_bytes = std::fs::read(&walked_file.path)?;
-        let hash = domain_scan_core::content_hash(&source_bytes);
+                if let Some(ref c) = disk_cache {
+                    if let Some(cached_ir) = c.get(&hash) {
+                        cache_hits.fetch_add(1, Ordering::Relaxed);
+                        return Ok(cached_ir);
+                    }
+                }
 
-        if let Some(ref c) = disk_cache {
-            if let Some(cached_ir) = c.get(&hash) {
-                ir_files.push(cached_ir);
-                cache_hits += 1;
-                continue;
-            }
-        }
+                cache_misses.fetch_add(1, Ordering::Relaxed);
 
-        cache_misses += 1;
+                let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)?;
+                let ir = query_engine::extract(
+                    &tree,
+                    &source,
+                    &walked_file.path,
+                    walked_file.language,
+                    build_status,
+                )?;
 
-        let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)?;
-        let ir = query_engine::extract(
-            &tree,
-            &source,
-            &walked_file.path,
-            walked_file.language,
-            build_status,
-        )?;
+                // Store in cache (DashMap is thread-safe)
+                if let Some(ref c) = disk_cache {
+                    let _ = c.insert(hash, ir.clone());
+                }
 
-        // Store in cache
-        if let Some(ref c) = disk_cache {
-            let _ = c.insert(hash, ir.clone());
-        }
+                Ok(ir)
+            })
+            .collect();
 
-        ir_files.push(ir);
+    // Collect results, propagate first error
+    let mut ir_files = Vec::with_capacity(ir_results.len());
+    for result in ir_results {
+        ir_files.push(result.map_err(|e| -> Box<dyn std::error::Error> { e })?);
     }
+
     let parse_ms = parse_start.elapsed().as_millis();
+    let cache_hits = cache_hits.load(Ordering::Relaxed);
+    let cache_misses = cache_misses.load(Ordering::Relaxed);
 
     if cli.verbose {
         let files_per_sec = if parse_ms > 0 {

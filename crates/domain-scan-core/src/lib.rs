@@ -60,6 +60,21 @@ pub enum DomainScanError {
 
     #[error("Field mask error: {0}")]
     FieldMask(String),
+
+    #[error("Invalid path: {0}")]
+    InvalidPath(String),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    #[error("Invalid resource ID: {0}")]
+    InvalidResourceId(String),
+
+    #[error("Invalid JSON input: {0}")]
+    InvalidJson(String),
+
+    #[error("Invalid regex: {0}")]
+    InvalidRegex(String),
 }
 
 /// Compute SHA-256 content hash for caching.
