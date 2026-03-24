@@ -410,7 +410,7 @@ name = "minimal"
         assert!(scan_config.is_ok());
         let sc = scan_config.as_ref().ok();
 
-        assert!(sc.is_some_and(|c| c.root == PathBuf::from("/tmp/project/.")));
+        assert!(sc.is_some_and(|c| c.root == Path::new("/tmp/project/.")));
         assert!(sc.is_some_and(|c| c.languages.len() == 2));
         assert!(sc.is_some_and(|c| c.languages.contains(&Language::TypeScript)));
         assert!(sc.is_some_and(|c| c.languages.contains(&Language::Rust)));
@@ -425,7 +425,7 @@ name = "minimal"
         let scan_config = config_to_scan_config(&config, Path::new("/tmp/project"));
         assert!(scan_config.is_ok());
         let sc = scan_config.as_ref().ok();
-        assert!(sc.is_some_and(|c| c.root == PathBuf::from("/tmp/project")));
+        assert!(sc.is_some_and(|c| c.root == Path::new("/tmp/project")));
     }
 
     #[test]

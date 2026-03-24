@@ -1007,7 +1007,9 @@ mod tests {
         let index = scan_fixture_dir(&dir);
         // Must complete without panic. tree-sitter does partial recovery,
         // so we may or may not get entities from broken files.
-        assert!(index.stats.total_files >= 0);
+        // Scan completed without panic — that's the assertion.
+        // (total_files is usize, always >= 0, so no numeric check needed)
+        let _ = index.stats.total_files;
     }
 
     #[test]

@@ -53,7 +53,7 @@ fn test_cross_file_interface_in_a_impl_in_b() {
     assert!(log_handler.is_some(), "Expected LogEventHandler class in handler.ts");
     assert!(
         log_handler
-            .map_or(false, |c| c.implements.contains(&"EventHandler".to_string())),
+            .is_some_and(|c| c.implements.contains(&"EventHandler".to_string())),
         "LogEventHandler should implement EventHandler"
     );
 }
@@ -105,7 +105,7 @@ fn test_cross_file_import_resolution() {
     let types_import = handler_imports.iter().find(|i| i.source.contains("types"));
     assert!(types_import.is_some(), "Expected import from ./types in handler.ts");
     assert!(
-        types_import.map_or(false, |i| i.resolved_path.is_some()),
+        types_import.is_some_and(|i| i.resolved_path.is_some()),
         "Expected ./types import to resolve to a file"
     );
 }

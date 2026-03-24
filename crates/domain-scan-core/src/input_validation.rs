@@ -318,6 +318,7 @@ fn json_depth(value: &serde_json::Value) -> usize {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;

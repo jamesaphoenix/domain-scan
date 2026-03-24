@@ -210,6 +210,7 @@ pub fn apply_field_mask(
 }
 
 #[cfg(test)]
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
 

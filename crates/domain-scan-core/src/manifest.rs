@@ -532,6 +532,7 @@ pub fn serialize_manifest(manifest: &Manifest) -> Result<String, DomainScanError
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+#[allow(clippy::panic)]
 mod tests {
     use super::*;
     use crate::ir::*;

@@ -639,7 +639,7 @@ mod tests {
 
         let impls = result.implementors.get("EventHandler");
         assert!(impls.is_some());
-        assert!(impls.map_or(false, |v| v.contains(&"MyHandler".to_string())));
+        assert!(impls.is_some_and(|v| v.contains(&"MyHandler".to_string())));
     }
 
     #[test]
