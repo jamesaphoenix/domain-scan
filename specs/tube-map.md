@@ -488,7 +488,7 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 - [x] Tube line stripe rendering (colored SVG paths behind stations)
 - [x] Animate fitView transitions (duration: 300ms)
 - [x] Toast notifications for file opening, manifest loading
-- [ ] Open in editor from station node (uses `open_in_editor` IPC command)
+- [x] Open in editor from station node (uses `open_in_editor` IPC command)
 - [ ] "Generate Prompt" button on drill-in view (scoped to subsystem entities)
 - [ ] Handle missing-domain case: unassigned entities on gray "unassigned" line
 - [ ] Performance: `onlyRenderVisibleElements={true}` when total nodes > 500

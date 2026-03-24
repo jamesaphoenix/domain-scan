@@ -99,6 +99,25 @@ function ChevronRightIcon({ color }: { color: string }) {
   );
 }
 
+function EditorIcon({ color }: { color: string }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
 function SubsystemNodeComponent({ data }: NodeProps) {
   const d = data as SubsystemNodeData;
   const status = statusConfig[d.status] ?? statusConfig.new;
@@ -379,7 +398,23 @@ function SubsystemNodeComponent({ data }: NodeProps) {
 
         <div className="mx-3 border-t border-slate-700/50" />
 
-        <div className="px-3 py-2 flex items-center justify-end nodrag nopan">
+        <div className="px-3 py-2 flex items-center justify-between nodrag nopan">
+          {d.filePath ? (
+            <button
+              className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-300
+                         transition-colors duration-150"
+              onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                e.stopPropagation();
+                d.onOpenFile(d.filePath);
+              }}
+              title={`Open ${d.filePath} in editor`}
+            >
+              <EditorIcon color="currentColor" />
+              <span>Open in Editor</span>
+            </button>
+          ) : (
+            <div />
+          )}
           {d.hasChildren && (
             <div
               className="flex items-center gap-1 text-[11px] font-medium transition-transform duration-150
