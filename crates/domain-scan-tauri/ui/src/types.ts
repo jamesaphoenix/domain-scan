@@ -249,6 +249,71 @@ export type Entity =
   | { Impl: ImplDef }
   | { TypeAlias: TypeAlias };
 
+// ---------------------------------------------------------------------------
+// Tube Map IPC types (matches Rust DTOs in commands.rs)
+// ---------------------------------------------------------------------------
+
+export type ConnectionType = "depends_on" | "uses" | "triggers";
+
+export interface ManifestMeta {
+  name: string;
+  version: string;
+  description: string;
+}
+
+export interface DomainDef {
+  label: string;
+  color: string;
+}
+
+export interface TubeMapConnection {
+  from: string;
+  to: string;
+  label: string;
+  type: ConnectionType;
+}
+
+export interface TubeMapSubsystem {
+  id: string;
+  name: string;
+  domain: string;
+  status: string;
+  description: string;
+  file_path: string;
+  matched_entity_count: number;
+  interface_count: number;
+  operation_count: number;
+  table_count: number;
+  event_count: number;
+  has_children: boolean;
+  child_count: number;
+  dependency_count: number;
+}
+
+export interface TubeMapData {
+  meta: ManifestMeta;
+  domains: Record<string, DomainDef>;
+  subsystems: TubeMapSubsystem[];
+  connections: TubeMapConnection[];
+  coverage_percent: number;
+  unmatched_count: number;
+}
+
+export interface SubsystemDetail {
+  id: string;
+  name: string;
+  domain: string;
+  status: string;
+  file_path: string;
+  interfaces: string[];
+  operations: string[];
+  tables: string[];
+  events: string[];
+  dependencies: string[];
+  children: SubsystemDetail[];
+  matched_entities: EntitySummary[];
+}
+
 // Tree node for entity tree display
 export interface TreeNode {
   entity: EntitySummary;

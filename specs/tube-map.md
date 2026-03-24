@@ -417,16 +417,16 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 
 ### Phase B: Layout Engine
 
-- [ ] Create `ui/src/layout/types.ts`
-- [ ] Create `ui/src/layout/colors.ts` with static palette + HSL cycling
-- [ ] Create `ui/src/layout/tubeMap.ts` with all 5 functions
-- [ ] Implement `assignDomainLayers` (Kahn's topo sort on domain DAG, cycle breaking)
-- [ ] Implement `assignDomainGrid` (bin-packing: MAX_COLS, row/col assignment)
-- [ ] Implement `orderStationsWithinLine` (intra-domain topo sort)
-- [ ] Implement `buildCanonicalPositions` (segment walker)
-- [ ] Implement `applyCompactLayout` (filtered compact mode)
-- [ ] Unit tests for all 5 functions
-- [ ] Test with octospark's system.json as a reference fixture
+- [x] Create `ui/src/layout/types.ts`
+- [x] Create `ui/src/layout/colors.ts` with static palette + HSL cycling
+- [x] Create `ui/src/layout/tubeMap.ts` with all 5 functions
+- [x] Implement `assignDomainLayers` (Kahn's topo sort on domain DAG, cycle breaking)
+- [x] Implement `assignDomainGrid` (bin-packing: MAX_COLS, row/col assignment)
+- [x] Implement `orderStationsWithinLine` (intra-domain topo sort)
+- [x] Implement `buildCanonicalPositions` (segment walker)
+- [x] Implement `applyCompactLayout` (filtered compact mode)
+- [x] Unit tests for all 5 functions
+- [x] Test with octospark's system.json as a reference fixture
 
 **Acceptance criteria:**
 - `buildDynamicLayout(octosparkManifest)` produces positions that match the hand-crafted layout within ±1 station gap
