@@ -25,12 +25,14 @@ import { ShortcutHelp } from "./ShortcutHelp";
 import { TubeLineStripes } from "./TubeLineStripes";
 import { useTubeMapState } from "../hooks/useTubeMapState";
 import { useTubeLayout } from "../hooks/useTubeLayout";
+import { useToast } from "../hooks/useToast";
 
 const nodeTypes = { subsystem: SubsystemNode };
 const edgeTypes = { dependency: DependencyEdge };
 
 function TubeMapInner() {
   const state = useTubeMapState();
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -60,12 +62,14 @@ function TubeMapInner() {
 
   const handleOpenFile = useCallback(
     async (filePath: string, line?: number) => {
+      const fileName = filePath.split("/").pop() ?? filePath;
       try {
         await invoke("open_in_editor", {
           editor: "cursor",
           file: filePath,
           line: line ?? 1,
         });
+        addToast(`Opened ${fileName} in Cursor`, "success");
       } catch {
         try {
           await invoke("open_in_editor", {
@@ -73,12 +77,13 @@ function TubeMapInner() {
             file: filePath,
             line: line ?? 1,
           });
+          addToast(`Opened ${fileName} in VS Code`, "success");
         } catch {
-          // Silently fail if no editor available
+          addToast(`No editor available for ${fileName}`, "error");
         }
       }
     },
-    [],
+    [addToast],
   );
 
   const handleOpenFileForNode = useCallback(

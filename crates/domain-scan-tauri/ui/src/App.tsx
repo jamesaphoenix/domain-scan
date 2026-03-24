@@ -9,11 +9,13 @@ import { DetailsPanel } from "./components/DetailsPanel";
 import { FilterBar } from "./components/FilterBar";
 import { TabBar, type Tab } from "./components/TabBar";
 import { TubeMapView } from "./components/TubeMapView";
+import { useToast } from "./hooks/useToast";
 import type { Entity, Language, FilterParams } from "./types";
 
 function App() {
   const scan = useScan();
   const tree = useTreeState();
+  const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState<Tab>("entities");
   const [selectedDetail, setSelectedDetail] = useState<Entity | null>(null);
@@ -110,9 +112,14 @@ function App() {
   const handleOpenDirectory = useCallback(async () => {
     const selected = await open({ directory: true, multiple: false });
     if (selected) {
-      await scan.scanDirectory(selected as string);
+      try {
+        await scan.scanDirectory(selected as string);
+        addToast("Scan complete", "success");
+      } catch {
+        addToast("Scan failed", "error");
+      }
     }
-  }, [scan]);
+  }, [scan, addToast]);
 
   // Prompt generation
   const handleGeneratePrompt = useCallback(
@@ -143,18 +150,20 @@ function App() {
   // Open in editor
   const handleOpenInEditor = useCallback(
     async (file: string, line: number) => {
+      const fileName = file.split("/").pop() ?? file;
       try {
-        // Try cursor first, then code, then zed
         await scan.openInEditor("cursor", file, line);
+        addToast(`Opened ${fileName} in Cursor`, "success");
       } catch {
         try {
           await scan.openInEditor("code", file, line);
+          addToast(`Opened ${fileName} in VS Code`, "success");
         } catch {
-          // Silently fail if no editor available
+          addToast(`No editor available for ${fileName}`, "error");
         }
       }
     },
-    [scan],
+    [scan, addToast],
   );
 
   // Keyboard navigation (only fires on entities tab)

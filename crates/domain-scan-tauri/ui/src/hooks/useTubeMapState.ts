@@ -6,6 +6,7 @@ import type {
   SubsystemDetail,
   EntitySummary,
 } from "../types";
+import { useToast } from "./useToast";
 
 export type DependencyDirection = "upstream" | "downstream" | "both";
 
@@ -45,6 +46,7 @@ export function useTubeMapState(): UseTubeMapStateReturn {
   const [dependencyDirection, setDependencyDirection] =
     useState<DependencyDirection>("both");
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+  const { addToast } = useToast();
 
   const loadManifest = useCallback(async () => {
     const selected = await open({
@@ -71,12 +73,19 @@ export function useTubeMapState(): UseTubeMapStateReturn {
       const data = await invoke<TubeMapData>("get_tube_map_data");
       setTubeMapData(data);
       setBreadcrumbs([{ id: "root", name: data.meta.name }]);
+
+      const fileName = path.split("/").pop() ?? path;
+      addToast(
+        `Manifest loaded: ${fileName} (${data.subsystems.length} subsystems)`,
+        "success",
+      );
     } catch (e) {
       setError(String(e));
+      addToast(`Failed to load manifest: ${String(e)}`, "error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [addToast]);
 
   const matchManifest = useCallback(async () => {
     if (!manifestPath) return;
@@ -86,12 +95,17 @@ export function useTubeMapState(): UseTubeMapStateReturn {
       await invoke("match_manifest");
       const data = await invoke<TubeMapData>("get_tube_map_data");
       setTubeMapData(data);
+      addToast(
+        `Matching complete: ${data.coverage_percent.toFixed(0)}% coverage`,
+        "success",
+      );
     } catch (e) {
       setError(String(e));
+      addToast(`Matching failed: ${String(e)}`, "error");
     } finally {
       setLoading(false);
     }
-  }, [manifestPath]);
+  }, [manifestPath, addToast]);
 
   const drillIn = useCallback(
     (subsystemId: string, name: string) => {
