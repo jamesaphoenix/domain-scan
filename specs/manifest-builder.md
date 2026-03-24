@@ -811,8 +811,10 @@ This is what makes the vibe-coding loop work — the user says "split auth" in C
 - [ ] `domain-scan init --bootstrap` — generates a starter system.json from heuristic defaults (directory grouping + import clustering) that the agent then refines
 - [ ] Embed skill files in the CLI binary via `include_str!`
 - [ ] Add `domain-scan skills list|show|dump|install` subcommand
-- [ ] `--claude-code` flag installs skills to `~/.claude/skills/`
-- [ ] `--codex` flag installs skills to `~/.codex/skills/` (or equivalent)
+- [ ] `--claude-code` flag installs skills to `.claude/skills/` in project root
+- [ ] `--codex` flag installs skills to `.codex/skills/` in project root
+- [ ] `--dir <PATH>` flag for custom install directory
+- [ ] Auto-add skills directory to `.gitignore` if not already present
 - [ ] Add "AGENT SKILLS" section to `--help` output pointing to `domain-scan skills`
 - [ ] Test: Claude Code session using skill files can create a manifest from scratch
 - [ ] Test: Claude Code session can refine an existing manifest with natural language edits to system.json
@@ -845,11 +847,14 @@ domain-scan skills show domain-scan-init
 # Print all skills concatenated (for injecting into agent context)
 domain-scan skills dump
 
-# Install skills to Claude Code config
+# Install skills into this project's .claude/ directory
 domain-scan skills install --claude-code
 
-# Install skills to Codex config
+# Install skills into this project's .codex/ directory
 domain-scan skills install --codex
+
+# Install into a custom directory
+domain-scan skills install --dir .cursor/skills/
 ```
 
 Under the hood, skills are embedded in the binary at compile time via `include_str!("../../skills/*.md")`. No external file dependencies.
@@ -868,7 +873,30 @@ This teaches any agent (Claude Code, Codex, Gemini CLI) how to bootstrap itself 
 
 ### 11.3 Skill Installation
 
-`domain-scan skills install --claude-code` writes the skill files to `~/.claude/skills/` (or whatever the configured skills directory is). This makes them available in every Claude Code session without manual setup.
+Skills are installed **into the project directory**, not the user's global config. This respects per-repo boundaries — each project owns its agent configuration.
+
+```bash
+# From the project root:
+domain-scan skills install --claude-code
+# Writes to:
+#   .claude/skills/domain-scan-init.md
+#   .claude/skills/domain-scan-tube-map.md
+#   .claude/skills/domain-scan-scan.md
+
+domain-scan skills install --codex
+# Writes to:
+#   .codex/skills/domain-scan-init.md
+#   .codex/skills/domain-scan-tube-map.md
+#   .codex/skills/domain-scan-scan.md
+```
+
+The install path is relative to `--root` (defaults to `.`). The command creates the directory if it doesn't exist and adds the skills directory to `.gitignore` if not already present.
+
+**Why project-local, not global:**
+- Different projects may use different versions of domain-scan with different skills
+- Skills reference project-specific paths and conventions
+- Teams can commit `.claude/skills/` to git if they want shared agent behavior
+- No risk of cross-project contamination
 
 ---
 
