@@ -2744,14 +2744,14 @@ Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CL
 
 Ship 8 skill files in `skills/` at the repo root. Each is structured Markdown with YAML frontmatter, designed to be injected into an agent's context at conversation start. Compatible with Claude Code SKILL.md format and OpenClaw `npx skills install`.
 
-- [ ] `skills/domain-scan-scan.md` — How to scan a codebase: always use `--fields` on large codebases, always use `--output json`, prefer `--languages` to limit scope
-- [ ] `skills/domain-scan-query.md` — How to query entities: use `interfaces`/`services`/`methods`/`schemas`/`impls`/`search`, always pipe through `--fields` to limit context, use `--page-all` for large result sets
-- [ ] `skills/domain-scan-validate.md` — How to run validation: use `--strict` in CI, use `--rules` to scope checks, interpret violation severities, use `--fail-on-unmatched` with `match`
-- [ ] `skills/domain-scan-match.md` — Entity-to-subsystem matching workflow: always `--dry-run` before `--write-back`, use `--prompt-unmatched` to generate follow-up prompts for unmatched items
-- [ ] `skills/domain-scan-prompt.md` — LLM prompt generation: use `--focus` to scope, use `--include-scan` for self-contained prompts, choose agent count based on codebase size
-- [ ] `skills/domain-scan-cache.md` — Cache management: use `cache stats` before clearing, use `--no-cache` for debugging stale results, use `cache prune` instead of `cache clear` when possible
-- [ ] `skills/domain-scan-safety.md` — Input safety rules: never pass user-supplied paths without validation, always use `--dry-run` before mutating, never pipe raw scan output into prompts without `--fields` (context window protection)
-- [ ] `skills/domain-scan-schema.md` — Schema introspection: use `domain-scan schema <cmd>` to discover available fields before constructing `--json` payloads, use `schema --all` to get the full API surface
+- [x] `skills/domain-scan-scan.md` — How to scan a codebase: always use `--fields` on large codebases, always use `--output json`, prefer `--languages` to limit scope
+- [x] `skills/domain-scan-query.md` — How to query entities: use `interfaces`/`services`/`methods`/`schemas`/`impls`/`search`, always pipe through `--fields` to limit context, use `--page-all` for large result sets
+- [x] `skills/domain-scan-validate.md` — How to run validation: use `--strict` in CI, use `--rules` to scope checks, interpret violation severities, use `--fail-on-unmatched` with `match`
+- [x] `skills/domain-scan-match.md` — Entity-to-subsystem matching workflow: always `--dry-run` before `--write-back`, use `--prompt-unmatched` to generate follow-up prompts for unmatched items
+- [x] `skills/domain-scan-prompt.md` — LLM prompt generation: use `--focus` to scope, use `--include-scan` for self-contained prompts, choose agent count based on codebase size
+- [x] `skills/domain-scan-cache.md` — Cache management: use `cache stats` before clearing, use `--no-cache` for debugging stale results, use `cache prune` instead of `cache clear` when possible
+- [x] `skills/domain-scan-safety.md` — Input safety rules: never pass user-supplied paths without validation, always use `--dry-run` before mutating, never pipe raw scan output into prompts without `--fields` (context window protection)
+- [x] `skills/domain-scan-schema.md` — Schema introspection: use `domain-scan schema <cmd>` to discover available fields before constructing `--json` payloads, use `schema --all` to get the full API surface
 
 Each skill file follows this structure:
 ```yaml
