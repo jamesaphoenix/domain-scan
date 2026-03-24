@@ -746,22 +746,7 @@ model = "claude-opus-4-6"                # use a stronger model for refinement
 max_iterations = 2                        # max refinement loops
 ```
 
-### 9.7 VCR Caching (Ported from flowdiff)
-
-Record/replay LLM responses for deterministic, cost-free CI testing:
-
-```rust
-pub enum VcrMode {
-    Record,   // Call real LLM, save response
-    Replay,   // Use cached response, fail if not found
-    Auto,     // Use cache if available, else call real LLM
-}
-
-// Cache key: SHA-256(provider + model + serialized_request + prompt_template)
-// Cache stored as JSON files in .domain-scan/llm-cache/
-```
-
-### 9.8 Security
+### 9.7 Security
 
 - `key_cmd` validated against shell metacharacters (`` ` `` `$` `|` `;` `&` `<` `>`)
 - API keys redacted from error messages (`sk-ant-...` → `[REDACTED_ANTHROPIC_KEY]`)
@@ -836,6 +821,36 @@ domain-scan init --refine --manifest system.json \
   --instruction "rename the 'services' domain to 'external-integrations'"
 ```
 
+## What makes a good manifest patch
+
+When proposing or refining subsystems, follow these principles:
+
+### Naming conventions
+- Domain IDs: kebab-case, 1-3 words (`platform-core`, `media-storage`)
+- Subsystem IDs: kebab-case, prefixed by parent if nested (`auth-jwt`, `auth-sessions`)
+- Subsystem names: human-readable, title case (`JWT Provider`, `Session Manager`)
+- Connection labels: start with a verb, describe WHY not WHAT (`Validates payment tokens`, not `calls auth`)
+
+### Grouping principles
+- A subsystem should be **independently deployable** — if you can't ship it alone, it's too small
+- A subsystem should have **one clear responsibility** — if the description needs "and", consider splitting
+- 3-8 subsystems per domain is the sweet spot. 1 = too broad, 15+ = too granular
+- Interfaces and operations that share the same file path prefix almost always belong together
+- Schemas (Drizzle tables, Pydantic models) anchor subsystems — the table owner IS the subsystem
+
+### Connection semantics
+- `depends_on`: subsystem B MUST exist and be correct for A to work (hard dependency)
+- `uses`: A calls B but could degrade gracefully without it (soft dependency)
+- `triggers`: A fires events that B consumes (event-driven, one-way, async)
+- When in doubt, use `depends_on` — it's the safest default
+- Connections are between top-level subsystems, NOT between children
+
+### What to avoid
+- Don't create subsystems for utility/helper modules — they belong inside the subsystem that uses them
+- Don't create a "shared" or "common" domain — force entities into specific subsystems
+- Don't duplicate entities across subsystems — each entity belongs to exactly one
+- Don't add connections for test-only dependencies
+
 ## Rules
 - Always `--dry-run` before applying refinements
 - Always show the user what will change before writing
@@ -847,6 +862,8 @@ domain-scan init --refine --manifest system.json \
 - Running `init` without scanning first → scan must exist for entity mapping
 - Applying refinements to wrong manifest file → always confirm path
 - Forgetting to re-match after refinement → coverage % may change
+- Creating too many small subsystems → merge aggressively, split only when the user says to
+- Naming subsystems after files instead of capabilities → `auth-jwt` not `jwt-provider-ts`
 ```
 
 ### 10.3 Skill File: `skills/domain-scan-tube-map.md`
@@ -941,16 +958,13 @@ This is what makes the vibe-coding loop work — the user says "split auth" in C
 - [ ] Create `crates/domain-scan-core/src/llm/anthropic.rs` — tool-use structured output
 - [ ] Create `crates/domain-scan-core/src/llm/openai.rs` — strict mode JSON schema, reasoning model handling
 - [ ] Create `crates/domain-scan-core/src/llm/gemini.rs` — response_schema structured output
-- [ ] Create `crates/domain-scan-core/src/llm/vcr.rs` — VCR record/replay caching
 - [ ] Add `reqwest` and `tokio` dependencies to `domain-scan-core` Cargo.toml
 - [ ] Add `[llm]` section parsing to `config.rs`
 - [ ] Key resolution: `key_cmd` → `key` → `DOMAIN_SCAN_API_KEY` → provider-specific env var
 - [ ] Key command injection prevention (reject shell metacharacters)
 - [ ] API key redaction in error messages
 - [ ] Schema flattening for OpenAI/Gemini (inline `$ref`, `additionalProperties: false`)
-- [ ] Context window management (token estimation, truncation with notice)
 - [ ] Unit tests for each provider with mock HTTP (wiremock)
-- [ ] Integration tests with VCR replay fixtures
 - [ ] Live provider tests (gated behind `DOMAIN_SCAN_RUN_LIVE_LLM_TESTS=1`)
 
 ### Phase G.7: Refinement Loop
@@ -977,9 +991,9 @@ This is what makes the vibe-coding loop work — the user says "split auth" in C
 - `domain-scan init --refine --instruction "split auth" --dry-run` shows proposed changes without writing
 - `domain-scan init --refine --instruction "merge media subsystems" --manifest system.json` produces valid manifest
 - Structured outputs work with all 3 providers (Anthropic tool-use, OpenAI strict mode, Gemini response_schema)
-- VCR replay produces identical results to live calls
 - A Claude Code user can say "build me a tube map for this repo" and the skill file guides the full workflow
 - A Claude Code user can say "the auth subsystem is too big, split it" and the manifest updates in one command
+- The skill file teaches the LLM what a good manifest patch looks like (naming conventions, grouping principles, connection semantics)
 
 ---
 
