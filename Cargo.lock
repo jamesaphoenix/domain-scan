@@ -373,6 +373,7 @@ dependencies = [
  "comfy-table",
  "domain-scan-core",
  "env_logger",
+ "insta",
  "log",
  "serde",
  "serde_json",

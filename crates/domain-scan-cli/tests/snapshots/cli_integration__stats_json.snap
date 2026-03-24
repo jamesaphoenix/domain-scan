@@ -1,0 +1,21 @@
+---
+source: crates/domain-scan-cli/tests/cli_integration.rs
+expression: stable_json
+---
+{
+  "cache_hits": 0,
+  "cache_misses": 3,
+  "files_by_language": {
+    "TypeScript": 3
+  },
+  "parse_duration_ms": 0,
+  "total_classes": 3,
+  "total_files": 3,
+  "total_functions": 0,
+  "total_implementations": 0,
+  "total_interfaces": 4,
+  "total_methods": 8,
+  "total_schemas": 0,
+  "total_services": 0,
+  "total_type_aliases": 0
+}

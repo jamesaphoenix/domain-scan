@@ -1,0 +1,24 @@
+---
+source: crates/domain-scan-cli/tests/cli_integration.rs
+expression: "serde_json::json!(arr)"
+---
+[
+  {
+    "build_status": "built",
+    "confidence": "high",
+    "file": "repo.ts",
+    "kind": "class",
+    "language": "TypeScript",
+    "line": 4,
+    "name": "UserRepo"
+  },
+  {
+    "build_status": "built",
+    "confidence": "high",
+    "file": "types.ts",
+    "kind": "interface",
+    "language": "TypeScript",
+    "line": 8,
+    "name": "Repository"
+  }
+]

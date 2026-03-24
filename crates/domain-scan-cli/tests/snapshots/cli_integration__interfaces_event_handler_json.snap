@@ -1,0 +1,95 @@
+---
+source: crates/domain-scan-cli/tests/cli_integration.rs
+expression: "serde_json::json!(arr)"
+---
+[
+  {
+    "decorators": [],
+    "extends": [],
+    "file": "types.ts",
+    "generics": [],
+    "language_kind": "interface",
+    "methods": [
+      {
+        "has_default": false,
+        "is_async": false,
+        "name": "handle",
+        "parameters": [
+          {
+            "has_default": false,
+            "is_optional": false,
+            "is_rest": false,
+            "name": "event",
+            "type_annotation": "Event"
+          }
+        ],
+        "return_type": "void",
+        "span": {
+          "byte_range": [
+            104,
+            130
+          ],
+          "end_col": 28,
+          "end_line": 3,
+          "start_col": 2,
+          "start_line": 3
+        }
+      },
+      {
+        "has_default": false,
+        "is_async": false,
+        "name": "onError",
+        "parameters": [
+          {
+            "has_default": false,
+            "is_optional": false,
+            "is_rest": false,
+            "name": "error",
+            "type_annotation": "Error"
+          }
+        ],
+        "return_type": "void",
+        "span": {
+          "byte_range": [
+            134,
+            161
+          ],
+          "end_col": 29,
+          "end_line": 4,
+          "start_col": 2,
+          "start_line": 4
+        }
+      },
+      {
+        "has_default": false,
+        "is_async": false,
+        "name": "cleanup",
+        "parameters": [],
+        "return_type": "void",
+        "span": {
+          "byte_range": [
+            165,
+            180
+          ],
+          "end_col": 17,
+          "end_line": 5,
+          "start_col": 2,
+          "start_line": 5
+        }
+      }
+    ],
+    "name": "EventHandler",
+    "properties": [],
+    "span": {
+      "byte_range": [
+        77,
+        183
+      ],
+      "end_col": 1,
+      "end_line": 6,
+      "start_col": 7,
+      "start_line": 2
+    },
+    "visibility": "public"
+  }
+]

@@ -2643,8 +2643,8 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - [x] `cache` subcommand (stats, clear, prune)
 - [x] `prompt` subcommand (`--agents`, `--focus`, `--include-scan`)
 - [x] Table, JSON, compact output formatters
-- [ ] Golden-file snapshot tests (insta) for all output formats
-- [ ] CLI integration tests with assert_cmd
+- [x] Golden-file snapshot tests (insta) for all output formats
+- [x] CLI integration tests with assert_cmd
 
 **Acceptance criteria:**
 - All subcommands work with `--output json`, `--output table`, `--output compact`
