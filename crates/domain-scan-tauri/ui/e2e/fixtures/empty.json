@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "name": "Empty App",
+    "version": "1.0",
+    "description": "Valid manifest with zero subsystems"
+  },
+  "domains": {},
+  "subsystems": [],
+  "connections": []
+}

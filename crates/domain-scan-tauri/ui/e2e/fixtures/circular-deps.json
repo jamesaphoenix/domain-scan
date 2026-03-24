@@ -1,0 +1,147 @@
+{
+  "meta": {
+    "name": "Circular Dependencies",
+    "version": "1.0",
+    "description": "Subsystems with mutual circular dependencies"
+  },
+  "domains": {
+    "backend": {
+      "label": "Backend",
+      "color": "#3b82f6"
+    },
+    "frontend": {
+      "label": "Frontend",
+      "color": "#22c55e"
+    }
+  },
+  "subsystems": [
+    {
+      "id": "service-a",
+      "name": "Service A",
+      "domain": "backend",
+      "status": "built",
+      "description": "Service A depends on B",
+      "filePath": "src/service-a/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": ["service-b"]
+    },
+    {
+      "id": "service-b",
+      "name": "Service B",
+      "domain": "backend",
+      "status": "built",
+      "description": "Service B depends on A (circular)",
+      "filePath": "src/service-b/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": ["service-a"]
+    },
+    {
+      "id": "service-c",
+      "name": "Service C",
+      "domain": "backend",
+      "status": "rebuild",
+      "description": "Service C depends on D which depends on E which depends on C (3-way cycle)",
+      "filePath": "src/service-c/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": ["service-d"]
+    },
+    {
+      "id": "service-d",
+      "name": "Service D",
+      "domain": "backend",
+      "status": "built",
+      "description": "Part of 3-way cycle",
+      "filePath": "src/service-d/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": ["service-e"]
+    },
+    {
+      "id": "service-e",
+      "name": "Service E",
+      "domain": "backend",
+      "status": "new",
+      "description": "Completes the 3-way cycle back to C",
+      "filePath": "src/service-e/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": ["service-c"]
+    },
+    {
+      "id": "ui-app",
+      "name": "UI App",
+      "domain": "frontend",
+      "status": "built",
+      "description": "Frontend depends on backend services",
+      "filePath": "src/ui/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": ["service-a", "service-c"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "service-a",
+      "to": "service-b",
+      "label": "calls service B",
+      "type": "depends_on"
+    },
+    {
+      "from": "service-b",
+      "to": "service-a",
+      "label": "calls service A back (circular)",
+      "type": "depends_on"
+    },
+    {
+      "from": "service-c",
+      "to": "service-d",
+      "label": "calls D",
+      "type": "depends_on"
+    },
+    {
+      "from": "service-d",
+      "to": "service-e",
+      "label": "calls E",
+      "type": "depends_on"
+    },
+    {
+      "from": "service-e",
+      "to": "service-c",
+      "label": "calls C (completes cycle)",
+      "type": "depends_on"
+    },
+    {
+      "from": "ui-app",
+      "to": "service-a",
+      "label": "fetches from A",
+      "type": "uses"
+    },
+    {
+      "from": "ui-app",
+      "to": "service-c",
+      "label": "fetches from C",
+      "type": "uses"
+    }
+  ]
+}

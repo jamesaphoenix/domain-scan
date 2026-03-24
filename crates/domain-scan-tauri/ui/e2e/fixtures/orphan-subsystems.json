@@ -1,0 +1,85 @@
+{
+  "meta": {
+    "name": "Orphan Subsystems App",
+    "version": "1.0",
+    "description": "Subsystems whose domain doesn't exist in the domains map"
+  },
+  "domains": {
+    "core": {
+      "label": "Core",
+      "color": "#3b82f6"
+    }
+  },
+  "subsystems": [
+    {
+      "id": "auth",
+      "name": "Authentication",
+      "domain": "core",
+      "status": "built",
+      "description": "Belongs to a valid domain",
+      "filePath": "src/auth/",
+      "interfaces": ["AuthProvider"],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": []
+    },
+    {
+      "id": "payments",
+      "name": "Payments",
+      "domain": "billing-domain",
+      "status": "built",
+      "description": "References a domain that doesn't exist in domains map",
+      "filePath": "src/payments/",
+      "interfaces": ["PaymentProcessor"],
+      "operations": ["charge()"],
+      "tables": ["transactions"],
+      "events": [],
+      "children": [],
+      "dependencies": ["auth"]
+    },
+    {
+      "id": "analytics",
+      "name": "Analytics",
+      "domain": "data-science",
+      "status": "new",
+      "description": "Another orphan domain reference",
+      "filePath": "src/analytics/",
+      "interfaces": ["AnalyticsTracker"],
+      "operations": ["track()"],
+      "tables": ["events"],
+      "events": [],
+      "children": [],
+      "dependencies": []
+    },
+    {
+      "id": "mailer",
+      "name": "Email Service",
+      "domain": "",
+      "status": "rebuild",
+      "description": "Empty domain string — should go to unassigned",
+      "filePath": "src/mailer/",
+      "interfaces": [],
+      "operations": ["sendEmail()"],
+      "tables": [],
+      "events": ["email.sent"],
+      "children": [],
+      "dependencies": ["auth"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "payments",
+      "to": "auth",
+      "label": "validates identity",
+      "type": "depends_on"
+    },
+    {
+      "from": "mailer",
+      "to": "auth",
+      "label": "resolves recipient",
+      "type": "depends_on"
+    }
+  ]
+}

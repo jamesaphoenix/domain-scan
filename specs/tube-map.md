@@ -507,9 +507,9 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.1 E2E Test Infrastructure
 
-- [ ] Add `@playwright/test` and `@tauri-apps/driver` to `ui/` dev dependencies
-- [ ] Create `e2e/` directory in `crates/domain-scan-tauri/ui/`
-- [ ] Create `e2e/fixtures/` with test manifests:
+- [x] Add `@playwright/test` and `@tauri-apps/driver` to `ui/` dev dependencies
+- [x] Create `e2e/` directory in `crates/domain-scan-tauri/ui/`
+- [x] Create `e2e/fixtures/` with test manifests:
   - `octospark-system.json` — copy of real octospark manifest (7 domains, 18 subsystems, 50 connections)
   - `minimal.json` — 1 domain, 2 subsystems, 1 connection (smoke test)
   - `large.json` — 20 domains, 200 subsystems, 500 connections (stress test)
@@ -518,8 +518,8 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
   - `circular-deps.json` — subsystems with mutual circular dependencies
   - `no-domains.json` — manifest with subsystems but no `domains` field
   - `orphan-subsystems.json` — subsystems whose `domain` doesn't exist in `domains` map
-- [ ] Create `e2e/helpers.ts` with utilities: `launchApp()`, `openDirectory(path)`, `loadManifest(path)`, `switchTab(name)`, `waitForScan()`, `waitForTubeMap()`
-- [ ] Configure Playwright to launch the Tauri app via `cargo tauri dev` with `TAURI_TEST=1` env var
+- [x] Create `e2e/helpers.ts` with utilities: `launchApp()`, `openDirectory(path)`, `loadManifest(path)`, `switchTab(name)`, `waitForScan()`, `waitForTubeMap()`
+- [x] Configure Playwright to launch the Tauri app via `cargo tauri dev` with `TAURI_TEST=1` env var
 
 #### F.2 E2E: Open Directory & Scan Flow
 

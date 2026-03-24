@@ -1,0 +1,51 @@
+{
+  "meta": {
+    "name": "Minimal Test App",
+    "version": "1.0",
+    "description": "Minimal manifest for smoke testing"
+  },
+  "domains": {
+    "core": {
+      "label": "Core",
+      "color": "#3b82f6"
+    }
+  },
+  "subsystems": [
+    {
+      "id": "auth",
+      "name": "Authentication",
+      "domain": "core",
+      "status": "built",
+      "description": "User authentication",
+      "filePath": "src/auth/",
+      "interfaces": ["AuthProvider"],
+      "operations": ["login()"],
+      "tables": ["users"],
+      "events": [],
+      "children": [],
+      "dependencies": []
+    },
+    {
+      "id": "api",
+      "name": "API Gateway",
+      "domain": "core",
+      "status": "built",
+      "description": "REST API gateway",
+      "filePath": "src/api/",
+      "interfaces": ["ApiRouter"],
+      "operations": ["handleRequest()"],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": ["auth"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "api",
+      "to": "auth",
+      "label": "validates identity",
+      "type": "depends_on"
+    }
+  ]
+}

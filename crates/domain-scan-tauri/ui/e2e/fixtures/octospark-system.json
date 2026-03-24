@@ -1,0 +1,2005 @@
+{
+  "meta": {
+    "name": "Octospark",
+    "version": "1.0",
+    "description": "Autonomous social growth platform \u2014 organic social as measurable as paid advertising"
+  },
+  "domains": {
+    "platform-core": {
+      "label": "Platform Core",
+      "color": "#3b82f6"
+    },
+    "media-storage": {
+      "label": "Media & Storage",
+      "color": "#22c55e"
+    },
+    "services": {
+      "label": "Services",
+      "color": "#f97316"
+    },
+    "experimentation": {
+      "label": "Experimentation",
+      "color": "#a855f7"
+    },
+    "workflows": {
+      "label": "Workflows",
+      "color": "#ef4444"
+    },
+    "frontends": {
+      "label": "Frontends",
+      "color": "#6b7280"
+    },
+    "post-launch": {
+      "label": "Post-Launch",
+      "color": "#9ca3af"
+    }
+  },
+  "subsystems": [
+    {
+      "id": "auth",
+      "name": "Auth & Identity",
+      "domain": "platform-core",
+      "status": "built",
+      "description": "JWT, refresh tokens, Google OAuth, sessions",
+      "filePath": "src/auth/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "auth-jwt",
+          "name": "JWT Provider",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Issue and verify JWTs via Supabase Auth",
+          "filePath": "src/auth/auth-jwt/",
+          "interfaces": [
+            "AuthPrincipal",
+            "JWTClaims"
+          ],
+          "operations": [
+            "signToken()",
+            "verifyToken()"
+          ],
+          "tables": [
+            "users"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "auth-google-oauth",
+          "name": "Google OAuth",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Google sign-in flow and account linking",
+          "filePath": "src/auth/auth-google-oauth/",
+          "interfaces": [
+            "GoogleProfile"
+          ],
+          "operations": [
+            "startOAuthFlow()",
+            "handleCallback()",
+            "linkAccount()"
+          ],
+          "tables": [],
+          "events": [
+            "oauth.linked"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "auth-sessions",
+          "name": "Session Manager",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Session lifecycle, refresh token rotation",
+          "filePath": "src/auth/auth-sessions/",
+          "interfaces": [
+            "SessionToken",
+            "RefreshToken"
+          ],
+          "operations": [
+            "createSession()",
+            "refreshSession()",
+            "revokeSession()",
+            "revokeAllSessions()"
+          ],
+          "tables": [
+            "auth_login_sessions",
+            "auth_login_refresh_tokens"
+          ],
+          "events": [
+            "session.created",
+            "session.revoked"
+          ],
+          "children": [],
+          "dependencies": [
+            "auth-jwt"
+          ]
+        }
+      ],
+      "dependencies": []
+    },
+    {
+      "id": "org-team",
+      "name": "Org & Team Management",
+      "domain": "platform-core",
+      "status": "built",
+      "description": "Organizations, workspaces, team roles, invites",
+      "filePath": "src/org-team/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "org-crud",
+          "name": "Org CRUD",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Create, read, update, delete organizations",
+          "filePath": "src/org-team/org-crud/",
+          "interfaces": [
+            "Organization",
+            "Workspace"
+          ],
+          "operations": [
+            "createOrganization()",
+            "updateOrganization()",
+            "deleteOrganization()"
+          ],
+          "tables": [
+            "organizations",
+            "workspaces"
+          ],
+          "events": [
+            "org.created",
+            "org.deleted"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "org-roles",
+          "name": "Role & Permission Engine",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "RBAC for org members \u2014 owner, admin, member",
+          "filePath": "src/org-team/org-roles/",
+          "interfaces": [
+            "TeamMember",
+            "Role"
+          ],
+          "operations": [
+            "createTeam()",
+            "addMember()",
+            "removeMember()",
+            "updateRole()"
+          ],
+          "tables": [
+            "team_members"
+          ],
+          "events": [
+            "member.added",
+            "member.removed"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "org-invites",
+          "name": "Invite System",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Email-based team invites with expiration",
+          "filePath": "src/org-team/org-invites/",
+          "interfaces": [
+            "Invite"
+          ],
+          "operations": [
+            "createInvitation()",
+            "acceptInvitation()",
+            "revokeInvitation()"
+          ],
+          "tables": [
+            "invites"
+          ],
+          "events": [
+            "invitation.sent",
+            "invitation.accepted"
+          ],
+          "children": [],
+          "dependencies": [
+            "org-roles"
+          ]
+        }
+      ],
+      "dependencies": [
+        "auth"
+      ]
+    },
+    {
+      "id": "billing",
+      "name": "Billing & Subscriptions",
+      "domain": "platform-core",
+      "status": "rebuild",
+      "description": "Stripe integration, plans, invoices, usage metering",
+      "filePath": "src/billing/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "billing-stripe",
+          "name": "Stripe Gateway",
+          "domain": "platform-core",
+          "status": "rebuild",
+          "description": "Stripe Checkout, webhooks, customer sync",
+          "filePath": "src/billing/billing-stripe/",
+          "interfaces": [
+            "Subscription",
+            "Invoice",
+            "PaymentMethod",
+            "StripeCustomer",
+            "StripeWebhookEvent"
+          ],
+          "operations": [
+            "createSubscription()",
+            "cancelSubscription()",
+            "processWebhook()"
+          ],
+          "tables": [
+            "subscriptions",
+            "invoices",
+            "payment_methods"
+          ],
+          "events": [
+            "subscription.created",
+            "subscription.cancelled",
+            "payment.succeeded",
+            "payment.failed"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "billing-plans",
+          "name": "Plan Manager",
+          "domain": "platform-core",
+          "status": "rebuild",
+          "description": "Plan tiers, feature gates, usage limits",
+          "filePath": "src/billing/billing-plans/",
+          "interfaces": [
+            "Plan",
+            "FeatureGate"
+          ],
+          "operations": [
+            "getPlanLimits()",
+            "checkFeatureAccess()"
+          ],
+          "tables": [
+            "plans"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "billing-stripe"
+          ]
+        },
+        {
+          "id": "billing-metering",
+          "name": "Usage Metering",
+          "domain": "platform-core",
+          "status": "new",
+          "description": "Track API calls, AI usage, storage for billing",
+          "filePath": "src/billing/billing-metering/",
+          "interfaces": [
+            "UsageRecord"
+          ],
+          "operations": [
+            "trackUsage()",
+            "getUsageSummary()",
+            "checkUsageCap()"
+          ],
+          "tables": [
+            "usage_records"
+          ],
+          "events": [
+            "usage.cap.warning",
+            "usage.cap.exceeded"
+          ],
+          "children": [],
+          "dependencies": [
+            "billing-stripe",
+            "billing-plans"
+          ]
+        }
+      ],
+      "dependencies": [
+        "org-team",
+        "credit-service"
+      ]
+    },
+    {
+      "id": "credit-service",
+      "name": "Credit Service",
+      "domain": "platform-core",
+      "status": "built",
+      "description": "Decimillicent credit ledger for AI operations",
+      "filePath": "src/credit-service/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "credit-ledger",
+          "name": "Credit Ledger",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Double-entry ledger in decimillicents",
+          "filePath": "src/credit-service/credit-ledger/",
+          "interfaces": [
+            "CostResult",
+            "CreditTransaction",
+            "LedgerEntry"
+          ],
+          "operations": [
+            "appendTransaction()",
+            "getBalance()"
+          ],
+          "tables": [
+            "credit_transactions"
+          ],
+          "events": [
+            "credits.depleted",
+            "credits.low"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "credit-allocation",
+          "name": "Credit Allocator",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Pre-allocate credits before AI calls",
+          "filePath": "src/credit-service/credit-allocation/",
+          "interfaces": [
+            "CreditAllocation"
+          ],
+          "operations": [
+            "reserveCredits()",
+            "finalizeCredits()",
+            "releaseCredits()"
+          ],
+          "tables": [
+            "credit_allocations"
+          ],
+          "events": [
+            "credits.reserved",
+            "credits.finalized"
+          ],
+          "children": [],
+          "dependencies": [
+            "credit-ledger"
+          ]
+        },
+        {
+          "id": "credit-balance",
+          "name": "Balance Tracker",
+          "domain": "platform-core",
+          "status": "built",
+          "description": "Real-time balance queries and low-balance alerts",
+          "filePath": "src/credit-service/credit-balance/",
+          "interfaces": [
+            "CreditBalance"
+          ],
+          "operations": [
+            "checkBalance()",
+            "autoRecharge()"
+          ],
+          "tables": [
+            "credit_balances"
+          ],
+          "events": [
+            "auto.recharge.triggered"
+          ],
+          "children": [],
+          "dependencies": [
+            "credit-ledger"
+          ]
+        }
+      ],
+      "dependencies": [
+        "org-team"
+      ]
+    },
+    {
+      "id": "notifications",
+      "name": "Notifications",
+      "domain": "platform-core",
+      "status": "new",
+      "description": "In-app, email, and push notification delivery",
+      "filePath": "src/notifications/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "notif-inapp",
+          "name": "In-App Notifications",
+          "domain": "platform-core",
+          "status": "new",
+          "description": "Real-time in-app notification feed",
+          "filePath": "src/notifications/notif-inapp/",
+          "interfaces": [
+            "Notification",
+            "InAppNotification"
+          ],
+          "operations": [
+            "createNotification()",
+            "markRead()",
+            "getUnreadCount()"
+          ],
+          "tables": [
+            "notifications"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "notif-email",
+          "name": "Email Notifications",
+          "domain": "platform-core",
+          "status": "new",
+          "description": "Transactional email via Resend",
+          "filePath": "src/notifications/notif-email/",
+          "interfaces": [
+            "EmailTemplate"
+          ],
+          "operations": [
+            "sendEmail()",
+            "sendDigest()"
+          ],
+          "tables": [],
+          "events": [
+            "email.sent",
+            "email.failed"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "notif-preferences",
+          "name": "Preference Manager",
+          "domain": "platform-core",
+          "status": "new",
+          "description": "Per-user notification channel preferences",
+          "filePath": "src/notifications/notif-preferences/",
+          "interfaces": [
+            "NotificationChannel",
+            "NotificationPreference"
+          ],
+          "operations": [
+            "getPreferences()",
+            "updatePreferences()"
+          ],
+          "tables": [
+            "notification_preferences",
+            "notification_channels"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        }
+      ],
+      "dependencies": [
+        "auth",
+        "org-team"
+      ]
+    },
+    {
+      "id": "webhooks",
+      "name": "Webhooks",
+      "domain": "platform-core",
+      "status": "new",
+      "description": "Outbound webhook delivery with retry and signing",
+      "filePath": "src/webhooks/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "webhook-registry",
+          "name": "Endpoint Registry",
+          "domain": "platform-core",
+          "status": "new",
+          "description": "Register, verify, and manage webhook URLs",
+          "filePath": "src/webhooks/webhook-registry/",
+          "interfaces": [
+            "WebhookEndpoint"
+          ],
+          "operations": [
+            "registerWebhook()",
+            "deleteWebhook()",
+            "listWebhooks()"
+          ],
+          "tables": [
+            "webhook_endpoints"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "webhook-delivery",
+          "name": "Delivery Engine",
+          "domain": "platform-core",
+          "status": "new",
+          "description": "Reliable delivery with exponential backoff retry",
+          "filePath": "src/webhooks/webhook-delivery/",
+          "interfaces": [
+            "WebhookDelivery",
+            "WebhookEvent"
+          ],
+          "operations": [
+            "deliverWebhook()",
+            "retryDelivery()"
+          ],
+          "tables": [
+            "webhook_deliveries",
+            "webhook_events"
+          ],
+          "events": [
+            "webhook.delivered",
+            "webhook.failed"
+          ],
+          "children": [],
+          "dependencies": [
+            "webhook-registry"
+          ]
+        }
+      ],
+      "dependencies": [
+        "org-team"
+      ]
+    },
+    {
+      "id": "asset-management",
+      "name": "Asset Management",
+      "domain": "media-storage",
+      "status": "built",
+      "description": "Media asset catalog, metadata, variants, R2 storage",
+      "filePath": "src/asset-management/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "asset-catalog",
+          "name": "Asset Catalog",
+          "domain": "media-storage",
+          "status": "built",
+          "description": "CRUD for assets with tagging and search",
+          "filePath": "src/asset-management/asset-catalog/",
+          "interfaces": [
+            "Asset",
+            "AssetMetadata"
+          ],
+          "operations": [
+            "createAsset()",
+            "updateMetadata()",
+            "deleteAsset()",
+            "searchAssets()"
+          ],
+          "tables": [
+            "assets",
+            "asset_metadata"
+          ],
+          "events": [
+            "asset.created",
+            "asset.deleted"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "asset-variants",
+          "name": "Variant Generator",
+          "domain": "media-storage",
+          "status": "built",
+          "description": "Generate thumbnails, previews, platform-specific sizes",
+          "filePath": "src/asset-management/asset-variants/",
+          "interfaces": [
+            "AssetVariant"
+          ],
+          "operations": [
+            "createVariant()",
+            "generateThumbnail()"
+          ],
+          "tables": [
+            "asset_variants"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "asset-catalog"
+          ]
+        },
+        {
+          "id": "asset-r2",
+          "name": "R2 Storage Backend",
+          "domain": "media-storage",
+          "status": "built",
+          "description": "Cloudflare R2 upload, presigned URLs, lifecycle",
+          "filePath": "src/asset-management/asset-r2/",
+          "interfaces": [
+            "R2Object",
+            "PresignedUrl"
+          ],
+          "operations": [
+            "generatePresignedUrl()",
+            "uploadToR2()",
+            "deleteFromR2()"
+          ],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        }
+      ],
+      "dependencies": [
+        "org-team"
+      ]
+    },
+    {
+      "id": "media-uploader",
+      "name": "Media Uploader",
+      "domain": "media-storage",
+      "status": "built",
+      "description": "Chunked upload, progress tracking, format validation",
+      "filePath": "src/media-uploader/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "upload-chunked",
+          "name": "Chunked Upload",
+          "domain": "media-storage",
+          "status": "built",
+          "description": "Resumable multipart upload to R2",
+          "filePath": "src/media-uploader/upload-chunked/",
+          "interfaces": [
+            "UploadSession",
+            "UploadChunk",
+            "UploadProgress"
+          ],
+          "operations": [
+            "initiateUpload()",
+            "uploadChunk()",
+            "completeUpload()"
+          ],
+          "tables": [
+            "upload_sessions"
+          ],
+          "events": [
+            "upload.completed",
+            "upload.failed"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "upload-validation",
+          "name": "Format Validator",
+          "domain": "media-storage",
+          "status": "built",
+          "description": "MIME type, dimensions, duration, file size checks",
+          "filePath": "src/media-uploader/upload-validation/",
+          "interfaces": [
+            "ValidationResult"
+          ],
+          "operations": [
+            "validateFileType()",
+            "validateFileSize()"
+          ],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        }
+      ],
+      "dependencies": [
+        "asset-management"
+      ]
+    },
+    {
+      "id": "media-enrichment",
+      "name": "Media Enrichment",
+      "domain": "media-storage",
+      "status": "new",
+      "description": "AI-powered tagging, alt-text, transcription, OCR",
+      "filePath": "src/media-enrichment/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "enrichment-tagging",
+          "name": "Auto-Tagger",
+          "domain": "media-storage",
+          "status": "new",
+          "description": "AI vision model for automatic asset tagging",
+          "filePath": "src/media-enrichment/enrichment-tagging/",
+          "interfaces": [
+            "EnrichmentResult",
+            "TagSuggestion"
+          ],
+          "operations": [
+            "generateTags()",
+            "generateAltText()"
+          ],
+          "tables": [
+            "enrichment_results"
+          ],
+          "events": [
+            "enrichment.completed"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "enrichment-transcription",
+          "name": "Transcription",
+          "domain": "media-storage",
+          "status": "new",
+          "description": "Audio/video transcription via Whisper",
+          "filePath": "src/media-enrichment/enrichment-transcription/",
+          "interfaces": [
+            "Transcription"
+          ],
+          "operations": [
+            "transcribeAudio()",
+            "transcribeVideo()"
+          ],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "enrichment-alttext",
+          "name": "Alt-Text Generator",
+          "domain": "media-storage",
+          "status": "new",
+          "description": "Accessibility-focused image descriptions",
+          "filePath": "src/media-enrichment/enrichment-alttext/",
+          "interfaces": [
+            "AltTextResult"
+          ],
+          "operations": [
+            "generateAltText()",
+            "generateDescription()"
+          ],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        }
+      ],
+      "dependencies": [
+        "asset-management",
+        "ai-generation",
+        "credit-service"
+      ]
+    },
+    {
+      "id": "retention-cleaner",
+      "name": "Retention Cleaner",
+      "domain": "media-storage",
+      "status": "new",
+      "description": "GDPR purge, retention policies, storage reclamation",
+      "filePath": "src/retention-cleaner/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "retention-policies",
+          "name": "Policy Engine",
+          "domain": "media-storage",
+          "status": "new",
+          "description": "Configurable retention rules per org/plan",
+          "filePath": "src/retention-cleaner/retention-policies/",
+          "interfaces": [
+            "RetentionPolicy"
+          ],
+          "operations": [
+            "getPolicy()",
+            "updatePolicy()",
+            "forecastImpact()"
+          ],
+          "tables": [
+            "retention_policies"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "retention-purge",
+          "name": "Purge Worker",
+          "domain": "media-storage",
+          "status": "new",
+          "description": "Background job to delete expired assets from R2",
+          "filePath": "src/retention-cleaner/retention-purge/",
+          "interfaces": [
+            "PurgeJob",
+            "CleanupReport"
+          ],
+          "operations": [
+            "executePurge()",
+            "scheduleCleanup()"
+          ],
+          "tables": [
+            "purge_jobs"
+          ],
+          "events": [
+            "purge.completed",
+            "assets.deleted"
+          ],
+          "children": [],
+          "dependencies": [
+            "retention-policies"
+          ]
+        }
+      ],
+      "dependencies": [
+        "asset-management",
+        "billing"
+      ]
+    },
+    {
+      "id": "social-oauth",
+      "name": "Social Media OAuth",
+      "domain": "services",
+      "status": "built",
+      "description": "OAuth flows for Instagram, TikTok, YouTube, X, LinkedIn",
+      "filePath": "src/social-oauth/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "social-oauth-instagram",
+          "name": "Instagram OAuth",
+          "domain": "services",
+          "status": "built",
+          "description": "Instagram Graph API OAuth + token refresh",
+          "filePath": "src/social-oauth/social-oauth-instagram/",
+          "interfaces": [
+            "SocialAccount",
+            "OAuthToken",
+            "PlatformConnection",
+            "InstagramProfile"
+          ],
+          "operations": [
+            "startOAuth()",
+            "handleCallback()",
+            "refreshToken()"
+          ],
+          "tables": [
+            "social_accounts",
+            "oauth_tokens",
+            "platform_connections"
+          ],
+          "events": [
+            "token.refreshed",
+            "token.expired"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "social-oauth-tiktok",
+          "name": "TikTok OAuth",
+          "domain": "services",
+          "status": "built",
+          "description": "TikTok Content Posting API OAuth",
+          "filePath": "src/social-oauth/social-oauth-tiktok/",
+          "interfaces": [
+            "TikTokProfile"
+          ],
+          "operations": [
+            "startOAuth()",
+            "handleCallback()",
+            "refreshToken()"
+          ],
+          "tables": [],
+          "events": [
+            "token.refreshed",
+            "token.expired"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "social-oauth-youtube",
+          "name": "YouTube OAuth",
+          "domain": "services",
+          "status": "built",
+          "description": "YouTube Data API v3 OAuth",
+          "filePath": "src/social-oauth/social-oauth-youtube/",
+          "interfaces": [
+            "YouTubeChannel"
+          ],
+          "operations": [
+            "startOAuth()",
+            "handleCallback()",
+            "refreshToken()"
+          ],
+          "tables": [],
+          "events": [
+            "token.refreshed"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "social-oauth-x",
+          "name": "X (Twitter) OAuth",
+          "domain": "services",
+          "status": "built",
+          "description": "X API v2 OAuth 2.0 with PKCE",
+          "filePath": "src/social-oauth/social-oauth-x/",
+          "interfaces": [
+            "XProfile"
+          ],
+          "operations": [
+            "startOAuth()",
+            "handleCallback()",
+            "refreshToken()"
+          ],
+          "tables": [],
+          "events": [
+            "token.refreshed"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "social-oauth-linkedin",
+          "name": "LinkedIn OAuth",
+          "domain": "services",
+          "status": "built",
+          "description": "LinkedIn Marketing API OAuth",
+          "filePath": "src/social-oauth/social-oauth-linkedin/",
+          "interfaces": [
+            "LinkedInProfile"
+          ],
+          "operations": [
+            "startOAuth()",
+            "handleCallback()",
+            "refreshToken()"
+          ],
+          "tables": [],
+          "events": [
+            "token.refreshed"
+          ],
+          "children": [],
+          "dependencies": []
+        }
+      ],
+      "dependencies": [
+        "auth",
+        "org-team"
+      ]
+    },
+    {
+      "id": "publisher",
+      "name": "Social Media Publisher",
+      "domain": "services",
+      "status": "built",
+      "description": "Cross-platform post scheduling, publishing, queue",
+      "filePath": "src/publisher/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "publisher-scheduler",
+          "name": "Scheduler",
+          "domain": "services",
+          "status": "built",
+          "description": "Time-based and optimal-time post scheduling",
+          "filePath": "src/publisher/publisher-scheduler/",
+          "interfaces": [
+            "Post",
+            "Schedule"
+          ],
+          "operations": [
+            "schedulePost()",
+            "cancelPost()",
+            "reschedulePost()"
+          ],
+          "tables": [
+            "posts",
+            "schedules"
+          ],
+          "events": [
+            "post.scheduled",
+            "post.cancelled"
+          ],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "publisher-queue",
+          "name": "Publish Queue",
+          "domain": "services",
+          "status": "built",
+          "description": "Ordered queue with retry and rate limiting",
+          "filePath": "src/publisher/publisher-queue/",
+          "interfaces": [
+            "PublishJob"
+          ],
+          "operations": [
+            "enqueuePost()",
+            "processQueue()",
+            "retryFailed()"
+          ],
+          "tables": [
+            "publish_jobs"
+          ],
+          "events": [
+            "post.publishing",
+            "post.published",
+            "post.failed"
+          ],
+          "children": [],
+          "dependencies": [
+            "publisher-scheduler"
+          ]
+        },
+        {
+          "id": "publisher-adapters",
+          "name": "Platform Adapters",
+          "domain": "services",
+          "status": "built",
+          "description": "Platform-specific post formatting and API calls",
+          "filePath": "src/publisher/publisher-adapters/",
+          "interfaces": [
+            "PublishResult"
+          ],
+          "operations": [
+            "publishToTikTok()",
+            "publishToInstagram()",
+            "publishToLinkedIn()"
+          ],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "publisher-queue"
+          ]
+        }
+      ],
+      "dependencies": [
+        "social-oauth",
+        "asset-management",
+        "notifications",
+        "webhooks"
+      ]
+    },
+    {
+      "id": "analytics-collector",
+      "name": "Analytics Collector",
+      "domain": "services",
+      "status": "rebuild",
+      "description": "Pull engagement metrics from all connected platforms",
+      "filePath": "src/analytics-collector/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "analytics-fetchers",
+          "name": "Platform Fetchers",
+          "domain": "services",
+          "status": "rebuild",
+          "description": "Per-platform API scrapers for metrics",
+          "filePath": "src/analytics-collector/analytics-fetchers/",
+          "interfaces": [
+            "AnalyticsSnapshot"
+          ],
+          "operations": [
+            "fetchTikTokMetrics()",
+            "fetchInstagramMetrics()"
+          ],
+          "tables": [
+            "analytics_snapshots"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "analytics-aggregator",
+          "name": "Metrics Aggregator",
+          "domain": "services",
+          "status": "rebuild",
+          "description": "Cross-platform metric normalization and rollups",
+          "filePath": "src/analytics-collector/analytics-aggregator/",
+          "interfaces": [
+            "EngagementMetrics",
+            "GrowthMetrics"
+          ],
+          "operations": [
+            "aggregateMetrics()",
+            "computePerformanceScore()"
+          ],
+          "tables": [
+            "engagement_metrics"
+          ],
+          "events": [
+            "analytics.collected",
+            "performance.scored"
+          ],
+          "children": [],
+          "dependencies": [
+            "analytics-fetchers"
+          ]
+        }
+      ],
+      "dependencies": [
+        "social-oauth",
+        "publisher"
+      ]
+    },
+    {
+      "id": "ai-generation",
+      "name": "AI Generation",
+      "domain": "services",
+      "status": "built",
+      "description": "LLM-powered content generation with tool calling",
+      "filePath": "src/ai-generation/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "ai-prompt-engine",
+          "name": "Prompt Engine",
+          "domain": "services",
+          "status": "built",
+          "description": "Template system for structured LLM prompts",
+          "filePath": "src/ai-generation/ai-prompt-engine/",
+          "interfaces": [
+            "GenerationRequest",
+            "GenerationResult",
+            "PromptTemplate",
+            "PromptVariables"
+          ],
+          "operations": [
+            "generateText()",
+            "generateStructuredOutput()"
+          ],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "ai-tool-calling",
+          "name": "Tool Calling",
+          "domain": "services",
+          "status": "built",
+          "description": "Function calling to Asset Management, Org/Team",
+          "filePath": "src/ai-generation/ai-tool-calling/",
+          "interfaces": [
+            "ToolDefinition",
+            "ToolResult"
+          ],
+          "operations": [
+            "searchAssets()",
+            "lookupKnowledge()",
+            "getBrandSettings()"
+          ],
+          "tables": [],
+          "events": [
+            "tool.called"
+          ],
+          "children": [],
+          "dependencies": [
+            "ai-prompt-engine"
+          ]
+        },
+        {
+          "id": "ai-cost-tracker",
+          "name": "Cost Tracker",
+          "domain": "services",
+          "status": "built",
+          "description": "Token counting and cost calculation per request",
+          "filePath": "src/ai-generation/ai-cost-tracker/",
+          "interfaces": [
+            "CostResult"
+          ],
+          "operations": [
+            "estimateCost()",
+            "calculateActualCost()"
+          ],
+          "tables": [
+            "generation_history"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        }
+      ],
+      "dependencies": [
+        "credit-service"
+      ]
+    },
+    {
+      "id": "prompt-bandit",
+      "name": "Contextual Prompt Bandit",
+      "domain": "experimentation",
+      "status": "new",
+      "description": "Bayesian bandit for prompt optimization with contextual features",
+      "filePath": "src/prompt-bandit/",
+      "interfaces": [
+        "Variant",
+        "Context",
+        "Decision",
+        "Reward",
+        "Recommendation"
+      ],
+      "operations": [
+        "selectVariant()",
+        "updatePosterior()",
+        "computeReward()",
+        "getRecommendation()"
+      ],
+      "tables": [
+        "variants",
+        "decisions",
+        "rewards",
+        "posterior_states"
+      ],
+      "events": [
+        "variant.selected",
+        "posterior.updated",
+        "reward.computed"
+      ],
+      "children": [
+        {
+          "id": "bandit-variant-registry",
+          "name": "Variant Registry",
+          "domain": "experimentation",
+          "status": "new",
+          "description": "Register and manage prompt variants for experiments",
+          "filePath": "src/prompt-bandit/bandit-variant-registry/",
+          "interfaces": [
+            "Variant"
+          ],
+          "operations": [],
+          "tables": [
+            "variants"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "bandit-context-featurizer",
+          "name": "Context Featurizer",
+          "domain": "experimentation",
+          "status": "new",
+          "description": "Extract contextual features for bandit decisions",
+          "filePath": "src/prompt-bandit/bandit-context-featurizer/",
+          "interfaces": [
+            "Context",
+            "FeatureVector"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "bandit-policy-engine",
+          "name": "Policy Engine",
+          "domain": "experimentation",
+          "status": "new",
+          "description": "Thompson sampling with contextual priors",
+          "filePath": "src/prompt-bandit/bandit-policy-engine/",
+          "interfaces": [
+            "Policy",
+            "Decision"
+          ],
+          "operations": [],
+          "tables": [
+            "decisions"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "bandit-variant-registry",
+            "bandit-context-featurizer"
+          ]
+        },
+        {
+          "id": "bandit-decision-store",
+          "name": "Decision Store",
+          "domain": "experimentation",
+          "status": "new",
+          "description": "Log all decisions for audit and replay",
+          "filePath": "src/prompt-bandit/bandit-decision-store/",
+          "interfaces": [
+            "Decision"
+          ],
+          "operations": [],
+          "tables": [
+            "decisions"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "bandit-reward-attribution",
+          "name": "Reward Attribution",
+          "domain": "experimentation",
+          "status": "new",
+          "description": "Map engagement metrics back to prompt decisions",
+          "filePath": "src/prompt-bandit/bandit-reward-attribution/",
+          "interfaces": [
+            "Reward",
+            "Attribution"
+          ],
+          "operations": [],
+          "tables": [
+            "rewards"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "bandit-decision-store"
+          ]
+        },
+        {
+          "id": "bandit-posterior-store",
+          "name": "Posterior State Store",
+          "domain": "experimentation",
+          "status": "new",
+          "description": "Persist Bayesian posterior distributions",
+          "filePath": "src/prompt-bandit/bandit-posterior-store/",
+          "interfaces": [
+            "PosteriorState"
+          ],
+          "operations": [],
+          "tables": [
+            "posterior_states"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "bandit-policy-engine"
+          ]
+        },
+        {
+          "id": "bandit-recommender-api",
+          "name": "Recommender API",
+          "domain": "experimentation",
+          "status": "new",
+          "description": "REST endpoint for real-time prompt recommendations",
+          "filePath": "src/prompt-bandit/bandit-recommender-api/",
+          "interfaces": [
+            "Recommendation"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "bandit-policy-engine",
+            "bandit-posterior-store"
+          ]
+        }
+      ],
+      "dependencies": [
+        "ai-generation",
+        "analytics-collector"
+      ]
+    },
+    {
+      "id": "workflows",
+      "name": "Workflows",
+      "domain": "workflows",
+      "status": "rebuild",
+      "description": "Temporal-powered campaign, content, and rendering workflows",
+      "filePath": "src/workflows/",
+      "interfaces": [
+        "Workflow",
+        "WorkflowRun",
+        "Activity"
+      ],
+      "operations": [
+        "executeCampaign()",
+        "processContent()",
+        "renderMedia()"
+      ],
+      "tables": [
+        "workflow_definitions",
+        "workflow_runs"
+      ],
+      "events": [
+        "campaign.started",
+        "campaign.completed",
+        "render.completed",
+        "approval.requested"
+      ],
+      "children": [
+        {
+          "id": "workflows-campaigns",
+          "name": "Campaign Workflows",
+          "domain": "workflows",
+          "status": "rebuild",
+          "description": "End-to-end campaign orchestration: ideate, create, schedule, publish",
+          "filePath": "src/workflows/workflows-campaigns/",
+          "interfaces": [
+            "CampaignWorkflow"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "workflows-content",
+          "name": "Content Workflows",
+          "domain": "workflows",
+          "status": "rebuild",
+          "description": "AI content generation pipelines with approval gates",
+          "filePath": "src/workflows/workflows-content/",
+          "interfaces": [
+            "ContentWorkflow"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "workflows-media-rendering",
+          "name": "Media Rendering Workflows",
+          "domain": "workflows",
+          "status": "new",
+          "description": "Video/image rendering pipelines with Remotion",
+          "filePath": "src/workflows/workflows-media-rendering/",
+          "interfaces": [
+            "RenderWorkflow",
+            "RenderJob"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        }
+      ],
+      "dependencies": [
+        "ai-generation",
+        "publisher",
+        "asset-management",
+        "credit-service",
+        "prompt-bandit",
+        "notifications"
+      ]
+    },
+    {
+      "id": "api-cli-sdk",
+      "name": "API / CLI / SDK",
+      "domain": "frontends",
+      "status": "built",
+      "description": "Hono API gateway, CLI tool, TypeScript SDK",
+      "filePath": "src/api-cli-sdk/",
+      "interfaces": [
+        "APIRoute",
+        "CLICommand",
+        "SDKClient"
+      ],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [
+        {
+          "id": "api-gateway",
+          "name": "API Gateway",
+          "domain": "frontends",
+          "status": "built",
+          "description": "Hono-based REST API with OpenAPI spec",
+          "filePath": "src/api-cli-sdk/api-gateway/",
+          "interfaces": [
+            "APIRoute"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "api-cli",
+          "name": "CLI Tool",
+          "domain": "frontends",
+          "status": "new",
+          "description": "Command-line interface for power users",
+          "filePath": "src/api-cli-sdk/api-cli/",
+          "interfaces": [
+            "CLICommand"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "api-gateway"
+          ]
+        },
+        {
+          "id": "api-sdk",
+          "name": "TypeScript SDK",
+          "domain": "frontends",
+          "status": "new",
+          "description": "Typed client SDK auto-generated from OpenAPI",
+          "filePath": "src/api-cli-sdk/api-sdk/",
+          "interfaces": [
+            "SDKClient"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "api-gateway"
+          ]
+        }
+      ],
+      "dependencies": [
+        "auth",
+        "org-team",
+        "billing",
+        "credit-service",
+        "notifications",
+        "webhooks",
+        "asset-management",
+        "media-uploader",
+        "media-enrichment",
+        "retention-cleaner",
+        "social-oauth",
+        "publisher",
+        "analytics-collector",
+        "ai-generation",
+        "prompt-bandit",
+        "workflows"
+      ]
+    },
+    {
+      "id": "agency-onboarding",
+      "name": "Agency Client Onboarding",
+      "domain": "post-launch",
+      "status": "new",
+      "description": "White-label onboarding flow for agency clients",
+      "filePath": "src/agency-onboarding/",
+      "interfaces": [
+        "OnboardingFlow",
+        "ClientProfile",
+        "OnboardingStep"
+      ],
+      "operations": [
+        "createOnboardingLink()",
+        "processOAuthCallback()",
+        "notifyAgency()"
+      ],
+      "tables": [
+        "onboarding_flows",
+        "client_profiles",
+        "onboarding_steps"
+      ],
+      "events": [
+        "onboarding.started",
+        "onboarding.completed",
+        "access.granted"
+      ],
+      "children": [
+        {
+          "id": "onboarding-wizard",
+          "name": "Onboarding Wizard",
+          "domain": "post-launch",
+          "status": "new",
+          "description": "Step-by-step guided setup for new agency clients",
+          "filePath": "src/agency-onboarding/onboarding-wizard/",
+          "interfaces": [
+            "OnboardingFlow",
+            "OnboardingStep"
+          ],
+          "operations": [],
+          "tables": [
+            "onboarding_flows",
+            "onboarding_steps"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": []
+        },
+        {
+          "id": "onboarding-social-connect",
+          "name": "Social Account Connector",
+          "domain": "post-launch",
+          "status": "new",
+          "description": "Bulk social account connection during onboarding",
+          "filePath": "src/agency-onboarding/onboarding-social-connect/",
+          "interfaces": [
+            "ConnectionRequest"
+          ],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "onboarding-wizard"
+          ]
+        },
+        {
+          "id": "onboarding-branding",
+          "name": "Brand Profile Setup",
+          "domain": "post-launch",
+          "status": "new",
+          "description": "Capture brand voice, colors, guidelines",
+          "filePath": "src/agency-onboarding/onboarding-branding/",
+          "interfaces": [
+            "ClientProfile"
+          ],
+          "operations": [],
+          "tables": [
+            "client_profiles"
+          ],
+          "events": [],
+          "children": [],
+          "dependencies": [
+            "onboarding-wizard"
+          ]
+        }
+      ],
+      "dependencies": [
+        "social-oauth",
+        "notifications",
+        "org-team"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "from": "org-team",
+      "to": "auth",
+      "label": "validates identity via JWT and OAuth sessions",
+      "type": "depends_on"
+    },
+    {
+      "from": "billing",
+      "to": "org-team",
+      "label": "ties subscriptions and invoices to organization",
+      "type": "depends_on"
+    },
+    {
+      "from": "billing",
+      "to": "credit-service",
+      "label": "allocates and tops up credit balances on plan change",
+      "type": "uses"
+    },
+    {
+      "from": "credit-service",
+      "to": "org-team",
+      "label": "maintains per-org credit ledger and balances",
+      "type": "depends_on"
+    },
+    {
+      "from": "notifications",
+      "to": "auth",
+      "label": "resolves recipient identity for delivery routing",
+      "type": "depends_on"
+    },
+    {
+      "from": "notifications",
+      "to": "org-team",
+      "label": "scopes notification preferences and channels to org",
+      "type": "depends_on"
+    },
+    {
+      "from": "webhooks",
+      "to": "org-team",
+      "label": "registers and scopes webhook endpoints per org",
+      "type": "depends_on"
+    },
+    {
+      "from": "asset-management",
+      "to": "org-team",
+      "label": "partitions asset catalog and R2 storage by org",
+      "type": "depends_on"
+    },
+    {
+      "from": "media-uploader",
+      "to": "asset-management",
+      "label": "creates asset records and stores files via R2 backend",
+      "type": "depends_on"
+    },
+    {
+      "from": "media-enrichment",
+      "to": "asset-management",
+      "label": "reads assets and writes enrichment tags and alt-text",
+      "type": "uses"
+    },
+    {
+      "from": "media-enrichment",
+      "to": "ai-generation",
+      "label": "calls vision models for auto-tagging and transcription",
+      "type": "uses"
+    },
+    {
+      "from": "media-enrichment",
+      "to": "credit-service",
+      "label": "deducts credits for each AI enrichment operation",
+      "type": "depends_on"
+    },
+    {
+      "from": "retention-cleaner",
+      "to": "asset-management",
+      "label": "deletes expired assets and reclaims R2 storage",
+      "type": "uses"
+    },
+    {
+      "from": "retention-cleaner",
+      "to": "billing",
+      "label": "reads plan tier to enforce retention policy limits",
+      "type": "depends_on"
+    },
+    {
+      "from": "social-oauth",
+      "to": "auth",
+      "label": "links social platform accounts to authenticated user",
+      "type": "depends_on"
+    },
+    {
+      "from": "social-oauth",
+      "to": "org-team",
+      "label": "scopes connected social accounts to org workspace",
+      "type": "depends_on"
+    },
+    {
+      "from": "publisher",
+      "to": "social-oauth",
+      "label": "uses OAuth tokens to publish posts to each platform",
+      "type": "depends_on"
+    },
+    {
+      "from": "publisher",
+      "to": "asset-management",
+      "label": "attaches media assets and variants to scheduled posts",
+      "type": "uses"
+    },
+    {
+      "from": "publisher",
+      "to": "notifications",
+      "label": "triggers success/failure alerts after publish attempts",
+      "type": "triggers"
+    },
+    {
+      "from": "publisher",
+      "to": "webhooks",
+      "label": "fires post.published and post.failed webhook events",
+      "type": "triggers"
+    },
+    {
+      "from": "analytics-collector",
+      "to": "social-oauth",
+      "label": "uses valid OAuth tokens to fetch platform metrics",
+      "type": "depends_on"
+    },
+    {
+      "from": "analytics-collector",
+      "to": "publisher",
+      "label": "correlates engagement metrics with published posts",
+      "type": "uses"
+    },
+    {
+      "from": "ai-generation",
+      "to": "credit-service",
+      "label": "pre-allocates and deducts credits per LLM request",
+      "type": "depends_on"
+    },
+    {
+      "from": "prompt-bandit",
+      "to": "ai-generation",
+      "label": "provides PromptConfig with selected variant to LLM",
+      "type": "uses"
+    },
+    {
+      "from": "prompt-bandit",
+      "to": "analytics-collector",
+      "label": "reads engagement metrics as reward signal for posteriors",
+      "type": "uses"
+    },
+    {
+      "from": "workflows",
+      "to": "ai-generation",
+      "label": "invokes LLM content generation as workflow activity",
+      "type": "uses"
+    },
+    {
+      "from": "workflows",
+      "to": "publisher",
+      "label": "schedules and publishes posts at end of campaign flow",
+      "type": "triggers"
+    },
+    {
+      "from": "workflows",
+      "to": "asset-management",
+      "label": "uploads and attaches media assets during content creation",
+      "type": "uses"
+    },
+    {
+      "from": "workflows",
+      "to": "credit-service",
+      "label": "checks balance before AI calls and deducts on completion",
+      "type": "depends_on"
+    },
+    {
+      "from": "workflows",
+      "to": "prompt-bandit",
+      "label": "requests optimal prompt variant before generation",
+      "type": "uses"
+    },
+    {
+      "from": "workflows",
+      "to": "notifications",
+      "label": "sends workflow completion and failure alerts to users",
+      "type": "triggers"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "auth",
+      "label": "authenticates every request via JWT middleware",
+      "type": "depends_on"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "org-team",
+      "label": "resolves org context and enforces RBAC on all routes",
+      "type": "depends_on"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "billing",
+      "label": "exposes subscription, plan, and invoice management routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "credit-service",
+      "label": "exposes credit balance and transaction history routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "notifications",
+      "label": "exposes notification feed, preferences, and mark-read routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "webhooks",
+      "label": "exposes webhook endpoint registration and delivery log routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "asset-management",
+      "label": "exposes asset CRUD, search, and presigned URL routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "media-uploader",
+      "label": "exposes chunked upload initiation and progress routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "media-enrichment",
+      "label": "exposes enrichment trigger and tag review routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "retention-cleaner",
+      "label": "exposes retention policy config and purge status routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "social-oauth",
+      "label": "exposes OAuth connect, disconnect, and token refresh routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "publisher",
+      "label": "exposes post scheduling, queue management, and publish routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "analytics-collector",
+      "label": "exposes engagement metrics, snapshots, and growth routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "ai-generation",
+      "label": "exposes content generation and cost estimation routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "prompt-bandit",
+      "label": "exposes variant management and recommendation routes",
+      "type": "uses"
+    },
+    {
+      "from": "api-cli-sdk",
+      "to": "workflows",
+      "label": "exposes workflow trigger, status, and run history routes",
+      "type": "uses"
+    },
+    {
+      "from": "agency-onboarding",
+      "to": "social-oauth",
+      "label": "guides bulk social account connection during setup wizard",
+      "type": "uses"
+    },
+    {
+      "from": "agency-onboarding",
+      "to": "notifications",
+      "label": "sends welcome emails and onboarding completion alerts",
+      "type": "triggers"
+    },
+    {
+      "from": "agency-onboarding",
+      "to": "org-team",
+      "label": "creates org, workspace, and initial team member records",
+      "type": "uses"
+    }
+  ]
+}

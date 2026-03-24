@@ -1,0 +1,65 @@
+{
+  "meta": {
+    "name": "No Domains App",
+    "version": "1.0",
+    "description": "Manifest with subsystems but no domains field"
+  },
+  "subsystems": [
+    {
+      "id": "auth",
+      "name": "Authentication",
+      "domain": "unknown-domain",
+      "status": "built",
+      "description": "Auth without a declared domain",
+      "filePath": "src/auth/",
+      "interfaces": ["AuthProvider"],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "children": [],
+      "dependencies": []
+    },
+    {
+      "id": "billing",
+      "name": "Billing",
+      "domain": "also-unknown",
+      "status": "new",
+      "description": "Billing without a declared domain",
+      "filePath": "src/billing/",
+      "interfaces": ["BillingProvider"],
+      "operations": ["charge()"],
+      "tables": ["invoices"],
+      "events": [],
+      "children": [],
+      "dependencies": ["auth"]
+    },
+    {
+      "id": "notifications",
+      "name": "Notifications",
+      "domain": "",
+      "status": "rebuild",
+      "description": "Notifications with empty domain string",
+      "filePath": "src/notifications/",
+      "interfaces": [],
+      "operations": ["send()"],
+      "tables": [],
+      "events": ["notification.sent"],
+      "children": [],
+      "dependencies": ["auth"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "billing",
+      "to": "auth",
+      "label": "validates user",
+      "type": "depends_on"
+    },
+    {
+      "from": "notifications",
+      "to": "auth",
+      "label": "resolves recipient",
+      "type": "depends_on"
+    }
+  ]
+}
