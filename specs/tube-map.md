@@ -491,7 +491,7 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 - [x] Open in editor from station node (uses `open_in_editor` IPC command)
 - [x] "Generate Prompt" button on drill-in view (scoped to subsystem entities)
 - [x] Handle missing-domain case: unassigned entities on gray "unassigned" line
-- [ ] Performance: `onlyRenderVisibleElements={true}` when total nodes > 500
+- [x] Performance: `onlyRenderVisibleElements={true}` when total nodes > 500
 - [ ] Snapshot tests for layout algorithm output
 
 **Acceptance criteria:**

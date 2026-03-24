@@ -270,6 +270,8 @@ function TubeMapInner() {
     0,
   );
 
+  const shouldVirtualize = nodes.length > 500;
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Header: search, filters, trace */}
@@ -357,6 +359,7 @@ function TubeMapInner() {
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
             onViewportChange={onViewportChange}
+            onlyRenderVisibleElements={shouldVirtualize}
           >
             <Background
               variant={BackgroundVariant.Dots}
