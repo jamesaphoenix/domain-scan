@@ -981,5 +981,136 @@ describe("buildDynamicLayout — unassigned domain", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Snapshot tests — layout algorithm output
+// ---------------------------------------------------------------------------
+
+/** Convert a Map<string, {x,y}> to a sorted plain object for stable snapshots. */
+function positionsToSnapshot(
+  positions: Map<string, { x: number; y: number }>,
+): Record<string, { x: number; y: number }> {
+  const result: Record<string, { x: number; y: number }> = {};
+  for (const key of [...positions.keys()].sort()) {
+    result[key] = positions.get(key)!;
+  }
+  return result;
+}
+
+/** Convert ComputedLine[] to a snapshot-friendly format (drop color for stability). */
+function linesToSnapshot(
+  lines: ComputedLine[],
+): Array<{ domain: string; label: string; stationIds: string[]; origin: { x: number; y: number } }> {
+  return lines.map((l) => ({
+    domain: l.domain,
+    label: l.label,
+    stationIds: l.stationIds,
+    origin: l.origin,
+  }));
+}
+
+describe("snapshot: layout algorithm output", () => {
+  it("octospark fixture — full layout positions", () => {
+    const layout = buildDynamicLayout(OCTOSPARK_FIXTURE);
+    expect(positionsToSnapshot(layout.positions)).toMatchSnapshot();
+  });
+
+  it("octospark fixture — computed lines", () => {
+    const layout = buildDynamicLayout(OCTOSPARK_FIXTURE);
+    expect(linesToSnapshot(layout.lines)).toMatchSnapshot();
+  });
+
+  it("octospark fixture — grid layers", () => {
+    const layout = buildDynamicLayout(OCTOSPARK_FIXTURE);
+    expect(layout.layers).toMatchSnapshot();
+  });
+
+  it("20-domain synthetic fixture — full layout positions", () => {
+    const subsystems: TubeMapSubsystem[] = [];
+    const connections: TubeMapConnection[] = [];
+    const domains: Record<string, { label: string; color: string }> = {};
+
+    for (let d = 0; d < 20; d++) {
+      const domainId = `domain-${d}`;
+      domains[domainId] = { label: `Domain ${d}`, color: "" };
+      for (let s = 0; s < 3; s++) {
+        subsystems.push(makeSub(`d${d}-s${s}`, domainId));
+      }
+      if (d > 0) {
+        connections.push(makeConn(`d${d}-s0`, `d${d - 1}-s0`));
+      }
+    }
+
+    const data: TubeMapData = {
+      meta: { name: "Large", version: "0", description: "" },
+      domains,
+      subsystems,
+      connections,
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+
+    const layout = buildDynamicLayout(data);
+    expect(positionsToSnapshot(layout.positions)).toMatchSnapshot();
+  });
+
+  it("20-domain synthetic fixture — computed lines", () => {
+    const subsystems: TubeMapSubsystem[] = [];
+    const connections: TubeMapConnection[] = [];
+    const domains: Record<string, { label: string; color: string }> = {};
+
+    for (let d = 0; d < 20; d++) {
+      const domainId = `domain-${d}`;
+      domains[domainId] = { label: `Domain ${d}`, color: "" };
+      for (let s = 0; s < 3; s++) {
+        subsystems.push(makeSub(`d${d}-s${s}`, domainId));
+      }
+      if (d > 0) {
+        connections.push(makeConn(`d${d}-s0`, `d${d - 1}-s0`));
+      }
+    }
+
+    const data: TubeMapData = {
+      meta: { name: "Large", version: "0", description: "" },
+      domains,
+      subsystems,
+      connections,
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+
+    const layout = buildDynamicLayout(data);
+    expect(linesToSnapshot(layout.lines)).toMatchSnapshot();
+  });
+
+  it("compact layout — filtered octospark (platform-core + services)", () => {
+    const layout = buildDynamicLayout(OCTOSPARK_FIXTURE);
+
+    const visibleIds = new Set(
+      OCTOSPARK_FIXTURE.subsystems
+        .filter(
+          (s) =>
+            s.domain === "platform-core" || s.domain === "services",
+        )
+        .map((s) => s.id),
+    );
+
+    const compactPositions = applyCompactLayout(layout.lines, visibleIds);
+    expect(positionsToSnapshot(compactPositions)).toMatchSnapshot();
+  });
+
+  it("compact layout — single domain filter", () => {
+    const layout = buildDynamicLayout(OCTOSPARK_FIXTURE);
+
+    const visibleIds = new Set(
+      OCTOSPARK_FIXTURE.subsystems
+        .filter((s) => s.domain === "media-storage")
+        .map((s) => s.id),
+    );
+
+    const compactPositions = applyCompactLayout(layout.lines, visibleIds);
+    expect(positionsToSnapshot(compactPositions)).toMatchSnapshot();
+  });
+});
+
 // Suppress lint: all imports are used in tests above
 void NODE_WIDTH;

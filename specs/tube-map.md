@@ -492,7 +492,7 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 - [x] "Generate Prompt" button on drill-in view (scoped to subsystem entities)
 - [x] Handle missing-domain case: unassigned entities on gray "unassigned" line
 - [x] Performance: `onlyRenderVisibleElements={true}` when total nodes > 500
-- [ ] Snapshot tests for layout algorithm output
+- [x] Snapshot tests for layout algorithm output
 
 **Acceptance criteria:**
 - Dense edges are bundled with count badges

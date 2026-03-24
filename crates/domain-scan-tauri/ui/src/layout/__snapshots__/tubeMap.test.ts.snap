@@ -1,0 +1,801 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`snapshot: layout algorithm output > 20-domain synthetic fixture — computed lines 1`] = `
+[
+  {
+    "domain": "domain-0",
+    "label": "Domain 0",
+    "origin": {
+      "x": 0,
+      "y": 0,
+    },
+    "stationIds": [
+      "d0-s1",
+      "d0-s2",
+      "d0-s0",
+    ],
+  },
+  {
+    "domain": "domain-1",
+    "label": "Domain 1",
+    "origin": {
+      "x": 0,
+      "y": 640,
+    },
+    "stationIds": [
+      "d1-s1",
+      "d1-s2",
+      "d1-s0",
+    ],
+  },
+  {
+    "domain": "domain-2",
+    "label": "Domain 2",
+    "origin": {
+      "x": 0,
+      "y": 1280,
+    },
+    "stationIds": [
+      "d2-s1",
+      "d2-s2",
+      "d2-s0",
+    ],
+  },
+  {
+    "domain": "domain-3",
+    "label": "Domain 3",
+    "origin": {
+      "x": 0,
+      "y": 1920,
+    },
+    "stationIds": [
+      "d3-s1",
+      "d3-s2",
+      "d3-s0",
+    ],
+  },
+  {
+    "domain": "domain-4",
+    "label": "Domain 4",
+    "origin": {
+      "x": 0,
+      "y": 2560,
+    },
+    "stationIds": [
+      "d4-s1",
+      "d4-s2",
+      "d4-s0",
+    ],
+  },
+  {
+    "domain": "domain-5",
+    "label": "Domain 5",
+    "origin": {
+      "x": 0,
+      "y": 3200,
+    },
+    "stationIds": [
+      "d5-s1",
+      "d5-s2",
+      "d5-s0",
+    ],
+  },
+  {
+    "domain": "domain-6",
+    "label": "Domain 6",
+    "origin": {
+      "x": 0,
+      "y": 3840,
+    },
+    "stationIds": [
+      "d6-s1",
+      "d6-s2",
+      "d6-s0",
+    ],
+  },
+  {
+    "domain": "domain-7",
+    "label": "Domain 7",
+    "origin": {
+      "x": 0,
+      "y": 4480,
+    },
+    "stationIds": [
+      "d7-s1",
+      "d7-s2",
+      "d7-s0",
+    ],
+  },
+  {
+    "domain": "domain-8",
+    "label": "Domain 8",
+    "origin": {
+      "x": 0,
+      "y": 5120,
+    },
+    "stationIds": [
+      "d8-s1",
+      "d8-s2",
+      "d8-s0",
+    ],
+  },
+  {
+    "domain": "domain-9",
+    "label": "Domain 9",
+    "origin": {
+      "x": 0,
+      "y": 5760,
+    },
+    "stationIds": [
+      "d9-s1",
+      "d9-s2",
+      "d9-s0",
+    ],
+  },
+  {
+    "domain": "domain-10",
+    "label": "Domain 10",
+    "origin": {
+      "x": 0,
+      "y": 6400,
+    },
+    "stationIds": [
+      "d10-s1",
+      "d10-s2",
+      "d10-s0",
+    ],
+  },
+  {
+    "domain": "domain-11",
+    "label": "Domain 11",
+    "origin": {
+      "x": 0,
+      "y": 7040,
+    },
+    "stationIds": [
+      "d11-s1",
+      "d11-s2",
+      "d11-s0",
+    ],
+  },
+  {
+    "domain": "domain-12",
+    "label": "Domain 12",
+    "origin": {
+      "x": 0,
+      "y": 7680,
+    },
+    "stationIds": [
+      "d12-s1",
+      "d12-s2",
+      "d12-s0",
+    ],
+  },
+  {
+    "domain": "domain-13",
+    "label": "Domain 13",
+    "origin": {
+      "x": 0,
+      "y": 8320,
+    },
+    "stationIds": [
+      "d13-s1",
+      "d13-s2",
+      "d13-s0",
+    ],
+  },
+  {
+    "domain": "domain-14",
+    "label": "Domain 14",
+    "origin": {
+      "x": 0,
+      "y": 8960,
+    },
+    "stationIds": [
+      "d14-s1",
+      "d14-s2",
+      "d14-s0",
+    ],
+  },
+  {
+    "domain": "domain-15",
+    "label": "Domain 15",
+    "origin": {
+      "x": 0,
+      "y": 9600,
+    },
+    "stationIds": [
+      "d15-s1",
+      "d15-s2",
+      "d15-s0",
+    ],
+  },
+  {
+    "domain": "domain-16",
+    "label": "Domain 16",
+    "origin": {
+      "x": 0,
+      "y": 10240,
+    },
+    "stationIds": [
+      "d16-s1",
+      "d16-s2",
+      "d16-s0",
+    ],
+  },
+  {
+    "domain": "domain-17",
+    "label": "Domain 17",
+    "origin": {
+      "x": 0,
+      "y": 10880,
+    },
+    "stationIds": [
+      "d17-s1",
+      "d17-s2",
+      "d17-s0",
+    ],
+  },
+  {
+    "domain": "domain-18",
+    "label": "Domain 18",
+    "origin": {
+      "x": 0,
+      "y": 11520,
+    },
+    "stationIds": [
+      "d18-s1",
+      "d18-s2",
+      "d18-s0",
+    ],
+  },
+  {
+    "domain": "domain-19",
+    "label": "Domain 19",
+    "origin": {
+      "x": 0,
+      "y": 12160,
+    },
+    "stationIds": [
+      "d19-s1",
+      "d19-s2",
+      "d19-s0",
+    ],
+  },
+]
+`;
+
+exports[`snapshot: layout algorithm output > 20-domain synthetic fixture — full layout positions 1`] = `
+{
+  "d0-s0": {
+    "x": 840,
+    "y": 0,
+  },
+  "d0-s1": {
+    "x": 0,
+    "y": 0,
+  },
+  "d0-s2": {
+    "x": 420,
+    "y": 0,
+  },
+  "d1-s0": {
+    "x": 840,
+    "y": 640,
+  },
+  "d1-s1": {
+    "x": 0,
+    "y": 640,
+  },
+  "d1-s2": {
+    "x": 420,
+    "y": 640,
+  },
+  "d10-s0": {
+    "x": 840,
+    "y": 6400,
+  },
+  "d10-s1": {
+    "x": 0,
+    "y": 6400,
+  },
+  "d10-s2": {
+    "x": 420,
+    "y": 6400,
+  },
+  "d11-s0": {
+    "x": 840,
+    "y": 7040,
+  },
+  "d11-s1": {
+    "x": 0,
+    "y": 7040,
+  },
+  "d11-s2": {
+    "x": 420,
+    "y": 7040,
+  },
+  "d12-s0": {
+    "x": 840,
+    "y": 7680,
+  },
+  "d12-s1": {
+    "x": 0,
+    "y": 7680,
+  },
+  "d12-s2": {
+    "x": 420,
+    "y": 7680,
+  },
+  "d13-s0": {
+    "x": 840,
+    "y": 8320,
+  },
+  "d13-s1": {
+    "x": 0,
+    "y": 8320,
+  },
+  "d13-s2": {
+    "x": 420,
+    "y": 8320,
+  },
+  "d14-s0": {
+    "x": 840,
+    "y": 8960,
+  },
+  "d14-s1": {
+    "x": 0,
+    "y": 8960,
+  },
+  "d14-s2": {
+    "x": 420,
+    "y": 8960,
+  },
+  "d15-s0": {
+    "x": 840,
+    "y": 9600,
+  },
+  "d15-s1": {
+    "x": 0,
+    "y": 9600,
+  },
+  "d15-s2": {
+    "x": 420,
+    "y": 9600,
+  },
+  "d16-s0": {
+    "x": 840,
+    "y": 10240,
+  },
+  "d16-s1": {
+    "x": 0,
+    "y": 10240,
+  },
+  "d16-s2": {
+    "x": 420,
+    "y": 10240,
+  },
+  "d17-s0": {
+    "x": 840,
+    "y": 10880,
+  },
+  "d17-s1": {
+    "x": 0,
+    "y": 10880,
+  },
+  "d17-s2": {
+    "x": 420,
+    "y": 10880,
+  },
+  "d18-s0": {
+    "x": 840,
+    "y": 11520,
+  },
+  "d18-s1": {
+    "x": 0,
+    "y": 11520,
+  },
+  "d18-s2": {
+    "x": 420,
+    "y": 11520,
+  },
+  "d19-s0": {
+    "x": 840,
+    "y": 12160,
+  },
+  "d19-s1": {
+    "x": 0,
+    "y": 12160,
+  },
+  "d19-s2": {
+    "x": 420,
+    "y": 12160,
+  },
+  "d2-s0": {
+    "x": 840,
+    "y": 1280,
+  },
+  "d2-s1": {
+    "x": 0,
+    "y": 1280,
+  },
+  "d2-s2": {
+    "x": 420,
+    "y": 1280,
+  },
+  "d3-s0": {
+    "x": 840,
+    "y": 1920,
+  },
+  "d3-s1": {
+    "x": 0,
+    "y": 1920,
+  },
+  "d3-s2": {
+    "x": 420,
+    "y": 1920,
+  },
+  "d4-s0": {
+    "x": 840,
+    "y": 2560,
+  },
+  "d4-s1": {
+    "x": 0,
+    "y": 2560,
+  },
+  "d4-s2": {
+    "x": 420,
+    "y": 2560,
+  },
+  "d5-s0": {
+    "x": 840,
+    "y": 3200,
+  },
+  "d5-s1": {
+    "x": 0,
+    "y": 3200,
+  },
+  "d5-s2": {
+    "x": 420,
+    "y": 3200,
+  },
+  "d6-s0": {
+    "x": 840,
+    "y": 3840,
+  },
+  "d6-s1": {
+    "x": 0,
+    "y": 3840,
+  },
+  "d6-s2": {
+    "x": 420,
+    "y": 3840,
+  },
+  "d7-s0": {
+    "x": 840,
+    "y": 4480,
+  },
+  "d7-s1": {
+    "x": 0,
+    "y": 4480,
+  },
+  "d7-s2": {
+    "x": 420,
+    "y": 4480,
+  },
+  "d8-s0": {
+    "x": 840,
+    "y": 5120,
+  },
+  "d8-s1": {
+    "x": 0,
+    "y": 5120,
+  },
+  "d8-s2": {
+    "x": 420,
+    "y": 5120,
+  },
+  "d9-s0": {
+    "x": 840,
+    "y": 5760,
+  },
+  "d9-s1": {
+    "x": 0,
+    "y": 5760,
+  },
+  "d9-s2": {
+    "x": 420,
+    "y": 5760,
+  },
+}
+`;
+
+exports[`snapshot: layout algorithm output > compact layout — filtered octospark (platform-core + services) 1`] = `
+{
+  "ai-generation": {
+    "x": 840,
+    "y": 320,
+  },
+  "analytics-collector": {
+    "x": 1680,
+    "y": 320,
+  },
+  "auth": {
+    "x": 0,
+    "y": 0,
+  },
+  "billing": {
+    "x": 2100,
+    "y": 0,
+  },
+  "credit-service": {
+    "x": 1260,
+    "y": 0,
+  },
+  "notifications": {
+    "x": 1680,
+    "y": 0,
+  },
+  "org-team": {
+    "x": 420,
+    "y": 0,
+  },
+  "publisher": {
+    "x": 1260,
+    "y": 320,
+  },
+  "social-oauth": {
+    "x": 420,
+    "y": 320,
+  },
+  "webhooks": {
+    "x": 840,
+    "y": 0,
+  },
+}
+`;
+
+exports[`snapshot: layout algorithm output > compact layout — single domain filter 1`] = `
+{
+  "asset-management": {
+    "x": 0,
+    "y": 0,
+  },
+  "media-enrichment": {
+    "x": 1260,
+    "y": 0,
+  },
+  "media-uploader": {
+    "x": 420,
+    "y": 0,
+  },
+  "retention-cleaner": {
+    "x": 840,
+    "y": 0,
+  },
+}
+`;
+
+exports[`snapshot: layout algorithm output > octospark fixture — computed lines 1`] = `
+[
+  {
+    "domain": "platform-core",
+    "label": "Platform Core",
+    "origin": {
+      "x": 0,
+      "y": 0,
+    },
+    "stationIds": [
+      "auth",
+      "org-team",
+      "webhooks",
+      "credit-service",
+      "notifications",
+      "billing",
+    ],
+  },
+  {
+    "domain": "frontends",
+    "label": "Frontends",
+    "origin": {
+      "x": 0,
+      "y": 640,
+    },
+    "stationIds": [
+      "api-cli-sdk",
+    ],
+  },
+  {
+    "domain": "services",
+    "label": "Services",
+    "origin": {
+      "x": 0,
+      "y": 1280,
+    },
+    "stationIds": [
+      "social-oauth",
+      "ai-generation",
+      "publisher",
+      "analytics-collector",
+    ],
+  },
+  {
+    "domain": "media-storage",
+    "label": "Media & Storage",
+    "origin": {
+      "x": 0,
+      "y": 1920,
+    },
+    "stationIds": [
+      "asset-management",
+      "media-uploader",
+      "retention-cleaner",
+      "media-enrichment",
+    ],
+  },
+  {
+    "domain": "experimentation",
+    "label": "Experimentation",
+    "origin": {
+      "x": 1980,
+      "y": 1920,
+    },
+    "stationIds": [
+      "prompt-bandit",
+    ],
+  },
+  {
+    "domain": "post-launch",
+    "label": "Post-Launch",
+    "origin": {
+      "x": 3960,
+      "y": 1920,
+    },
+    "stationIds": [
+      "agency-onboarding",
+    ],
+  },
+  {
+    "domain": "workflows",
+    "label": "Workflows",
+    "origin": {
+      "x": 0,
+      "y": 2560,
+    },
+    "stationIds": [
+      "workflows",
+    ],
+  },
+]
+`;
+
+exports[`snapshot: layout algorithm output > octospark fixture — full layout positions 1`] = `
+{
+  "agency-onboarding": {
+    "x": 3960,
+    "y": 1920,
+  },
+  "ai-generation": {
+    "x": 420,
+    "y": 1280,
+  },
+  "analytics-collector": {
+    "x": 1260,
+    "y": 1280,
+  },
+  "api-cli-sdk": {
+    "x": 0,
+    "y": 640,
+  },
+  "asset-management": {
+    "x": 0,
+    "y": 1920,
+  },
+  "auth": {
+    "x": 0,
+    "y": 0,
+  },
+  "billing": {
+    "x": 2100,
+    "y": 0,
+  },
+  "credit-service": {
+    "x": 1260,
+    "y": 0,
+  },
+  "media-enrichment": {
+    "x": 1260,
+    "y": 1920,
+  },
+  "media-uploader": {
+    "x": 420,
+    "y": 1920,
+  },
+  "notifications": {
+    "x": 1680,
+    "y": 0,
+  },
+  "org-team": {
+    "x": 420,
+    "y": 0,
+  },
+  "prompt-bandit": {
+    "x": 1980,
+    "y": 1920,
+  },
+  "publisher": {
+    "x": 840,
+    "y": 1280,
+  },
+  "retention-cleaner": {
+    "x": 840,
+    "y": 1920,
+  },
+  "social-oauth": {
+    "x": 0,
+    "y": 1280,
+  },
+  "webhooks": {
+    "x": 840,
+    "y": 0,
+  },
+  "workflows": {
+    "x": 0,
+    "y": 2560,
+  },
+}
+`;
+
+exports[`snapshot: layout algorithm output > octospark fixture — grid layers 1`] = `
+[
+  {
+    "col": 0,
+    "domain": "platform-core",
+    "row": 0,
+    "stationCount": 6,
+    "topoDepth": 0,
+  },
+  {
+    "col": 0,
+    "domain": "frontends",
+    "row": 1,
+    "stationCount": 1,
+    "topoDepth": 1,
+  },
+  {
+    "col": 0,
+    "domain": "services",
+    "row": 2,
+    "stationCount": 4,
+    "topoDepth": 2,
+  },
+  {
+    "col": 0,
+    "domain": "media-storage",
+    "row": 3,
+    "stationCount": 4,
+    "topoDepth": 3,
+  },
+  {
+    "col": 1,
+    "domain": "experimentation",
+    "row": 3,
+    "stationCount": 1,
+    "topoDepth": 3,
+  },
+  {
+    "col": 2,
+    "domain": "post-launch",
+    "row": 3,
+    "stationCount": 1,
+    "topoDepth": 3,
+  },
+  {
+    "col": 0,
+    "domain": "workflows",
+    "row": 4,
+    "stationCount": 1,
+    "topoDepth": 4,
+  },
+]
+`;
