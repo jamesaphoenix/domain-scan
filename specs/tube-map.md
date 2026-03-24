@@ -828,20 +828,7 @@ The agent then refines the bootstrap output (better names, better groupings, con
 
 ## 13. Manifest Builder Build Phases
 
-### Phase G.1: Core Prompt Generation
-
-- [ ] Create `crates/domain-scan-core/src/manifest_builder.rs` module
-- [ ] Implement `generate_domain_proposal_prompt(index)` — directory census, entity summary, import graph
-- [ ] Implement `parse_domain_proposals(json)` — validate JSON response
-- [ ] Implement `generate_entity_mapping_prompts(index, domains)` — per-domain entity listing
-- [ ] Implement `parse_entity_mappings(json)` — validate subsystem proposals
-- [ ] Implement `generate_connection_prompt(index, subsystems)` — import-graph-based
-- [ ] Implement `parse_connections(json)` — validate connection proposals
-- [ ] Implement `build_manifest(meta, domains, subsystems, connections)` — assemble SystemManifest
-- [ ] Unit tests for each function with fixture data
-- [ ] Integration test: generate prompts → parse mock responses → produce valid system.json
-
-### Phase G.2: Smart Defaults (Heuristic)
+### Phase G.1: Smart Defaults (Heuristic) + `--bootstrap`
 
 - [ ] Implement `infer_domains_from_directories(index)` — directory grouping heuristic
 - [ ] Implement `infer_subsystems_from_imports(index, domain)` — import clustering
@@ -849,7 +836,7 @@ The agent then refines the bootstrap output (better names, better groupings, con
 - [ ] Test: scan domain-scan's own codebase → heuristics produce reasonable domains/subsystems
 - [ ] Test: scan octospark fixtures → heuristics approximate the hand-crafted system.json
 
-### Phase G.3: CLI `domain-scan init`
+### Phase G.2: CLI `domain-scan init`
 
 - [ ] Add `init` subcommand with `--step`, `--apply`, `-o`, `--bootstrap` flags
 - [ ] `--bootstrap` generates starter manifest from heuristic defaults
@@ -858,7 +845,7 @@ The agent then refines the bootstrap output (better names, better groupings, con
 - [ ] `domain-scan schema init` dumps the system.json JSON Schema
 - [ ] CLI integration tests with assert_cmd
 
-### Phase G.4: Tauri Wizard UI
+### Phase G.3: Tauri Wizard UI
 
 - [ ] Create `ManifestWizard.tsx` — step navigation, progress indicator
 - [ ] Create `WizardStepDomains.tsx` — directory census + domain proposal cards
@@ -868,7 +855,7 @@ The agent then refines the bootstrap output (better names, better groupings, con
 - [ ] Wire wizard into tube map tab (replaces "Load Manifest" CTA)
 - [ ] On "Save Manifest" → immediately load into tube map view
 
-### Phase G.5: Agent Skill Files + Bootstrapping
+### Phase G.4: Agent Skill Files + Bootstrapping
 
 - [ ] Create `skills/domain-scan-init.md` with patch guidelines
 - [ ] Create `skills/domain-scan-tube-map.md`
