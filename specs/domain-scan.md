@@ -3444,7 +3444,7 @@ Add to **Phase 10** (Polish + Performance):
 - [x] Adversarial test suite: all 8 test files in `tests/adversarial/`
 - [x] Adversarial repo fixtures: all 10 synthetic repos generated and committed
 - [x] Real codebase tests: `#[ignore]`'d tests for 5 real repos, CI scheduled job
-- [ ] `--dry-run` flag on all mutating commands (`match --apply`, `validate --fix`, `cache clear`)
+- [x] `--dry-run` flag on all mutating commands (`match --write-back`, `cache clear`, `cache prune`)
 
 **Acceptance criteria:**
 - All adversarial tests pass
