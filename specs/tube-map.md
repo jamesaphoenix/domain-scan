@@ -436,16 +436,16 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 
 ### Phase C: React Flow Canvas
 
-- [ ] `npm install @xyflow/react@^12.10.1`
-- [ ] Import `@xyflow/react/dist/style.css` in `main.tsx`
-- [ ] Port `SubsystemNode.tsx` from octospark (adapt types, wire Tauri IPC callbacks)
-- [ ] Port `DependencyEdge.tsx` from octospark (swap type imports)
-- [ ] Port `EdgeTooltip.tsx` from octospark
-- [ ] Create `TubeMapView.tsx` with ReactFlowProvider, canvas, Background, Controls, MiniMap
-- [ ] Create `useTubeMapState.ts` hook (manifest loading, matching, focused subsystem, breadcrumbs)
-- [ ] Create `useTubeLayout.ts` hook (memoized layout computation)
-- [ ] Wire `ManifestLoader.tsx` (file picker + load button)
-- [ ] Render tube map nodes/edges from `useTubeLayout` output
+- [x] `npm install @xyflow/react@^12.10.1`
+- [x] Import `@xyflow/react/dist/style.css` in `main.tsx`
+- [x] Port `SubsystemNode.tsx` from octospark (adapt types, wire Tauri IPC callbacks)
+- [x] Port `DependencyEdge.tsx` from octospark (swap type imports)
+- [x] Port `EdgeTooltip.tsx` from octospark
+- [x] Create `TubeMapView.tsx` with ReactFlowProvider, canvas, Background, Controls, MiniMap
+- [x] Create `useTubeMapState.ts` hook (manifest loading, matching, focused subsystem, breadcrumbs)
+- [x] Create `useTubeLayout.ts` hook (memoized layout computation)
+- [x] Wire `ManifestLoader.tsx` (file picker + load button)
+- [x] Render tube map nodes/edges from `useTubeLayout` output
 
 **Acceptance criteria:**
 - Loading a manifest renders stations on a React Flow canvas
