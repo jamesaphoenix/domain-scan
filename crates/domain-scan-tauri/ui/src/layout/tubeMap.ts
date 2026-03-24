@@ -10,6 +10,11 @@ import type {
   LayoutGrid,
   Segment,
 } from "./types";
+import {
+  UNASSIGNED_DOMAIN_ID,
+  UNASSIGNED_COLOR,
+  UNASSIGNED_LABEL,
+} from "./types";
 import { assignDomainColors } from "./colors";
 
 // ---------------------------------------------------------------------------
@@ -22,6 +27,38 @@ export const NODE_WIDTH = 360;
 export const COL_MARGIN = 300;
 export const LINE_ROW_HEIGHT = 640;
 export const MAX_STATIONS_PER_SEGMENT = 10;
+
+// ---------------------------------------------------------------------------
+// Orphan-domain normalization
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize TubeMapData so that subsystems whose `domain` is not a key in
+ * `data.domains` (or is empty) are remapped to `UNASSIGNED_DOMAIN_ID`.
+ * A synthetic "Unassigned" entry is added to the domains map.
+ *
+ * If no orphans exist, returns `data` unchanged (no copies).
+ */
+export function normalizeOrphanDomains(data: TubeMapData): TubeMapData {
+  const knownDomains = new Set(Object.keys(data.domains));
+  const hasOrphans = data.subsystems.some(
+    (s) => !s.domain || !knownDomains.has(s.domain),
+  );
+  if (!hasOrphans) return data;
+
+  return {
+    ...data,
+    subsystems: data.subsystems.map((s) =>
+      s.domain && knownDomains.has(s.domain)
+        ? s
+        : { ...s, domain: UNASSIGNED_DOMAIN_ID },
+    ),
+    domains: {
+      ...data.domains,
+      [UNASSIGNED_DOMAIN_ID]: { label: UNASSIGNED_LABEL, color: UNASSIGNED_COLOR },
+    },
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Main entry point
@@ -42,20 +79,30 @@ export function buildDynamicLayout(data: TubeMapData): LayoutGrid {
     }
   }
 
-  // Step 1: Topo sort domains
+  // Separate unassigned domain from regular domains
+  const regularDomainIds = domainIds.filter((d) => d !== UNASSIGNED_DOMAIN_ID);
+  const hasUnassigned = domainIds.includes(UNASSIGNED_DOMAIN_ID);
+  const regularSubsystems = data.subsystems.filter(
+    (s) => s.domain !== UNASSIGNED_DOMAIN_ID,
+  );
+
+  // Step 1: Topo sort domains (regular only — unassigned goes at the bottom)
   const { layers: rawLayers, cycleBreaks } = assignDomainLayers(
-    domainIds,
+    regularDomainIds,
     data.connections,
-    data.subsystems,
+    regularSubsystems,
   );
 
   // Step 2: Grid packing
   const gridLayers = assignDomainGrid(rawLayers);
 
-  // Step 3: Assign colors
-  const domainColors = assignDomainColors(data.domains, domainIds);
+  // Step 3: Assign colors (include unassigned if present)
+  const allDomainIdsForColors = hasUnassigned
+    ? [...regularDomainIds, UNASSIGNED_DOMAIN_ID]
+    : regularDomainIds;
+  const domainColors = assignDomainColors(data.domains, allDomainIdsForColors);
 
-  // Step 4: Build computed lines
+  // Step 4: Build computed lines for regular domains
   const origins = computeOrigins(gridLayers);
   const lines: ComputedLine[] = [];
 
@@ -80,6 +127,40 @@ export function buildDynamicLayout(data: TubeMapData): LayoutGrid {
       stationIds,
       origin,
       segments,
+    });
+  }
+
+  // Step 4b: Add unassigned line at the bottom of the grid
+  if (hasUnassigned) {
+    const unassignedSubs = data.subsystems.filter(
+      (s) => s.domain === UNASSIGNED_DOMAIN_ID,
+    );
+    const maxRow =
+      gridLayers.length > 0
+        ? Math.max(...gridLayers.map((l) => l.row)) + 1
+        : 0;
+
+    const unassignedIds = unassignedSubs
+      .map((s) => s.id)
+      .sort((a, b) => a.localeCompare(b));
+    const segments = generateSegments(unassignedIds.length);
+
+    lines.push({
+      domain: UNASSIGNED_DOMAIN_ID,
+      color: domainColors.get(UNASSIGNED_DOMAIN_ID) ?? UNASSIGNED_COLOR,
+      label:
+        data.domains[UNASSIGNED_DOMAIN_ID]?.label ?? UNASSIGNED_LABEL,
+      stationIds: unassignedIds,
+      origin: { x: 0, y: maxRow * LINE_ROW_HEIGHT },
+      segments,
+    });
+
+    gridLayers.push({
+      domain: UNASSIGNED_DOMAIN_ID,
+      topoDepth: maxRow,
+      row: maxRow,
+      col: 0,
+      stationCount: unassignedSubs.length,
     });
   }
 

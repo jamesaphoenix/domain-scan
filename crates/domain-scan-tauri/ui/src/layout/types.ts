@@ -1,3 +1,14 @@
+// ---------------------------------------------------------------------------
+// Unassigned domain constants
+// ---------------------------------------------------------------------------
+
+/** Synthetic domain ID for subsystems whose domain is not in the manifest's domains map */
+export const UNASSIGNED_DOMAIN_ID = "__unassigned__";
+/** Gray color for the unassigned domain line */
+export const UNASSIGNED_COLOR = "#6b7280";
+/** Display label for the unassigned domain */
+export const UNASSIGNED_LABEL = "Unassigned";
+
 /** Direction segment for tube line paths */
 export interface Segment {
   steps: number;

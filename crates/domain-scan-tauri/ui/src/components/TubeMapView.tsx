@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { normalizeOrphanDomains } from "../layout/tubeMap";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -42,6 +43,12 @@ function TubeMapInner() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const reactFlowInstance = useReactFlow();
 
+  // Normalize orphan domains → group under a gray "Unassigned" line
+  const tubeMapData = useMemo(
+    () => (state.tubeMapData ? normalizeOrphanDomains(state.tubeMapData) : null),
+    [state.tubeMapData],
+  );
+
   // Determine if we're in drill-in view (breadcrumbs.length > 1 means drilled in)
   const isDrilledIn = state.breadcrumbs.length > 1;
   const drilledInSubsystemId = isDrilledIn
@@ -50,14 +57,14 @@ function TubeMapInner() {
 
   const handleDrillIn = useCallback(
     (nodeId: string) => {
-      const sub = state.tubeMapData?.subsystems.find(
+      const sub = tubeMapData?.subsystems.find(
         (s) => s.name === nodeId || s.id === nodeId,
       );
       if (sub?.has_children) {
         state.drillIn(sub.id, sub.name);
       }
     },
-    [state],
+    [tubeMapData, state],
   );
 
   const handleOpenFile = useCallback(
@@ -111,7 +118,7 @@ function TubeMapInner() {
   );
 
   const { nodes: layoutNodes, edges: layoutEdges, tubeLines, stationPositions } = useTubeLayout({
-    tubeMapData: state.tubeMapData,
+    tubeMapData,
     searchQuery,
     domainFilter,
     statusFilter,
@@ -147,9 +154,9 @@ function TubeMapInner() {
 
   // Domain keys for number shortcuts (ordered by manifest domains)
   const domainKeys = useMemo(() => {
-    if (!state.tubeMapData) return [];
-    return Object.keys(state.tubeMapData.domains);
-  }, [state.tubeMapData]);
+    if (!tubeMapData) return [];
+    return Object.keys(tubeMapData.domains);
+  }, [tubeMapData]);
 
   // Keyboard shortcuts for tube map
   useEffect(() => {
@@ -248,7 +255,7 @@ function TubeMapInner() {
   ]);
 
   // If no manifest loaded, show loader
-  if (!state.tubeMapData) {
+  if (!tubeMapData) {
     return (
       <ManifestLoader
         onLoadManifest={state.loadManifest}
@@ -258,7 +265,6 @@ function TubeMapInner() {
     );
   }
 
-  const { tubeMapData } = state;
   const totalEntities = tubeMapData.subsystems.reduce(
     (sum, s) => sum + s.matched_entity_count,
     0,

@@ -8,11 +8,13 @@ import {
   applyCompactLayout,
   generateSegments,
   buildDynamicLayout,
+  normalizeOrphanDomains,
   STATION_GAP,
   LINE_GAP,
   NODE_WIDTH,
   MAX_STATIONS_PER_SEGMENT,
 } from "./tubeMap";
+import { UNASSIGNED_DOMAIN_ID, UNASSIGNED_COLOR, UNASSIGNED_LABEL } from "./types";
 import { assignDomainColors } from "./colors";
 import type { ComputedLine } from "./types";
 
@@ -800,6 +802,182 @@ describe("buildDynamicLayout", () => {
     // First station of the widest line should be at x=0
     const minX = Math.min(...platformPositions.map((p) => p.x));
     expect(minX).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// normalizeOrphanDomains
+// ---------------------------------------------------------------------------
+
+describe("normalizeOrphanDomains", () => {
+  it("returns data unchanged when all subsystems have known domains", () => {
+    const result = normalizeOrphanDomains(OCTOSPARK_FIXTURE);
+    expect(result).toBe(OCTOSPARK_FIXTURE); // same reference, no copy
+  });
+
+  it("remaps subsystems with empty domain to UNASSIGNED_DOMAIN_ID", () => {
+    const data: TubeMapData = {
+      meta: { name: "Test", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [
+        makeSub("a", "alpha"),
+        makeSub("b", ""), // empty domain
+      ],
+      connections: [],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+    const result = normalizeOrphanDomains(data);
+    expect(result.subsystems[1]!.domain).toBe(UNASSIGNED_DOMAIN_ID);
+    expect(result.subsystems[0]!.domain).toBe("alpha");
+  });
+
+  it("remaps subsystems with unknown domain to UNASSIGNED_DOMAIN_ID", () => {
+    const data: TubeMapData = {
+      meta: { name: "Test", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [
+        makeSub("a", "alpha"),
+        makeSub("b", "nonexistent-domain"),
+      ],
+      connections: [],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+    const result = normalizeOrphanDomains(data);
+    expect(result.subsystems[1]!.domain).toBe(UNASSIGNED_DOMAIN_ID);
+  });
+
+  it("adds unassigned domain entry to domains map", () => {
+    const data: TubeMapData = {
+      meta: { name: "Test", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [makeSub("a", "orphan-domain")],
+      connections: [],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+    const result = normalizeOrphanDomains(data);
+    expect(result.domains[UNASSIGNED_DOMAIN_ID]).toEqual({
+      label: UNASSIGNED_LABEL,
+      color: UNASSIGNED_COLOR,
+    });
+    // Original domain still present
+    expect(result.domains["alpha"]).toEqual({ label: "Alpha", color: "#ff0000" });
+  });
+
+  it("does not modify original data", () => {
+    const data: TubeMapData = {
+      meta: { name: "Test", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [makeSub("a", "orphan")],
+      connections: [],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+    normalizeOrphanDomains(data);
+    // Original data unchanged
+    expect(data.subsystems[0]!.domain).toBe("orphan");
+    expect(data.domains[UNASSIGNED_DOMAIN_ID]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDynamicLayout — unassigned domain handling
+// ---------------------------------------------------------------------------
+
+describe("buildDynamicLayout — unassigned domain", () => {
+  it("places orphan subsystems on a gray unassigned line at the bottom", () => {
+    const data: TubeMapData = {
+      meta: { name: "Test", version: "0", description: "" },
+      domains: {
+        alpha: { label: "Alpha", color: "#ff0000" },
+        [UNASSIGNED_DOMAIN_ID]: { label: UNASSIGNED_LABEL, color: UNASSIGNED_COLOR },
+      },
+      subsystems: [
+        makeSub("a", "alpha"),
+        makeSub("b", "alpha"),
+        makeSub("orphan1", UNASSIGNED_DOMAIN_ID),
+        makeSub("orphan2", UNASSIGNED_DOMAIN_ID),
+      ],
+      connections: [],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+
+    const layout = buildDynamicLayout(data);
+
+    // Should have 2 lines: alpha + unassigned
+    expect(layout.lines).toHaveLength(2);
+
+    const unassignedLine = layout.lines.find((l) => l.domain === UNASSIGNED_DOMAIN_ID);
+    expect(unassignedLine).toBeDefined();
+    expect(unassignedLine!.color).toBe(UNASSIGNED_COLOR);
+    expect(unassignedLine!.label).toBe(UNASSIGNED_LABEL);
+    expect(unassignedLine!.stationIds).toHaveLength(2);
+
+    // Unassigned line should be below the alpha line
+    const alphaLine = layout.lines.find((l) => l.domain === "alpha")!;
+    expect(unassignedLine!.origin.y).toBeGreaterThan(alphaLine.origin.y);
+
+    // All 4 subsystems should have positions
+    expect(layout.positions.size).toBe(4);
+  });
+
+  it("sorts unassigned stations alphabetically", () => {
+    const data: TubeMapData = {
+      meta: { name: "Test", version: "0", description: "" },
+      domains: {
+        [UNASSIGNED_DOMAIN_ID]: { label: UNASSIGNED_LABEL, color: UNASSIGNED_COLOR },
+      },
+      subsystems: [
+        makeSub("zebra", UNASSIGNED_DOMAIN_ID),
+        makeSub("apple", UNASSIGNED_DOMAIN_ID),
+        makeSub("mango", UNASSIGNED_DOMAIN_ID),
+      ],
+      connections: [],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+
+    const layout = buildDynamicLayout(data);
+    const unassignedLine = layout.lines.find((l) => l.domain === UNASSIGNED_DOMAIN_ID)!;
+    expect(unassignedLine.stationIds).toEqual(["apple", "mango", "zebra"]);
+  });
+
+  it("works end-to-end: normalize then layout with orphan subsystems", () => {
+    const rawData: TubeMapData = {
+      meta: { name: "Test", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [
+        makeSub("a", "alpha"),
+        makeSub("orphan1", "nonexistent"),
+        makeSub("orphan2", ""),
+      ],
+      connections: [makeConn("orphan1", "a")],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+
+    const normalized = normalizeOrphanDomains(rawData);
+    const layout = buildDynamicLayout(normalized);
+
+    // 2 lines: alpha + unassigned
+    expect(layout.lines).toHaveLength(2);
+
+    // All 3 subsystems positioned
+    expect(layout.positions.size).toBe(3);
+
+    // Unassigned line exists at the bottom
+    const unassignedLine = layout.lines.find((l) => l.domain === UNASSIGNED_DOMAIN_ID)!;
+    expect(unassignedLine.stationIds).toContain("orphan1");
+    expect(unassignedLine.stationIds).toContain("orphan2");
+  });
+
+  it("does not create unassigned line when all domains are known", () => {
+    const layout = buildDynamicLayout(OCTOSPARK_FIXTURE);
+    const unassignedLine = layout.lines.find((l) => l.domain === UNASSIGNED_DOMAIN_ID);
+    expect(unassignedLine).toBeUndefined();
   });
 });
 
