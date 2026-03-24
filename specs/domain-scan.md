@@ -2609,7 +2609,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - Each language has at least 3 fixture files
 
 ### Phase 5: Cross-File Resolution + Index + Config + Cache
-- [ ] `config.rs`: `.domain-scan.toml` parsing, custom service definitions, include/exclude globs
+- [x] `config.rs`: `.domain-scan.toml` parsing, custom service definitions, include/exclude globs
 - [ ] `cache.rs`: content-addressed cache with DashMap, disk persistence with bincode, LRU eviction
 - [ ] `resolver.rs`: import/export tracking, implementation matching
 - [ ] `index.rs`: ScanIndex construction with all lookup tables (interfaces, classes, services, methods, impls, schemas)
