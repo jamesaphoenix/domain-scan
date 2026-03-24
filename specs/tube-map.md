@@ -505,6 +505,14 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 
 Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus targeted stress tests and adversarial scenarios.
 
+#### F.0 CI Fix (HIGH PRIORITY — CI is currently broken)
+
+- [ ] Fix clippy `panic!` violations in `manifest.rs` test code (lines 849, 916, 931, 940, 965, 980, 983) — replace `.unwrap_or_else(|e| panic!(...))` with proper error handling or `#[allow(clippy::panic)]` on test functions
+- [ ] Fix clippy `unnecessary_map_or` in `resolver.rs:642` — replace `.map_or(false, |v| ...)` with `.is_some_and(|v| ...)`
+- [ ] Fix `unused_comparisons` in `index.rs:1010` — remove `assert!(index.stats.total_files >= 0)` (usize is always >= 0)
+- [ ] Verify: `cargo clippy --all-targets -- -D warnings` passes with zero errors
+- [ ] Verify: CI passes on GitHub Actions after push
+
 #### F.1 E2E Test Infrastructure
 
 - [x] Add `@playwright/test` and `@tauri-apps/driver` to `ui/` dev dependencies
