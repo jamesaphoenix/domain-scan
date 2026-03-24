@@ -2684,6 +2684,116 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - `--focus "auth"` scopes prompt to only auth-related files
 - Built files get "verify and catalog" instructions, Unbuilt files get "analyze and infer" instructions
 
+### Phase 6c: Agent DX — Schema Introspection, Field Masks, Skills & Raw JSON Input
+
+Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CLI), following the principles from [Rewrite Your CLI for AI Agents](https://justin.poehnelt.com/posts/rewrite-your-cli-for-ai-agents/). The CLI is already agent-friendly (structured JSON output, structured errors), but lacks runtime schema introspection, field-level output control, raw JSON input, and shipped skill files that encode invariants agents can't intuit from `--help`.
+
+#### 6c.1 `domain-scan schema <command>` — Runtime Schema Introspection
+
+- [ ] New `schema` subcommand that dumps the full input/output JSON schema for any command
+- [ ] `domain-scan schema scan` → JSON schema of ScanIndex output + ScanConfig input
+- [ ] `domain-scan schema interfaces` → JSON schema of InterfaceDef[] output + filter params
+- [ ] `domain-scan schema services` / `methods` / `schemas` / `impls` / `search` / `stats` / `validate` / `match` / `prompt` — one schema per subcommand
+- [ ] `domain-scan schema --all` → dump all schemas in a single JSON object keyed by subcommand name
+- [ ] Schemas generated from Rust types at compile time via `schemars` crate (`#[derive(JsonSchema)]` on all IR types, FilterParams, ScanConfig, PromptConfig, ValidationResult, MatchResult)
+- [ ] Output includes: input params (with types, defaults, required/optional), output type, example values
+
+**Implementation:** Add `#[derive(JsonSchema)]` to all public IR types. The `schema` subcommand calls `schemars::schema_for::<T>()` and serializes. No hand-written schemas.
+
+#### 6c.2 `--fields` — Field Masks for Context Window Discipline
+
+- [ ] Global `--fields <FIELD,...>` flag that limits which top-level fields appear in JSON output
+- [ ] Works on all subcommands when `--output json` is active
+- [ ] Example: `domain-scan interfaces --output json --fields name,methods` → only `name` and `methods` per InterfaceDef
+- [ ] Example: `domain-scan scan --output json --fields files.path,files.language,stats` → only file paths, languages, and stats
+- [ ] Dot-notation for nested fields: `files.interfaces.name`, `files.services.routes`
+- [ ] Invalid field names produce a structured error with the list of valid fields
+- [ ] Ignored when `--output table` or `--output compact` (those formats already have fixed columns)
+
+**Implementation:** Post-process the serialized `serde_json::Value` — walk the JSON tree and prune fields not in the mask. Reuse the `schemars`-generated schema to validate field names.
+
+#### 6c.3 `--json` — Raw JSON Payload Input
+
+- [ ] Global `--json <JSON>` flag that accepts a full filter/config payload as raw JSON
+- [ ] Replaces individual flags when used: `domain-scan interfaces --json '{"name": ".*Repo", "languages": ["typescript"], "show_methods": true}'`
+- [ ] JSON structure mirrors the subcommand's input schema (same types as `domain-scan schema <cmd>` outputs)
+- [ ] `--json` and individual filter flags are mutually exclusive (clap conflict group)
+- [ ] JSON validated against the schema with structured errors on mismatch
+- [ ] Max input size: 1 MB. Max depth: 32. (Reuse Section 17 input hardening)
+
+#### 6c.4 NDJSON Pagination — `--page-all`
+
+- [ ] `--page-all` flag emits one JSON object per entity (NDJSON / JSON Lines), one per line
+- [ ] Works with `domain-scan interfaces`, `services`, `methods`, `schemas`, `impls`, `search`
+- [ ] Agents can stream-process results without buffering the full array
+- [ ] Compatible with `--fields` (field mask applied per line)
+
+#### 6c.5 Auto-Detect JSON Output
+
+- [ ] When stdout is not a TTY (piped to another command or redirected to file), default to `--output json` instead of `--table`
+- [ ] Explicit `--output` flag always overrides auto-detection
+- [ ] `atty::is(Stream::Stdout)` or `std::io::stdout().is_terminal()` for detection
+
+#### 6c.6 `--dry-run` Everywhere
+
+- [ ] Extend `--dry-run` to all mutating commands: `cache clear`, `cache prune`, `match --write-back`
+- [ ] `--dry-run` output shows what would happen as structured JSON: `{"action": "delete", "target": "cache/abc123.bin", "reason": "file deleted from disk"}`
+- [ ] Already exists on `match` — extend pattern to other commands
+
+#### 6c.7 Agent Skill Files
+
+Ship 8 skill files in `skills/` at the repo root. Each is structured Markdown with YAML frontmatter, designed to be injected into an agent's context at conversation start. Compatible with Claude Code SKILL.md format and OpenClaw `npx skills install`.
+
+- [ ] `skills/domain-scan-scan.md` — How to scan a codebase: always use `--fields` on large codebases, always use `--output json`, prefer `--languages` to limit scope
+- [ ] `skills/domain-scan-query.md` — How to query entities: use `interfaces`/`services`/`methods`/`schemas`/`impls`/`search`, always pipe through `--fields` to limit context, use `--page-all` for large result sets
+- [ ] `skills/domain-scan-validate.md` — How to run validation: use `--strict` in CI, use `--rules` to scope checks, interpret violation severities, use `--fail-on-unmatched` with `match`
+- [ ] `skills/domain-scan-match.md` — Entity-to-subsystem matching workflow: always `--dry-run` before `--write-back`, use `--prompt-unmatched` to generate follow-up prompts for unmatched items
+- [ ] `skills/domain-scan-prompt.md` — LLM prompt generation: use `--focus` to scope, use `--include-scan` for self-contained prompts, choose agent count based on codebase size
+- [ ] `skills/domain-scan-cache.md` — Cache management: use `cache stats` before clearing, use `--no-cache` for debugging stale results, use `cache prune` instead of `cache clear` when possible
+- [ ] `skills/domain-scan-safety.md` — Input safety rules: never pass user-supplied paths without validation, always use `--dry-run` before mutating, never pipe raw scan output into prompts without `--fields` (context window protection)
+- [ ] `skills/domain-scan-schema.md` — Schema introspection: use `domain-scan schema <cmd>` to discover available fields before constructing `--json` payloads, use `schema --all` to get the full API surface
+
+Each skill file follows this structure:
+```yaml
+---
+name: domain-scan-<topic>
+version: 1.0.0
+description: <one-line description>
+metadata:
+  openclaw:
+    requires:
+      bins: ["domain-scan"]
+---
+
+# <Skill Title>
+
+## When to use
+<1-2 sentences>
+
+## Key commands
+<command examples with flags>
+
+## Rules
+- <invariant the agent must follow>
+- <invariant the agent must follow>
+
+## Common mistakes
+- <mistake agents make> → <correct approach>
+```
+
+**Acceptance criteria:**
+- `domain-scan schema interfaces` returns valid JSON Schema matching InterfaceDef[] output
+- `domain-scan schema --all` returns schemas for all subcommands
+- `domain-scan interfaces --output json --fields name,methods` returns only those fields
+- `domain-scan interfaces --fields nonexistent` returns structured error listing valid fields
+- `domain-scan interfaces --json '{"name": "Repo"}'` is equivalent to `domain-scan interfaces --name Repo`
+- `--json` and `--name` used together produce a clap conflict error
+- `domain-scan interfaces --page-all` emits valid NDJSON (one JSON object per line)
+- `echo '{}' | domain-scan scan` defaults to JSON output (non-TTY detection)
+- `domain-scan cache clear --dry-run` shows what would be deleted without deleting
+- All 8 skill files exist in `skills/` with valid YAML frontmatter
+- Skill files are self-consistent with `domain-scan schema` output (field names match)
+
 ### Phase 8: Tauri Desktop App - Backend
 - [x] `domain-scan-tauri` crate setup (Tauri 2) with `tauri-plugin-shell` and `tauri-plugin-dialog`
 - [x] `AppState` struct with `Mutex<Option<ScanIndex>>` and `Mutex<Option<PathBuf>>`
@@ -2699,19 +2809,19 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - `open_in_editor` works for VS Code, Cursor, Zed
 
 ### Phase 9: Tauri Desktop App - Frontend
-- [ ] Three-panel layout: Entity Tree | Source Preview | Details Panel
-- [ ] EntityTree component with single-click expand/collapse
-- [ ] Source preview with syntax highlighting (scrolls to entity span)
-- [ ] Details panel with build status, confidence, metadata, warning banner for non-Built
-- [ ] Filter bar: by kind, build status, language
-- [ ] Fuzzy search with real-time tree update
-- [ ] Build status color indicators (green/yellow/red/orange dots)
-- [ ] Keyboard navigation: j/k, arrow keys, Enter expand/collapse, / search, p prompt, e export, q quit
-- [ ] "Generate Prompt" button scoped to selected entities
-- [ ] Export: JSON, CSV, Markdown
-- [ ] Scan-on-open with progress bar in status bar
-- [ ] `useScan.ts` and `useTreeState.ts` hooks
-- [ ] `useKeyboard.ts` hook with input-focus guards
+- [x] Three-panel layout: Entity Tree | Source Preview | Details Panel
+- [x] EntityTree component with single-click expand/collapse
+- [x] Source preview with syntax highlighting (scrolls to entity span)
+- [x] Details panel with build status, confidence, metadata, warning banner for non-Built
+- [x] Filter bar: by kind, build status, language
+- [x] Fuzzy search with real-time tree update
+- [x] Build status color indicators (green/yellow/red/orange dots)
+- [x] Keyboard navigation: j/k, arrow keys, Enter expand/collapse, / search, p prompt, e export, q quit
+- [x] "Generate Prompt" button scoped to selected entities
+- [x] Export: JSON, CSV, Markdown
+- [x] Scan-on-open with progress bar in status bar
+- [x] `useScan.ts` and `useTreeState.ts` hooks
+- [x] `useKeyboard.ts` hook with input-focus guards
 
 **Acceptance criteria:**
 - Single click on a parent node expands to show children. No double-click needed.
