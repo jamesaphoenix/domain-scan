@@ -64,6 +64,12 @@ struct Cli {
     /// Verbose output (timing, cache stats)
     #[arg(short = 'v', long, global = true)]
     verbose: bool,
+
+    /// Limit JSON output to specific fields (comma-separated, dot-notation).
+    /// Only applies when --output json is active.
+    /// Example: --fields name,methods or --fields files.path,stats
+    #[arg(long, global = true)]
+    fields: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -579,12 +585,73 @@ fn emit(cli: &Cli, content: &str) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Emit JSON output, applying field mask if `--fields` is set.
+///
+/// If fields is `None` or output format is not JSON, this is equivalent to
+/// serializing to pretty JSON and calling `emit`. When fields is set, the JSON
+/// is post-processed to include only the requested fields.
+fn emit_json<T: serde::Serialize>(
+    cli: &Cli,
+    value: &T,
+    format: OutputFormat,
+    schema_command: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if format != OutputFormat::Json {
+        // --fields is only for JSON output; caller handles table/compact separately
+        return Ok(());
+    }
+
+    let json_value = serde_json::to_value(value)?;
+
+    let content = if let Some(ref fields) = cli.fields {
+        // Validate fields against schema if we know the command
+        if let Some(cmd) = schema_command {
+            if let Some(cmd_schema) = domain_scan_core::schema::schema_for_command(cmd) {
+                let mask = domain_scan_core::field_mask::FieldMask::parse(fields)?;
+                let invalid = domain_scan_core::field_mask::validate_fields_against_schema(
+                    &mask,
+                    &cmd_schema.output,
+                );
+                if !invalid.is_empty() {
+                    let valid = domain_scan_core::field_mask::extract_valid_fields_from_schema(
+                        &cmd_schema.output,
+                    );
+                    let valid_list: Vec<&str> = valid.iter().map(|s| s.as_str()).collect();
+                    let err = CliError {
+                        code: "INVALID_FIELDS",
+                        message: format!(
+                            "Unknown field(s): {}",
+                            invalid.join(", ")
+                        ),
+                        suggestion: Some(format!(
+                            "Valid fields for '{}': {}",
+                            cmd,
+                            valid_list.join(", ")
+                        )),
+                    };
+                    let json = serde_json::to_string_pretty(&err)?;
+                    eprintln!("{json}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        domain_scan_core::field_mask::apply_field_mask(&json_value, fields)?
+    } else {
+        serde_json::to_string_pretty(&json_value)?
+    };
+
+    emit(cli, &content)
+}
+
 // ---------------------------------------------------------------------------
 // Subcommand: scan
 // ---------------------------------------------------------------------------
 
 fn cmd_scan(cli: &Cli, format: OutputFormat) -> Result<(), Box<dyn std::error::Error>> {
     let scan_index = run_scan(cli)?;
+    if format == OutputFormat::Json {
+        return emit_json(cli, &scan_index, format, Some("scan"));
+    }
     let content = output::format_scan_index(&scan_index, format)?;
     emit(cli, &content)
 }
@@ -604,8 +671,7 @@ fn cmd_interfaces(
 
     match format {
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&interfaces)?;
-            emit(cli, &json)?;
+            return emit_json(cli, &interfaces, format, Some("interfaces"));
         }
         OutputFormat::Table => {
             let mut table = comfy_table::Table::new();
@@ -679,8 +745,7 @@ fn cmd_services(
 
     match format {
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&services)?;
-            emit(cli, &json)?;
+            return emit_json(cli, &services, format, Some("services"));
         }
         OutputFormat::Table => {
             let mut table = comfy_table::Table::new();
@@ -779,8 +844,7 @@ fn cmd_methods(
 
     match format {
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&methods)?;
-            emit(cli, &json)?;
+            return emit_json(cli, &methods, format, Some("methods"));
         }
         OutputFormat::Table => {
             let mut table = comfy_table::Table::new();
@@ -842,8 +906,7 @@ fn cmd_schemas(
 
     match format {
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&schemas)?;
-            emit(cli, &json)?;
+            return emit_json(cli, &schemas, format, Some("schemas"));
         }
         OutputFormat::Table => {
             let mut table = comfy_table::Table::new();
@@ -913,8 +976,7 @@ fn cmd_impls(
 
         match format {
             OutputFormat::Json => {
-                let json = serde_json::to_string_pretty(&all_impls)?;
-                emit(cli, &json)?;
+                return emit_json(cli, &all_impls, format, Some("impls"));
             }
             OutputFormat::Table => {
                 let mut table = comfy_table::Table::new();
@@ -965,8 +1027,7 @@ fn cmd_impls(
 
         match format {
             OutputFormat::Json => {
-                let json = serde_json::to_string_pretty(&impls)?;
-                emit(cli, &json)?;
+                return emit_json(cli, &impls, format, Some("impls"));
             }
             OutputFormat::Table => {
                 let mut out = format!(
@@ -1055,8 +1116,7 @@ fn cmd_search(
 
     match format {
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&summaries)?;
-            emit(cli, &json)?;
+            return emit_json(cli, &summaries, format, Some("search"));
         }
         OutputFormat::Table => {
             let mut table = comfy_table::Table::new();
@@ -1098,8 +1158,7 @@ fn cmd_stats(cli: &Cli, format: OutputFormat) -> Result<(), Box<dyn std::error::
 
     match format {
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(&scan_index.stats)?;
-            emit(cli, &json)?;
+            return emit_json(cli, &scan_index.stats, format, Some("stats"));
         }
         OutputFormat::Table | OutputFormat::Compact => {
             let stats = &scan_index.stats;
@@ -1167,8 +1226,7 @@ fn cmd_validate(
 
     match format {
         OutputFormat::Json => {
-            let json = output::format_validation_result(&result)?;
-            emit(cli, &json)?;
+            emit_json(cli, &result, format, Some("validate"))?;
         }
         OutputFormat::Table | OutputFormat::Compact => {
             let mut out = String::new();
@@ -1224,11 +1282,9 @@ fn cmd_match(
     match format {
         OutputFormat::Json => {
             if unmatched_only {
-                let json = serde_json::to_string_pretty(&result.unmatched)?;
-                emit(cli, &json)?;
+                return emit_json(cli, &result.unmatched, format, Some("match"));
             } else {
-                let json = output::format_match_result(&result)?;
-                emit(cli, &json)?;
+                return emit_json(cli, &result, format, Some("match"));
             }
         }
         OutputFormat::Table | OutputFormat::Compact => {

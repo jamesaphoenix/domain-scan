@@ -342,6 +342,148 @@ fn test_out_flag_writes_file() {
 }
 
 // ---------------------------------------------------------------------------
+// --fields flag (field mask)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_fields_interfaces_name_only() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("--fields")
+        .arg("name")
+        .arg("interfaces")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+    assert!(!arr.is_empty(), "should have at least one interface");
+
+    // Each element should only have "name" field
+    for item in arr {
+        let obj = item.as_object().expect("should be object");
+        assert_eq!(obj.len(), 1, "should have exactly 1 field, got: {:?}", obj.keys().collect::<Vec<_>>());
+        assert!(obj.contains_key("name"), "should have 'name' field");
+    }
+}
+
+#[test]
+fn test_fields_interfaces_name_and_methods() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("--fields")
+        .arg("name,methods")
+        .arg("interfaces")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+
+    for item in arr {
+        let obj = item.as_object().expect("should be object");
+        assert_eq!(obj.len(), 2, "should have exactly 2 fields");
+        assert!(obj.contains_key("name"));
+        assert!(obj.contains_key("methods"));
+    }
+}
+
+#[test]
+fn test_fields_scan_dot_notation() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("--fields")
+        .arg("files.path,stats")
+        .arg("scan")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let obj = json.as_object().expect("should be object");
+
+    // Should only have "files" and "stats"
+    assert_eq!(obj.len(), 2, "should have exactly 2 fields, got: {:?}", obj.keys().collect::<Vec<_>>());
+    assert!(obj.contains_key("files"));
+    assert!(obj.contains_key("stats"));
+
+    // Each file entry should only have "path"
+    let files = obj.get("files").and_then(|v| v.as_array()).expect("files should be array");
+    for file in files {
+        let file_obj = file.as_object().expect("file should be object");
+        assert_eq!(file_obj.len(), 1, "file should have exactly 1 field");
+        assert!(file_obj.contains_key("path"));
+    }
+}
+
+#[test]
+fn test_fields_ignored_for_table_output() {
+    // --fields should be silently ignored when output is table
+    let output = base_cmd()
+        .arg("--output")
+        .arg("table")
+        .arg("--fields")
+        .arg("name")
+        .arg("interfaces")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Table output should still contain full content
+    assert!(stdout.contains("EventHandler"));
+}
+
+#[test]
+fn test_fields_invalid_field_exits_1() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("--fields")
+        .arg("nonexistent_field")
+        .arg("interfaces")
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success(), "should exit with error for invalid field");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("INVALID_FIELDS"), "should have INVALID_FIELDS error code");
+    assert!(stderr.contains("nonexistent_field"), "should mention the invalid field");
+}
+
+#[test]
+fn test_fields_stats_single_field() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("--fields")
+        .arg("total_files")
+        .arg("stats")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let obj = json.as_object().expect("should be object");
+    assert_eq!(obj.len(), 1, "should have exactly 1 field");
+    assert!(obj.contains_key("total_files"));
+    assert_eq!(obj["total_files"], 3);
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot tests for output format stability
 // ---------------------------------------------------------------------------
 

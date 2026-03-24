@@ -10,6 +10,7 @@
 pub mod build_status;
 pub mod cache;
 pub mod config;
+pub mod field_mask;
 pub mod index;
 pub mod ir;
 pub mod lang;
@@ -56,6 +57,9 @@ pub enum DomainScanError {
 
     #[error("Cache error: {0}")]
     Cache(String),
+
+    #[error("Field mask error: {0}")]
+    FieldMask(String),
 }
 
 /// Compute SHA-256 content hash for caching.

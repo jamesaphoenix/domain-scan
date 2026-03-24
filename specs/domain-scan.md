@@ -2702,13 +2702,13 @@ Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CL
 
 #### 6c.2 `--fields` — Field Masks for Context Window Discipline
 
-- [ ] Global `--fields <FIELD,...>` flag that limits which top-level fields appear in JSON output
-- [ ] Works on all subcommands when `--output json` is active
-- [ ] Example: `domain-scan interfaces --output json --fields name,methods` → only `name` and `methods` per InterfaceDef
-- [ ] Example: `domain-scan scan --output json --fields files.path,files.language,stats` → only file paths, languages, and stats
-- [ ] Dot-notation for nested fields: `files.interfaces.name`, `files.services.routes`
-- [ ] Invalid field names produce a structured error with the list of valid fields
-- [ ] Ignored when `--output table` or `--output compact` (those formats already have fixed columns)
+- [x] Global `--fields <FIELD,...>` flag that limits which top-level fields appear in JSON output
+- [x] Works on all subcommands when `--output json` is active
+- [x] Example: `domain-scan interfaces --output json --fields name,methods` → only `name` and `methods` per InterfaceDef
+- [x] Example: `domain-scan scan --output json --fields files.path,files.language,stats` → only file paths, languages, and stats
+- [x] Dot-notation for nested fields: `files.interfaces.name`, `files.services.routes`
+- [x] Invalid field names produce a structured error with the list of valid fields
+- [x] Ignored when `--output table` or `--output compact` (those formats already have fixed columns)
 
 **Implementation:** Post-process the serialized `serde_json::Value` — walk the JSON tree and prune fields not in the mask. Reuse the `schemars`-generated schema to validate field names.
 
