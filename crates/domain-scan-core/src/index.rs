@@ -601,6 +601,7 @@ fn matches_name(pattern: Option<&str>, name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     fn make_ir_file(path: &str, lang: Language) -> IrFile {
         IrFile::new(
@@ -1088,5 +1089,26 @@ mod tests {
         // UTF-8 files should parse fine, non-UTF-8 may be skipped
         // The key assertion: no panics
         assert!(index.stats.total_files >= 1);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn adversarial_circular_symlinks_no_hang() {
+        // Create circular symlinks at runtime (git can't store symlinks)
+        let dir = TempDir::new().ok();
+        if let Some(d) = &dir {
+            let src = d.path().join("src");
+            std::fs::create_dir_all(&src).ok();
+            let a = src.join("a");
+            let b = src.join("b");
+            let c = src.join("c");
+            // a -> b -> c -> a (circular)
+            std::os::unix::fs::symlink(&b, &a).ok();
+            std::os::unix::fs::symlink(&c, &b).ok();
+            std::os::unix::fs::symlink(&a, &c).ok();
+            let index = scan_fixture_dir(d.path());
+            // Must complete without hanging. No real files to parse.
+            assert_eq!(index.stats.total_files, 0);
+        }
     }
 }
