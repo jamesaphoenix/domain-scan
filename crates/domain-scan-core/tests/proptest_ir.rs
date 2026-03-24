@@ -286,4 +286,55 @@ proptest! {
         let deserialized: ScanConfig = serde_json::from_str(&json).unwrap();
         prop_assert_eq!(config, deserialized);
     }
+
+    // -----------------------------------------------------------------------
+    // ScanIndex invariant tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn scan_index_serde_roundtrip(
+        files in proptest::collection::vec(arb_ir_file(), 0..5),
+    ) {
+        let mut index = ScanIndex::new(PathBuf::from("/tmp/project"));
+        index.files = files;
+        let json = serde_json::to_string(&index).unwrap();
+        let deserialized: ScanIndex = serde_json::from_str(&json).unwrap();
+        prop_assert_eq!(index, deserialized);
+    }
+
+    #[test]
+    fn scan_index_confidence_matches_build_status(
+        build_status in arb_build_status(),
+        language in arb_language(),
+    ) {
+        let ir = IrFile::new(
+            PathBuf::from("test.rs"),
+            language,
+            "hash".to_string(),
+            build_status,
+        );
+        prop_assert_eq!(ir.confidence, build_status.confidence());
+    }
+
+    #[test]
+    fn ir_file_new_always_empty_collections(
+        language in arb_language(),
+        build_status in arb_build_status(),
+    ) {
+        let ir = IrFile::new(
+            PathBuf::from("test.rs"),
+            language,
+            "hash".to_string(),
+            build_status,
+        );
+        prop_assert!(ir.interfaces.is_empty());
+        prop_assert!(ir.services.is_empty());
+        prop_assert!(ir.classes.is_empty());
+        prop_assert!(ir.functions.is_empty());
+        prop_assert!(ir.type_aliases.is_empty());
+        prop_assert!(ir.imports.is_empty());
+        prop_assert!(ir.exports.is_empty());
+        prop_assert!(ir.implementations.is_empty());
+        prop_assert!(ir.schemas.is_empty());
+    }
 }

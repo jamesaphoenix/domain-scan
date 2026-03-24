@@ -145,6 +145,7 @@ domain-scan/
 │   │   │   │   ├── functions.scm
 │   │   │   │   ├── types.scm
 │   │   │   │   ├── services.scm      # Framework-specific (NestJS, tRPC, etc.)
+│   │   │   │   ├── effect.scm        # Effect.ts: Service, Layer, Schema, Config, pipe/flow, error channels
 │   │   │   │   ├── imports.scm
 │   │   │   │   └── exports.scm
 │   │   │   ├── python/
@@ -318,6 +319,9 @@ pub struct IrFile {
     pub exports: Vec<ExportDef>,
     pub implementations: Vec<ImplDef>,  // impl Trait for Struct, class implements Interface
     pub schemas: Vec<SchemaDef>,        // Runtime schemas: Zod, Effect, Pydantic, Drizzle, serde, etc.
+    pub effect_layers: Vec<EffectLayerDef>,          // Effect.ts Layer definitions
+    pub effect_errors: Vec<EffectErrorChannelDef>,   // Effect.ts tagged error types
+    pub effect_pipelines: Vec<EffectPipelineDef>,    // Effect.ts pipe/flow compositions
 }
 
 /// An interface / trait / protocol definition
@@ -353,6 +357,7 @@ pub struct ServiceDef {
     pub dependencies: Vec<String>,      // Injected dependencies
     pub decorators: Vec<String>,
     pub routes: Vec<RouteDef>,          // HTTP routes if applicable
+    pub effect_tag: Option<String>,     // Effect.ts Context.Tag string identifier (e.g. "UserRepo")
 }
 
 pub enum ServiceKind {
@@ -365,6 +370,7 @@ pub enum ServiceKind {
     EventHandler,       // Event/message handler
     Middleware,         // Express/Koa middleware, Django middleware
     Repository,         // Data access layer
+    EffectService,      // Effect.ts Context.Tag service (Effect.Service, Context.GenericTag)
     Custom(String),     // User-defined via config
 }
 
@@ -489,6 +495,51 @@ pub enum ExportKind {
     ReExport,       // export { Foo } from './bar'
 }
 
+// --- Effect.ts-specific IR types ---
+
+/// An Effect.ts Layer definition (dependency injection / composition)
+pub struct EffectLayerDef {
+    pub name: String,
+    pub file: PathBuf,
+    pub span: Span,
+    pub kind: EffectLayerKind,
+    pub provides: Vec<String>,          // Services this layer provides
+    pub requires: Vec<String>,          // Services this layer depends on (the R channel)
+    pub composition: Vec<String>,       // Other layers merged/composed into this one
+}
+
+pub enum EffectLayerKind {
+    EffectLayer,        // Layer.effect — effectful construction
+    SyncLayer,          // Layer.sync — synchronous construction
+    SucceedLayer,       // Layer.succeed — constant value
+    ScopedLayer,        // Layer.scoped — scoped resource
+    FreshLayer,         // Layer.fresh — fresh instance per use
+    MergeComposition,   // Layer.merge / Layer.provideMerge
+    PipeComposition,    // pipe(LayerA, Layer.provide(LayerB))
+}
+
+/// An Effect.ts error channel type (the E in Effect<A, E, R>)
+pub struct EffectErrorChannelDef {
+    pub name: String,
+    pub file: PathBuf,
+    pub span: Span,
+    pub tag: String,                    // The _tag discriminant value
+    pub extends: Option<String>,        // Parent error class (Data.TaggedError, Schema.TaggedError)
+    pub fields: Vec<SchemaField>,       // Structured error payload fields
+}
+
+/// An Effect.ts pipe/flow composition chain
+pub struct EffectPipelineDef {
+    pub name: String,
+    pub file: PathBuf,
+    pub span: Span,
+    pub steps: Vec<String>,            // Ordered list of Effect combinators in the pipe
+    pub input_type: Option<String>,     // Inferred or annotated input
+    pub output_type: Option<String>,    // The A channel
+    pub error_type: Option<String>,     // The E channel
+    pub requirements: Option<String>,   // The R channel (dependencies)
+}
+
 pub enum HttpMethod {
     Get, Post, Put, Patch, Delete, Head, Options,
 }
@@ -536,6 +587,9 @@ pub enum Entity {
     Schema(SchemaDef),
     Impl(ImplDef),
     TypeAlias(TypeAlias),
+    EffectLayer(EffectLayerDef),
+    EffectError(EffectErrorChannelDef),
+    EffectPipeline(EffectPipelineDef),
 }
 
 /// Lightweight summary for list views (tree panel, search results).
@@ -551,6 +605,7 @@ pub struct EntitySummary {
 
 pub enum EntityKind {
     Interface, Service, Class, Function, Schema, Impl, TypeAlias, Method,
+    EffectLayer, EffectError, EffectPipeline,
 }
 
 /// Filter parameters for querying the index. Used by CLI and Tauri IPC.
@@ -959,6 +1014,412 @@ Each language gets a `schemas.scm` query file targeting framework-specific runti
 @schema.derives      -> SchemaDef.derives (Rust derive macros)
 ```
 
+### 4.7 Effect.ts Deep Extraction (effect.scm)
+
+Effect.ts is a first-class framework for domain-scan. It defines structural boundaries through a distinctive pattern system: services via `Context.Tag`, dependency injection via `Layer`, typed error channels via `Data.TaggedError`, schemas via `Schema.Struct`/`Schema.Class`, and composition via `pipe`/`flow`. These map to specific IR types beyond what `schemas.scm` captures.
+
+The dedicated `queries/typescript/effect.scm` file extracts all Effect structural patterns in one pass.
+
+#### 4.7.1 Effect Services (Context.Tag)
+
+Effect services are defined via `Context.Tag` or the `Effect.Service` pattern — not as classes or decorators. They represent dependency injection boundaries.
+
+```scheme
+;; Context.Tag pattern
+;; class UserRepo extends Context.Tag("UserRepo")<UserRepo, { findById(id: string): Effect<User, NotFound> }>() {}
+(class_declaration
+  name: (type_identifier) @service.name
+  (class_heritage
+    (extends_clause
+      value: (call_expression
+        function: (member_expression
+          object: (call_expression
+            function: (member_expression
+              object: (identifier) @_ctx
+              property: (property_identifier) @_tag
+              (#eq? @_ctx "Context")
+              (#eq? @_tag "Tag"))
+            arguments: (arguments
+              (string) @service.effect_tag))
+          property: (property_identifier))
+        arguments: (arguments) @service.shape)))) @service.node
+
+;; Effect.Service pattern (newer API)
+;; class UserRepo extends Effect.Service<UserRepo>()("UserRepo", { ... }) {}
+(class_declaration
+  name: (type_identifier) @service.name
+  (class_heritage
+    (extends_clause
+      value: (call_expression
+        function: (call_expression
+          function: (member_expression
+            object: (identifier) @_eff
+            property: (property_identifier) @_svc
+            (#eq? @_eff "Effect")
+            (#eq? @_svc "Service")))
+        arguments: (arguments
+          (string) @service.effect_tag
+          (_) @service.shape))))) @service.node
+
+;; Context.GenericTag pattern
+;; const Cache = Context.GenericTag<CacheService>("Cache")
+(variable_declarator
+  name: (identifier) @service.name
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_ctx
+      property: (property_identifier) @_tag
+      (#eq? @_ctx "Context")
+      (#any-of? @_tag "GenericTag" "Tag"))
+    arguments: (arguments
+      (string) @service.effect_tag))) @service.node
+```
+
+Service captures produce a `ServiceDef` with `kind: EffectService`. The `@service.shape` capture is sub-parsed to extract method signatures (the service interface contract). The `@service.effect_tag` is stored as `ServiceDef.effect_tag`.
+
+#### 4.7.2 Effect Layers (Dependency Injection Graph)
+
+Layers are Effect's dependency injection and composition mechanism. They define how services are constructed and what they depend on. Extracting the layer graph reveals the full DI wiring.
+
+```scheme
+;; Layer.effect — effectful construction
+;; const UserRepoLive = Layer.effect(UserRepo, Effect.gen(function*() { ... }))
+(variable_declarator
+  name: (identifier) @layer.name
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_layer
+      property: (property_identifier) @_method
+      (#eq? @_layer "Layer")
+      (#any-of? @_method "effect" "sync" "succeed" "scoped" "fresh" "suspend"))
+    arguments: (arguments
+      (identifier) @layer.provides
+      (_) @layer.body))) @layer.node
+
+;; Layer.merge composition
+;; const AppLive = Layer.merge(UserRepoLive, AuthLive)
+(variable_declarator
+  name: (identifier) @layer.name
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_layer
+      property: (property_identifier) @_method
+      (#eq? @_layer "Layer")
+      (#any-of? @_method "merge" "mergeAll" "provideMerge"))
+    arguments: (arguments) @layer.composed_layers)) @layer.node
+
+;; pipe-based layer composition
+;; const AppLive = pipe(UserRepoLive, Layer.provide(DbLive))
+;; const AppLive = UserRepoLive.pipe(Layer.provide(DbLive))
+(variable_declarator
+  name: (identifier) @layer.name
+  value: (call_expression
+    function: (identifier) @_pipe
+    (#eq? @_pipe "pipe")
+    arguments: (arguments
+      (identifier) @layer.base
+      (call_expression
+        function: (member_expression
+          object: (identifier) @_layer2
+          property: (property_identifier) @_provide
+          (#eq? @_layer2 "Layer")
+          (#any-of? @_provide "provide" "provideMerge" "use" "passthrough"))
+        arguments: (arguments) @layer.deps)*))) @layer.node
+```
+
+Layer captures produce `EffectLayerDef`. The `@layer.provides` identifies which service tag the layer satisfies. The `@layer.composed_layers` and `@layer.deps` are sub-parsed to extract dependency relationships, building the full DI graph.
+
+#### 4.7.3 Effect Schemas (Schema.Struct, Schema.Class, Schema.TaggedStruct, Schema.Union)
+
+Beyond `Schema.Struct` (already in `schemas.scm`), Effect's schema module defines several structural patterns that represent domain types:
+
+```scheme
+;; Schema.Class — branded class schema with methods
+;; class User extends Schema.Class<User>("User")({ name: Schema.String, age: Schema.Number }) {}
+(class_declaration
+  name: (type_identifier) @schema.name
+  (class_heritage
+    (extends_clause
+      value: (call_expression
+        function: (call_expression
+          function: (member_expression
+            object: (identifier) @_schema
+            property: (property_identifier) @_class
+            (#eq? @_schema "Schema")
+            (#eq? @_class "Class")))
+        arguments: (arguments
+          (_) @schema.fields))))) @schema.node
+
+;; Schema.TaggedStruct — discriminated union member
+;; const UserCreated = Schema.TaggedStruct("UserCreated")({ userId: Schema.String })
+(variable_declarator
+  name: (identifier) @schema.name
+  value: (call_expression
+    function: (call_expression
+      function: (member_expression
+        object: (identifier) @_schema
+        property: (property_identifier) @_method
+        (#eq? @_schema "Schema")
+        (#any-of? @_method "TaggedStruct" "TaggedClass"))
+      arguments: (arguments
+        (string) @schema.effect_tag))
+    arguments: (arguments
+      (_) @schema.fields))) @schema.node
+
+;; Schema.Union — discriminated union type
+;; const Event = Schema.Union(UserCreated, UserDeleted, UserUpdated)
+(variable_declarator
+  name: (identifier) @schema.name
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_schema
+      property: (property_identifier) @_method
+      (#eq? @_schema "Schema")
+      (#eq? @_method "Union"))
+    arguments: (arguments) @schema.members)) @schema.node
+
+;; Schema.Struct (already in schemas.scm, but also captured here for completeness)
+;; Also catches Schema.partial, Schema.required, Schema.pick, Schema.omit applied to structs
+(variable_declarator
+  name: (identifier) @schema.name
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_schema
+      property: (property_identifier) @_method
+      (#any-of? @_schema "Schema" "S")
+      (#any-of? @_method "Struct" "partial" "required" "pick" "omit"))
+    arguments: (arguments) @schema.fields)) @schema.node
+```
+
+Schema captures produce `SchemaDef` with `kind: EffectSchema` and `source_framework: "effect-schema"`. The `@schema.effect_tag` is stored as `SchemaDef.effect_tag`.
+
+#### 4.7.4 Effect Error Channels (Data.TaggedError, Schema.TaggedError)
+
+Effect's typed error channel is a core structural boundary. Errors in Effect are not strings — they are tagged, structured types that appear in the `E` channel of `Effect<A, E, R>`. Extracting these reveals the full error domain model.
+
+```scheme
+;; Data.TaggedError — simple tagged error
+;; class NotFound extends Data.TaggedError("NotFound")<{ id: string }> {}
+(class_declaration
+  name: (type_identifier) @error.name
+  (class_heritage
+    (extends_clause
+      value: (call_expression
+        function: (call_expression
+          function: (member_expression
+            object: (identifier) @_data
+            property: (property_identifier) @_tagged
+            (#any-of? @_data "Data" "Schema")
+            (#eq? @_tagged "TaggedError"))
+          arguments: (arguments
+            (string) @error.tag))
+        arguments: (arguments) @error.fields)))) @error.node
+
+;; Data.TaggedError without type params (no payload)
+;; class Unauthorized extends Data.TaggedError("Unauthorized") {}
+(class_declaration
+  name: (type_identifier) @error.name
+  (class_heritage
+    (extends_clause
+      value: (call_expression
+        function: (member_expression
+          object: (identifier) @_data
+          property: (property_identifier) @_tagged
+          (#any-of? @_data "Data" "Schema")
+          (#eq? @_tagged "TaggedError"))
+        arguments: (arguments
+          (string) @error.tag))))) @error.node
+
+;; Schema.TaggedError — schema-validated error (has encode/decode)
+;; class ValidationError extends Schema.TaggedError<ValidationError>("ValidationError")({
+;;   field: Schema.String,
+;;   message: Schema.String
+;; }) {}
+(class_declaration
+  name: (type_identifier) @error.name
+  (class_heritage
+    (extends_clause
+      value: (call_expression
+        function: (call_expression
+          function: (call_expression
+            function: (member_expression
+              object: (identifier) @_schema
+              property: (property_identifier) @_tagged
+              (#eq? @_schema "Schema")
+              (#eq? @_tagged "TaggedError")))
+          arguments: (arguments
+            (string) @error.tag))
+        arguments: (arguments
+          (_) @error.fields))))) @error.node
+```
+
+Error captures produce `EffectErrorChannelDef`. The `@error.tag` is the discriminant (`_tag` field at runtime). The `@error.fields` are sub-parsed into `Vec<SchemaField>` for the structured error payload.
+
+#### 4.7.5 Effect Pipelines (pipe / flow / Effect.gen)
+
+`pipe` and `flow` are the primary composition patterns in Effect. Extracting these reveals how effects are chained, what services they require, and what errors they can produce.
+
+```scheme
+;; Named pipe composition
+;; const getUser = pipe(readId, Effect.flatMap(fetchUser), Effect.catchTag("NotFound", handleNotFound))
+(variable_declarator
+  name: (identifier) @pipeline.name
+  value: (call_expression
+    function: (identifier) @_pipe
+    (#any-of? @_pipe "pipe" "flow")
+    arguments: (arguments) @pipeline.steps)) @pipeline.node
+
+;; Effect.gen — generator-based composition
+;; const getUser = Effect.gen(function*() { const repo = yield* UserRepo; ... })
+(variable_declarator
+  name: (identifier) @pipeline.name
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_effect
+      property: (property_identifier) @_gen
+      (#eq? @_effect "Effect")
+      (#eq? @_gen "gen"))
+    arguments: (arguments
+      (function_expression) @pipeline.body))) @pipeline.node
+
+;; Method-chain pipe (fluent API)
+;; const getUser = readId.pipe(Effect.flatMap(fetchUser), Effect.catchTag("NotFound", handleNotFound))
+(variable_declarator
+  name: (identifier) @pipeline.name
+  value: (call_expression
+    function: (member_expression
+      property: (property_identifier) @_pipe
+      (#eq? @_pipe "pipe"))
+    arguments: (arguments) @pipeline.steps)) @pipeline.node
+```
+
+Pipeline captures produce `EffectPipelineDef`. The `@pipeline.steps` are sub-parsed to extract combinator names (`Effect.flatMap`, `Effect.catchTag`, `Effect.provide`, etc.), which reveal error handling, dependency provision, and data flow.
+
+#### 4.7.6 Effect.ts Capture Conventions
+
+```
+@service.name        -> ServiceDef.name (with kind: EffectService)
+@service.effect_tag  -> ServiceDef.effect_tag (the Context.Tag string identifier)
+@service.shape       -> ServiceDef.methods (sub-parsed from the shape type literal)
+@service.node        -> ServiceDef (full node for span)
+@layer.name          -> EffectLayerDef.name
+@layer.provides      -> EffectLayerDef.provides
+@layer.body          -> EffectLayerDef (sub-parsed for yield* dependencies)
+@layer.composed_layers -> EffectLayerDef.composition
+@layer.deps          -> EffectLayerDef.requires
+@layer.node          -> EffectLayerDef (full node for span)
+@error.name          -> EffectErrorChannelDef.name
+@error.tag           -> EffectErrorChannelDef.tag (_tag discriminant)
+@error.fields        -> EffectErrorChannelDef.fields (sub-parsed)
+@error.node          -> EffectErrorChannelDef (full node for span)
+@pipeline.name       -> EffectPipelineDef.name
+@pipeline.steps      -> EffectPipelineDef.steps (sub-parsed combinator list)
+@pipeline.body       -> EffectPipelineDef (sub-parsed for yield* and dependency usage)
+@pipeline.node       -> EffectPipelineDef (full node for span)
+```
+
+#### 4.7.7 Effect.ts Test Fixtures
+
+```
+tests/fixtures/typescript/
+├── effect_service.ts           # Context.Tag, Effect.Service, Context.GenericTag patterns
+├── effect_layer.ts             # Layer.effect, Layer.sync, Layer.succeed, Layer.merge, pipe composition
+├── effect_schema.ts            # Schema.Struct, Schema.Class, Schema.TaggedStruct, Schema.Union
+├── effect_errors.ts            # Data.TaggedError, Schema.TaggedError with/without payloads
+├── effect_pipelines.ts         # pipe, flow, Effect.gen, method-chain .pipe
+├── effect_full_app.ts          # Realistic Effect app combining all patterns (services + layers + errors + schemas)
+├── expected/
+│   ├── effect_service.json
+│   ├── effect_layer.json
+│   ├── effect_schema.json
+│   ├── effect_errors.json
+│   ├── effect_pipelines.json
+│   └── effect_full_app.json
+```
+
+**`effect_full_app.ts` fixture** — a realistic mini-application:
+
+```typescript
+import { Context, Data, Effect, Layer, Schema } from "effect"
+
+// --- Error channel ---
+class NotFound extends Data.TaggedError("NotFound")<{ readonly id: string }> {}
+class Unauthorized extends Data.TaggedError("Unauthorized") {}
+class ValidationError extends Schema.TaggedError<ValidationError>("ValidationError")({
+  field: Schema.String,
+  message: Schema.String,
+}) {}
+
+// --- Schemas ---
+const UserId = Schema.String.pipe(Schema.brand("UserId"))
+const User = Schema.Struct({
+  id: UserId,
+  name: Schema.String,
+  email: Schema.String,
+})
+class CreateUserRequest extends Schema.Class<CreateUserRequest>("CreateUserRequest")({
+  name: Schema.String,
+  email: Schema.String,
+}) {}
+const UserEvent = Schema.Union(
+  Schema.TaggedStruct("UserCreated")({ userId: UserId }),
+  Schema.TaggedStruct("UserDeleted")({ userId: UserId }),
+)
+
+// --- Services ---
+class UserRepo extends Context.Tag("UserRepo")<
+  UserRepo,
+  {
+    readonly findById: (id: string) => Effect.Effect<typeof User.Type, NotFound>
+    readonly create: (data: typeof CreateUserRequest.Type) => Effect.Effect<typeof User.Type, ValidationError>
+  }
+>() {}
+
+class EventBus extends Context.Tag("EventBus")<
+  EventBus,
+  { readonly publish: (event: typeof UserEvent.Type) => Effect.Effect<void> }
+>() {}
+
+// --- Layers ---
+const UserRepoLive = Layer.effect(
+  UserRepo,
+  Effect.gen(function* () {
+    // ... implementation
+    return UserRepo.of({ findById: (id) => Effect.succeed({} as any), create: (data) => Effect.succeed({} as any) })
+  })
+)
+
+const EventBusLive = Layer.succeed(EventBus, { publish: () => Effect.void })
+
+const AppLive = Layer.merge(UserRepoLive, EventBusLive)
+
+// --- Pipelines ---
+const getUser = (id: string) =>
+  Effect.gen(function* () {
+    const repo = yield* UserRepo
+    return yield* repo.findById(id)
+  })
+
+const createUser = (data: typeof CreateUserRequest.Type) =>
+  pipe(
+    Effect.gen(function* () {
+      const repo = yield* UserRepo
+      const bus = yield* EventBus
+      const user = yield* repo.create(data)
+      yield* bus.publish({ _tag: "UserCreated", userId: user.id })
+      return user
+    }),
+    Effect.catchTag("ValidationError", (e) => Effect.fail(e)),
+  )
+```
+
+**Expected extraction from `effect_full_app.ts`:**
+- 3 `EffectErrorChannelDef`: `NotFound` (tag: "NotFound", 1 field), `Unauthorized` (tag: "Unauthorized", 0 fields), `ValidationError` (tag: "ValidationError", 2 fields)
+- 4 `SchemaDef` (kind: EffectSchema): `UserId`, `User`, `CreateUserRequest`, `UserEvent`
+- 2 `ServiceDef` (kind: EffectService): `UserRepo` (2 methods), `EventBus` (1 method)
+- 3 `EffectLayerDef`: `UserRepoLive` (provides: UserRepo), `EventBusLive` (provides: EventBus), `AppLive` (composition: [UserRepoLive, EventBusLive])
+- 2 `EffectPipelineDef`: `getUser` (gen, requires: UserRepo), `createUser` (pipe+gen, requires: UserRepo+EventBus, catches: ValidationError)
+
 **IR type for schemas:**
 
 ```rust
@@ -972,6 +1433,8 @@ pub struct SchemaDef {
     pub table_name: Option<String>,     // For DB schema definitions
     pub derives: Vec<String>,           // Rust derives
     pub visibility: Visibility,
+    pub effect_tag: Option<String>,     // Effect.ts Schema.TaggedStruct/TaggedClass discriminant tag
+    pub union_members: Vec<String>,     // Effect.ts Schema.Union member names
 }
 
 pub enum SchemaKind {
@@ -979,6 +1442,7 @@ pub enum SchemaKind {
     OrmModel,           // Pydantic, SQLAlchemy, TypeORM, Prisma, Drizzle
     DataTransfer,       // Rust serde structs, Go tagged structs, Java records, Kotlin data classes
     DomainEvent,        // Event schema definitions
+    EffectSchema,       // Effect.ts Schema.Struct, Schema.Class, Schema.TaggedStruct, Schema.Union
 }
 
 pub struct SchemaField {
@@ -1049,6 +1513,7 @@ SUBCOMMANDS:
     methods     List all methods (optionally filtered by owner)
     schemas     List all runtime schema definitions (Zod, Effect, Pydantic, Drizzle, etc.)
     impls       List implementations of a trait/interface
+    effect      Effect.ts structural queries (layers, errors, pipelines, services, schemas)
     search      Full-text search across names and types
     stats       Print scan statistics
     validate    Run data quality checks on scan results (naming, completeness, duplicates)
@@ -1285,6 +1750,69 @@ domain-scan schemas --output json
  Kotlin     | data-class     | data-transfer    | UserEvent      |      5 | src/events/User.kt:10
 ```
 
+#### `domain-scan effect`
+
+Query Effect.ts-specific structural entities: services, layers, errors, schemas, and pipelines. This is a convenience subcommand that filters across multiple IR types to show the full Effect.ts dependency graph and domain model.
+
+```bash
+# All Effect.ts entities
+domain-scan effect
+
+# Effect services (Context.Tag)
+domain-scan effect services
+
+# Effect layers — shows provides/requires/composition graph
+domain-scan effect layers
+domain-scan effect layers --show-graph      # ASCII dependency graph
+
+# Effect errors — tagged error types with payloads
+domain-scan effect errors
+
+# Effect schemas — Schema.Struct, Schema.Class, Schema.Union, Schema.TaggedStruct
+domain-scan effect schemas
+
+# Effect pipelines — pipe/flow/Effect.gen chains with combinator steps
+domain-scan effect pipelines
+
+# Full dependency graph: which layers provide which services, which pipelines require which services
+domain-scan effect graph --output json
+
+# Filter by name
+domain-scan effect services --name ".*Repo"
+domain-scan effect errors --name ".*Error"
+```
+
+**Table output (`domain-scan effect layers`):**
+```
+ Name               | Kind       | Provides       | Requires           | Composition
+--------------------+------------+----------------+--------------------+-----------------------------
+ UserRepoLive       | effect     | UserRepo       | Db                 |
+ AuthLive           | effect     | Auth           | UserRepo, Config   |
+ EventBusLive       | succeed    | EventBus       |                    |
+ AppLive            | merge      |                |                    | UserRepoLive, AuthLive, EventBusLive
+```
+
+**Table output (`domain-scan effect errors`):**
+```
+ Name               | Tag              | Fields                          | File
+--------------------+------------------+---------------------------------+---------------------------
+ NotFound           | NotFound         | id: string                      | src/errors.ts:3
+ Unauthorized       | Unauthorized     |                                 | src/errors.ts:5
+ ValidationError    | ValidationError  | field: string, message: string  | src/errors.ts:7
+```
+
+**Graph output (`domain-scan effect graph`):**
+```
+EventBus ──→ EventBusLive (succeed)
+UserRepo ──→ UserRepoLive (effect) ──requires──→ Db
+Auth ──→ AuthLive (effect) ──requires──→ UserRepo, Config
+AppLive (merge) ══► UserRepoLive + AuthLive + EventBusLive
+
+Pipelines:
+  getUser ──uses──→ UserRepo ──errors──→ NotFound
+  createUser ──uses──→ UserRepo, EventBus ──errors──→ ValidationError
+```
+
 #### `domain-scan validate`
 
 Run data quality checks on scan results. Inspired by octospark-visualizer's `system-invariants.test.ts` pattern. Each language has built-in validation rules that enforce naming conventions and structural completeness.
@@ -1317,6 +1845,13 @@ domain-scan validate --output json
 | No god-interfaces (>10 methods) | x | x | x | x | x |
 | No god-services (>15 methods) | x | x | x | x | x |
 | Every public interface has at least 1 implementor | x | x | x | x | x |
+| **Effect.ts-specific rules** | | | | | |
+| Every Effect service has a matching Layer | x | | | | |
+| Every Layer.provides references a real service tag | x | | | | |
+| No orphan layers (layer exists but service tag is unused) | x | | | | |
+| Every `yield*` in Effect.gen resolves to a known service | x | | | | |
+| Error tags are unique (no duplicate `_tag` values) | x | | | | |
+| Schema.Union members all exist as defined schemas | x | | | | |
 
 **Table output:**
 ```
@@ -2013,8 +2548,15 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - [x] `queries/typescript/exports.scm`
 - [x] `queries/typescript/services.scm` (Express, NestJS, tRPC)
 - [x] `queries/typescript/schemas.scm` (Effect.ts Schema.Struct, Zod z.object, Drizzle pgTable)
+- [x] `queries/typescript/effect.scm` (Effect.ts deep extraction — see Section 4.7):
+  - [x] Effect services: `Context.Tag`, `Effect.Service`, `Context.GenericTag`
+  - [x] Effect layers: `Layer.effect`, `Layer.sync`, `Layer.succeed`, `Layer.scoped`, `Layer.fresh`, `Layer.merge`, pipe-based composition
+  - [x] Effect schemas: `Schema.Class`, `Schema.TaggedStruct`, `Schema.TaggedClass`, `Schema.Union`, `Schema.partial`/`required`/`pick`/`omit`
+  - [x] Effect errors: `Data.TaggedError`, `Schema.TaggedError` (with and without payloads)
+  - [x] Effect pipelines: `pipe`, `flow`, `Effect.gen`, method-chain `.pipe`
+- [x] Effect sub-parsing: `@service.shape` → method signatures, `@layer.body` → `yield*` dependency extraction, `@pipeline.steps` → combinator list
 - [x] Schema field sub-parsing logic (`fields_source` raw text -> `Vec<SchemaField>`)
-- [x] 7+ fixture files in `tests/fixtures/typescript/` with expected JSON
+- [x] 13+ fixture files in `tests/fixtures/typescript/` with expected JSON (including 6 Effect-specific fixtures + 1 full-app integration fixture)
 - [x] Integration tests: each .scm file has at least one test parsing a real fixture
 - [x] Property-based tests: IR roundtrip serialization (NOT source code generation)
 
@@ -2023,14 +2565,19 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - Every `.scm` file has at least one integration test against a real fixture
 - `proptest` tests verify `IrFile` serde roundtrip, not tree-sitter parsing
 - Schema extraction works for Zod, Effect Schema, and Drizzle patterns
+- Effect.ts: `Context.Tag` services extracted with method signatures from shape type
+- Effect.ts: `Layer.effect`/`Layer.merge`/pipe composition produces correct provides/requires/composition fields
+- Effect.ts: `Data.TaggedError` and `Schema.TaggedError` extracted with tag + fields
+- Effect.ts: `pipe`/`flow`/`Effect.gen` pipelines extracted with combinator steps
+- Effect.ts: full-app fixture (`effect_full_app.ts`) produces correct counts: 3 errors, 4 schemas, 2 services, 3 layers, 2 pipelines
 
 ### Phase 3: Rust + Go + Python Queries
-- [ ] `queries/rust/traits.scm`, `impls.scm`, `methods.scm`, `functions.scm`, `types.scm`, `imports.scm`, `services.scm`, `schemas.scm` (serde derive structs)
-- [ ] `queries/go/interfaces.scm` (uses `method_elem` not `method_spec`), `structs.scm`, `methods.scm`, `functions.scm`, `imports.scm`, `services.scm`, `schemas.scm` (tagged structs)
-- [ ] `queries/python/classes.scm`, `methods.scm`, `functions.scm`, `protocols.scm`, `abstract.scm`, `imports.scm`, `decorators.scm`, `services.scm`, `schemas.scm` (Pydantic, dataclass, TypedDict, SQLAlchemy)
-- [ ] 5-7 fixtures per language with expected JSON
-- [ ] Integration tests for all three languages
-- [ ] Property-based tests: IR roundtrip, ScanIndex invariants
+- [x] `queries/rust/traits.scm`, `impls.scm`, `methods.scm`, `functions.scm`, `types.scm`, `imports.scm`, `services.scm`, `schemas.scm` (serde derive structs)
+- [x] `queries/go/interfaces.scm` (uses `method_elem` not `method_spec`), `structs.scm`, `methods.scm`, `functions.scm`, `imports.scm`, `services.scm`, `schemas.scm` (tagged structs)
+- [x] `queries/python/classes.scm`, `methods.scm`, `functions.scm`, `protocols.scm`, `abstract.scm`, `imports.scm`, `decorators.scm`, `services.scm`, `schemas.scm` (Pydantic, dataclass, TypedDict, SQLAlchemy)
+- [x] 5-7 fixtures per language with expected JSON
+- [x] Integration tests for all three languages
+- [x] Property-based tests: IR roundtrip, ScanIndex invariants
 
 **Acceptance criteria:**
 - Parse real Rust/Go/Python files and extract correct structural census
@@ -2447,3 +2994,352 @@ opt-level = 1                          # Critical for tree-sitter test performan
 - Protobuf/gRPC .proto file parsing
 - OpenAPI spec generation from scanned services
 - Dependency injection graph visualization
+
+---
+
+## 17. Input Hardening & Adversarial Testing
+
+The CLI is an agent-first tool. AI agents are not trusted operators — they hallucinate paths, embed query params in IDs, generate control characters, and pre-encode strings that get double-encoded. Every input boundary must be validated.
+
+### 17.1 Input Validation Rules
+
+All input validation lives in `domain-scan-core` (not the CLI crate) so it protects every surface (CLI, Tauri IPC, future integrations).
+
+**Path inputs** (`--root`, `--config`, `--manifest`, `--out`):
+- Canonicalize via `std::fs::canonicalize` and reject if the resolved path escapes the expected base directory
+- Reject paths containing `..` segments before canonicalization (defense-in-depth)
+- Reject null bytes (`\0`)
+- Reject paths longer than 4096 bytes
+
+**String inputs** (names, patterns, filter values):
+- Reject control characters below ASCII 0x20 (except `\n` and `\t` in multi-line JSON inputs)
+- Reject strings containing null bytes
+- Reject resource identifiers containing `?`, `#`, or `%` (signs of embedded query params or pre-encoding)
+
+**JSON inputs** (`--json`):
+- Parse with `serde_json` — reject on any parse error with a structured error including the byte offset
+- Enforce max depth of 32 levels (prevent stack overflow from deeply nested input)
+- Enforce max input size of 1 MB
+
+**Regex inputs** (`--name`, `--pattern`, filter patterns):
+- Compile with `regex::Regex::new` and reject on error
+- Enforce a max pattern length of 1024 chars (prevent ReDoS)
+- Set a match timeout (10 ms per file) to prevent catastrophic backtracking
+
+### 17.2 Structured Error Format
+
+All validation failures return structured JSON errors:
+
+```json
+{
+  "error": {
+    "code": "INVALID_PATH",
+    "message": "Path contains traversal segment: ../../etc/passwd",
+    "suggestion": "Use an absolute path or a path relative to the project root without '..' segments",
+    "input": "../../etc/passwd",
+    "field": "--root"
+  }
+}
+```
+
+Error codes:
+| Code | Trigger |
+|------|---------|
+| `INVALID_PATH` | Path traversal, null bytes, too long |
+| `INVALID_INPUT` | Control characters, null bytes in strings |
+| `INVALID_RESOURCE_ID` | Embedded `?`, `#`, `%` in identifiers |
+| `INVALID_JSON` | Malformed JSON, too deep, too large |
+| `INVALID_REGEX` | Regex parse failure or pattern too long |
+| `NO_SCAN` | Command requires a prior scan but none exists |
+| `FILE_NOT_FOUND` | Specified file/directory does not exist |
+| `PERMISSION_DENIED` | Cannot read the target path |
+
+### 17.3 Adversarial Test Fixtures
+
+Adversarial tests live in `crates/domain-scan-core/tests/adversarial/`. Each test exercises a specific hallucination pattern that agents produce in practice.
+
+```
+tests/adversarial/
+├── path_traversal.rs          # ../../.ssh, /etc/passwd, symlink escapes
+├── control_chars.rs           # Null bytes, bell, backspace, escape sequences in names
+├── embedded_query_params.rs   # fileId?fields=name, path#fragment, pre-encoded %2e%2e
+├── json_bombs.rs              # Deeply nested JSON, 100MB payloads, duplicate keys
+├── regex_dos.rs               # Catastrophic backtracking patterns, 10KB regexes
+├── unicode_edge_cases.rs      # Homoglyphs, zero-width joiners, RTL overrides in identifiers
+├── symlink_escapes.rs         # Symlinks pointing outside project root
+└── concurrent_scans.rs        # Race conditions: scan while another scan replaces the index
+```
+
+**Path traversal tests:**
+```rust
+#[test]
+fn rejects_dot_dot_traversal() {
+    let err = validate_path("../../.ssh/id_rsa", &project_root).unwrap_err();
+    assert_eq!(err.code(), "INVALID_PATH");
+}
+
+#[test]
+fn rejects_null_byte_in_path() {
+    let err = validate_path("src/main\0.rs", &project_root).unwrap_err();
+    assert_eq!(err.code(), "INVALID_PATH");
+}
+
+#[test]
+fn rejects_symlink_escape() {
+    // Create a symlink inside project root pointing to /etc
+    let dir = tempdir()?;
+    std::os::unix::fs::symlink("/etc", dir.path().join("escape"))?;
+    let err = validate_path("escape/passwd", dir.path()).unwrap_err();
+    assert_eq!(err.code(), "INVALID_PATH");
+}
+```
+
+**Embedded query param tests:**
+```rust
+#[test]
+fn rejects_query_params_in_resource_id() {
+    let err = validate_resource_id("abc123?fields=name").unwrap_err();
+    assert_eq!(err.code(), "INVALID_RESOURCE_ID");
+}
+
+#[test]
+fn rejects_pre_encoded_traversal() {
+    let err = validate_resource_id("%2e%2e%2f%2e%2e%2fetc%2fpasswd").unwrap_err();
+    assert_eq!(err.code(), "INVALID_RESOURCE_ID");
+}
+
+#[test]
+fn rejects_fragment_in_resource_id() {
+    let err = validate_resource_id("abc123#section").unwrap_err();
+    assert_eq!(err.code(), "INVALID_RESOURCE_ID");
+}
+```
+
+**JSON bomb tests:**
+```rust
+#[test]
+fn rejects_deeply_nested_json() {
+    let json = (0..100).fold(String::from("null"), |acc, _| format!("[{}]", acc));
+    let err = parse_json_input(&json).unwrap_err();
+    assert_eq!(err.code(), "INVALID_JSON");
+}
+
+#[test]
+fn rejects_oversized_json() {
+    let json = format!(r#"{{"data": "{}"}}"#, "x".repeat(2_000_000));
+    let err = parse_json_input(&json).unwrap_err();
+    assert_eq!(err.code(), "INVALID_JSON");
+}
+```
+
+**Regex DoS tests:**
+```rust
+#[test]
+fn rejects_catastrophic_backtracking_pattern() {
+    let err = validate_regex("(a+)+$").unwrap_err();
+    assert_eq!(err.code(), "INVALID_REGEX");
+}
+
+#[test]
+fn rejects_oversized_regex() {
+    let pattern = "a".repeat(2000);
+    let err = validate_regex(&pattern).unwrap_err();
+    assert_eq!(err.code(), "INVALID_REGEX");
+}
+```
+
+**Unicode edge case tests:**
+```rust
+#[test]
+fn rejects_null_byte_in_name_filter() {
+    let err = validate_string_input("User\0Repository").unwrap_err();
+    assert_eq!(err.code(), "INVALID_INPUT");
+}
+
+#[test]
+fn rejects_control_chars_in_name_filter() {
+    let err = validate_string_input("User\x07Repository").unwrap_err(); // bell character
+    assert_eq!(err.code(), "INVALID_INPUT");
+}
+
+#[test]
+fn allows_valid_unicode_identifiers() {
+    // CJK, accented, emoji in identifiers are valid (some languages allow them)
+    validate_string_input("ユーザーRepository").unwrap();
+    validate_string_input("café_service").unwrap();
+}
+```
+
+### 17.4 Real Codebase Test Suite
+
+domain-scan is tested against real open-source codebases to catch edge cases synthetic fixtures can't anticipate. These repos are cloned at test time (cached in CI) and scanned end-to-end.
+
+| Repo | Language | Why this repo |
+|------|----------|---------------|
+| `tokio-rs/tokio` | Rust | Deep trait hierarchies, async traits, proc macros, huge crate graph |
+| `denoland/deno` | Rust + TypeScript | Polyglot. Rust core with TS API surface. Tests cross-language scanning. |
+| `nestjs/nest` | TypeScript | Decorator-heavy. Controller/service/module pattern. Tests service detection. |
+| `pallets/flask` | Python | Class-based views, blueprints, extension interfaces. Tests Python extraction. |
+| `spring-projects/spring-boot` | Java | Annotation-heavy. Interface + impl pattern at scale. |
+
+```rust
+/// Integration tests against real repos (run with `cargo test -- --ignored real_codebase`)
+/// These are #[ignore]'d by default — CI runs them on a schedule, not on every push.
+
+#[test]
+#[ignore]
+fn real_codebase_tokio() {
+    let dir = clone_or_cache("https://github.com/tokio-rs/tokio", "tokio");
+    let index = scan_directory(&dir, &ScanConfig::default()).unwrap();
+
+    // Smoke: tokio has hundreds of traits and impls
+    assert!(index.stats.interfaces > 50, "Expected 50+ traits, got {}", index.stats.interfaces);
+    assert!(index.stats.impls > 100, "Expected 100+ impls, got {}", index.stats.impls);
+
+    // No panics, no empty names, no invalid spans
+    for file in &index.files {
+        for iface in &file.interfaces {
+            assert!(!iface.name.is_empty(), "Empty interface name in {:?}", file.path);
+            assert!(iface.span.start < iface.span.end, "Invalid span for {}", iface.name);
+        }
+    }
+}
+
+#[test]
+#[ignore]
+fn real_codebase_deno_polyglot() {
+    let dir = clone_or_cache("https://github.com/denoland/deno", "deno");
+    let index = scan_directory(&dir, &ScanConfig::default()).unwrap();
+
+    // Must detect both Rust and TypeScript files
+    let languages: HashSet<_> = index.files.iter().map(|f| f.language).collect();
+    assert!(languages.contains(&Language::Rust), "Missing Rust files");
+    assert!(languages.contains(&Language::TypeScript), "Missing TypeScript files");
+}
+```
+
+### 17.5 Synthetic Adversarial Codebases
+
+5-10 fake codebases in `tests/fixtures/adversarial_repos/` that stress-test specific parsing edge cases real repos may not cover. Each is a minimal self-contained project.
+
+```
+tests/fixtures/adversarial_repos/
+├── 01_deeply_nested/           # 20+ levels of nested modules/classes/namespaces
+│   └── src/
+│       └── a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t/deep.ts
+├── 02_name_collisions/         # Same interface name in 50 different files
+│   └── src/
+│       ├── auth/UserService.ts
+│       ├── billing/UserService.ts
+│       └── ... (50 modules, all exporting UserService)
+├── 03_empty_files/             # Valid source files with zero content
+│   └── src/
+│       ├── empty.ts
+│       ├── empty.rs
+│       ├── empty.py
+│       └── empty.go
+├── 04_syntax_errors/           # Files with deliberate parse errors (build_status: Error)
+│   └── src/
+│       ├── missing_brace.ts    # Unclosed interface
+│       ├── bad_generic.rs      # Invalid lifetime syntax
+│       └── indent_error.py     # Mixed tabs/spaces
+├── 05_massive_file/            # Single 50K-line generated file with 500 interfaces
+│   └── src/
+│       └── generated.ts
+├── 06_circular_symlinks/       # Symlinks creating a cycle: a -> b -> c -> a
+│   └── src/
+│       ├── a -> b
+│       ├── b -> c
+│       └── c -> a
+├── 07_binary_files/            # .ts extension but binary content (images, compiled output)
+│   └── src/
+│       └── not_really_code.ts  # Contains PNG header bytes
+├── 08_unicode_identifiers/     # Interfaces/methods with CJK, emoji, RTL, homoglyphs
+│   └── src/
+│       ├── cjk_interface.ts    # interface ユーザー { 取得(): Promise<void> }
+│       ├── rtl_names.ts        # Right-to-left override characters in names
+│       └── homoglyphs.rs       # trait Usеr (Cyrillic е) vs trait User (Latin e)
+├── 09_huge_method_count/       # Single interface with 1000 methods
+│   └── src/
+│       └── god_interface.ts
+└── 10_mixed_encodings/         # UTF-8, UTF-16 BOM, Latin-1 in same project
+    └── src/
+        ├── utf8.ts
+        ├── utf16_bom.ts        # UTF-16 with BOM header
+        └── latin1.py           # ISO-8859-1 encoded
+```
+
+**Assertions per adversarial repo:**
+
+| Repo | Must not | Must |
+|------|----------|------|
+| `01_deeply_nested` | Panic or stack overflow | Parse all 20 levels, entities have correct fully-qualified paths |
+| `02_name_collisions` | Merge or deduplicate entities silently | Report all 50 distinct `UserService` with unique `file` paths |
+| `03_empty_files` | Error or crash | Produce valid `IrFile` with zero entities per file |
+| `04_syntax_errors` | Panic on parse error | Set `build_status: Error`, extract what tree-sitter can parse (partial recovery) |
+| `05_massive_file` | Run OOM or exceed 10s | Parse within 5s, produce all 500 interfaces |
+| `06_circular_symlinks` | Infinite loop | Detect cycle and skip with a warning log entry |
+| `07_binary_files` | Crash on invalid UTF-8 | Detect non-text content and skip with a warning |
+| `08_unicode_identifiers` | Corrupt or drop non-ASCII names | Preserve exact Unicode names in output |
+| `09_huge_method_count` | Truncate methods silently | Include all 1000 methods in IR |
+| `10_mixed_encodings` | Produce mojibake | Parse UTF-8 files, skip or warn on non-UTF-8 |
+
+```rust
+#[test]
+fn adversarial_repo_circular_symlinks() {
+    let dir = Path::new("tests/fixtures/adversarial_repos/06_circular_symlinks");
+    let index = scan_directory(dir, &ScanConfig::default()).unwrap();
+    // Must complete without hanging. File count should be 0 (all symlinks, no real files).
+    assert_eq!(index.stats.total_files, 0);
+}
+
+#[test]
+fn adversarial_repo_binary_files() {
+    let dir = Path::new("tests/fixtures/adversarial_repos/07_binary_files");
+    let index = scan_directory(dir, &ScanConfig::default()).unwrap();
+    // Binary file should be skipped, not parsed
+    assert_eq!(index.stats.total_files, 0);
+    assert!(index.stats.skipped_files > 0);
+}
+
+#[test]
+fn adversarial_repo_name_collisions() {
+    let dir = Path::new("tests/fixtures/adversarial_repos/02_name_collisions");
+    let index = scan_directory(dir, &ScanConfig::default()).unwrap();
+    let user_services: Vec<_> = index.files.iter()
+        .flat_map(|f| &f.services)
+        .filter(|s| s.name == "UserService")
+        .collect();
+    assert_eq!(user_services.len(), 50, "Each UserService must be distinct");
+    // All must have unique file paths
+    let paths: HashSet<_> = user_services.iter().map(|s| &s.file).collect();
+    assert_eq!(paths.len(), 50);
+}
+
+#[test]
+fn adversarial_repo_massive_file() {
+    let dir = Path::new("tests/fixtures/adversarial_repos/05_massive_file");
+    let start = std::time::Instant::now();
+    let index = scan_directory(dir, &ScanConfig::default()).unwrap();
+    assert!(start.elapsed().as_secs() < 10, "50K-line file must parse in under 10s");
+    assert_eq!(index.files[0].interfaces.len(), 500);
+}
+```
+
+### 17.6 Build Phase
+
+Add to **Phase 10** (Polish + Performance):
+- [ ] `input_validation.rs`: `validate_path`, `validate_string_input`, `validate_resource_id`, `validate_regex`, `parse_json_input` — all return structured `DomainScanError`
+- [ ] All CLI commands route inputs through validation before any processing
+- [ ] Adversarial test suite: all 8 test files in `tests/adversarial/`
+- [ ] Adversarial repo fixtures: all 10 synthetic repos generated and committed
+- [ ] Real codebase tests: `#[ignore]`'d tests for 5 real repos, CI scheduled job
+- [ ] `--dry-run` flag on all mutating commands (`match --apply`, `validate --fix`, `cache clear`)
+
+**Acceptance criteria:**
+- All adversarial tests pass
+- All 10 synthetic repos scan without panic, hang, or OOM
+- Real codebase tests pass on latest tagged versions of all 5 repos
+- `domain-scan scan ../../.ssh` returns `INVALID_PATH` error, not a stack trace
+- `domain-scan interfaces --name "User\0Repo"` returns `INVALID_INPUT` error
+- `--dry-run` on mutating commands shows what would happen without side effects

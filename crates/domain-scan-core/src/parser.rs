@@ -38,6 +38,9 @@ pub fn parse_file(path: &Path, language: Language) -> Result<(tree_sitter::Tree,
 fn get_tree_sitter_language(language: Language) -> Result<tree_sitter::Language, DomainScanError> {
     match language {
         Language::TypeScript => Ok(tree_sitter_typescript::language_typescript()),
+        Language::Rust => Ok(tree_sitter_rust::language()),
+        Language::Go => Ok(tree_sitter_go::language()),
+        Language::Python => Ok(tree_sitter_python::language()),
         other => Err(DomainScanError::UnsupportedLanguage(other)),
     }
 }
@@ -77,12 +80,36 @@ mod tests {
 
     #[test]
     fn test_parse_unsupported_language() {
-        let result = parse_source(b"fn main() {}", Language::Rust);
+        let result = parse_source(b"class Foo {}", Language::Java);
         assert!(result.is_err());
         let err = result.err();
         assert!(
-            matches!(err, Some(DomainScanError::UnsupportedLanguage(Language::Rust)))
+            matches!(err, Some(DomainScanError::UnsupportedLanguage(Language::Java)))
         );
+    }
+
+    #[test]
+    fn test_parse_rust_function() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"fn main() { let x = 1; }";
+        let tree = parse_source(source, Language::Rust)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_go_function() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"package main\nfunc main() {}";
+        let tree = parse_source(source, Language::Go)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_python_function() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"def hello():\n    pass";
+        let tree = parse_source(source, Language::Python)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
     }
 
     #[test]
