@@ -8,6 +8,7 @@
 #![deny(clippy::print_stderr)]
 
 pub mod build_status;
+pub mod cache;
 pub mod config;
 pub mod ir;
 pub mod lang;
@@ -46,6 +47,9 @@ pub enum DomainScanError {
 
     #[error("Config error: {0}")]
     Config(String),
+
+    #[error("Cache error: {0}")]
+    Cache(String),
 }
 
 /// Compute SHA-256 content hash for caching.

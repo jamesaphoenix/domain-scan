@@ -1,0 +1,533 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
+
+use crate::ir::IrFile;
+use crate::DomainScanError;
+
+// ---------------------------------------------------------------------------
+// CachedFile — wrapper stored in DashMap and persisted to disk
+// ---------------------------------------------------------------------------
+
+/// A cached parse result for a single file.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CachedFile {
+    /// The parsed IR for this file.
+    pub ir: IrFile,
+    /// The content hash (SHA-256 of path + content) that produced this IR.
+    pub hash: String,
+    /// Epoch millis when this entry was last accessed (for LRU eviction).
+    pub last_accessed_ms: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Cache — content-addressed, thread-safe, disk-persistent
+// ---------------------------------------------------------------------------
+
+/// Content-addressed cache backed by `DashMap` (in-memory) with optional disk
+/// persistence via bincode. LRU eviction when `max_size_bytes` is exceeded.
+pub struct Cache {
+    /// In-memory entries. Key = SHA-256(path + content).
+    entries: DashMap<String, CachedFile>,
+    /// Directory for on-disk `.bincode` files.
+    dir: PathBuf,
+    /// Maximum total disk size in bytes.
+    max_size_bytes: u64,
+}
+
+/// Statistics about the current cache state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheStats {
+    pub entries: usize,
+    pub disk_size_bytes: u64,
+    pub max_size_bytes: u64,
+}
+
+impl Cache {
+    /// Create a new cache. `max_size_mb` is the limit for on-disk storage.
+    /// The cache directory is created lazily on first write.
+    pub fn new(dir: PathBuf, max_size_mb: u64) -> Self {
+        Self {
+            entries: DashMap::new(),
+            dir,
+            max_size_bytes: max_size_mb.saturating_mul(1024 * 1024),
+        }
+    }
+
+    /// Look up a cached IR by its content hash.
+    /// Updates `last_accessed_ms` on hit.
+    pub fn get(&self, hash: &str) -> Option<IrFile> {
+        let mut entry = self.entries.get_mut(hash)?;
+        entry.last_accessed_ms = now_epoch_ms();
+        Some(entry.ir.clone())
+    }
+
+    /// Insert (or update) a cached IR entry. Also writes to disk.
+    pub fn insert(&self, hash: String, ir: IrFile) -> Result<(), DomainScanError> {
+        let cached = CachedFile {
+            ir,
+            hash: hash.clone(),
+            last_accessed_ms: now_epoch_ms(),
+        };
+
+        // Write to disk first so eviction can use real sizes
+        self.write_to_disk(&hash, &cached)?;
+
+        self.entries.insert(hash, cached);
+        Ok(())
+    }
+
+    /// Remove a single entry by hash (from memory and disk).
+    pub fn remove(&self, hash: &str) {
+        self.entries.remove(hash);
+        let path = self.disk_path(hash);
+        let _ = fs::remove_file(path);
+    }
+
+    /// Return the number of in-memory entries.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Return whether the cache has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Clear all entries from memory and disk.
+    pub fn clear(&self) -> Result<(), DomainScanError> {
+        self.entries.clear();
+        if self.dir.is_dir() {
+            fs::remove_dir_all(&self.dir).map_err(|e| {
+                DomainScanError::Cache(format!(
+                    "failed to remove cache dir {}: {e}",
+                    self.dir.display()
+                ))
+            })?;
+        }
+        Ok(())
+    }
+
+    /// Gather statistics about the cache.
+    pub fn stats(&self) -> CacheStats {
+        CacheStats {
+            entries: self.entries.len(),
+            disk_size_bytes: self.disk_size(),
+            max_size_bytes: self.max_size_bytes,
+        }
+    }
+
+    /// Load all `.bincode` files from the cache directory into memory.
+    pub fn load_from_disk(&self) -> Result<usize, DomainScanError> {
+        if !self.dir.is_dir() {
+            return Ok(0);
+        }
+
+        let mut loaded = 0usize;
+        let entries = fs::read_dir(&self.dir).map_err(|e| {
+            DomainScanError::Cache(format!(
+                "failed to read cache dir {}: {e}",
+                self.dir.display()
+            ))
+        })?;
+
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                DomainScanError::Cache(format!("failed to read cache dir entry: {e}"))
+            })?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("bincode") {
+                continue;
+            }
+
+            match self.read_from_disk_file(&path) {
+                Ok(cached) => {
+                    self.entries.insert(cached.hash.clone(), cached);
+                    loaded += 1;
+                }
+                Err(_) => {
+                    // Corrupted cache file — remove it silently
+                    let _ = fs::remove_file(&path);
+                }
+            }
+        }
+
+        Ok(loaded)
+    }
+
+    /// Remove cache entries whose source files no longer exist.
+    /// Returns the number of pruned entries.
+    pub fn prune(&self) -> usize {
+        let stale_keys: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|entry| !entry.value().ir.path.exists())
+            .map(|entry| entry.key().clone())
+            .collect();
+
+        let count = stale_keys.len();
+        for key in &stale_keys {
+            self.remove(key);
+        }
+        count
+    }
+
+    /// Evict least-recently-used entries until disk usage is within limits.
+    /// Returns the number of evicted entries.
+    pub fn evict(&self) -> Result<usize, DomainScanError> {
+        let mut evicted = 0usize;
+
+        loop {
+            let current_size = self.disk_size();
+            if current_size <= self.max_size_bytes {
+                break;
+            }
+
+            // Find the LRU entry
+            let lru_key = self
+                .entries
+                .iter()
+                .min_by_key(|entry| entry.value().last_accessed_ms)
+                .map(|entry| entry.key().clone());
+
+            match lru_key {
+                Some(key) => {
+                    self.remove(&key);
+                    evicted += 1;
+                }
+                None => break,
+            }
+        }
+
+        Ok(evicted)
+    }
+
+    // -----------------------------------------------------------------------
+    // Internal helpers
+    // -----------------------------------------------------------------------
+
+    /// On-disk path for a given hash key.
+    fn disk_path(&self, hash: &str) -> PathBuf {
+        self.dir.join(format!("{hash}.bincode"))
+    }
+
+    /// Write a single entry to disk as bincode.
+    fn write_to_disk(&self, hash: &str, cached: &CachedFile) -> Result<(), DomainScanError> {
+        fs::create_dir_all(&self.dir).map_err(|e| {
+            DomainScanError::Cache(format!(
+                "failed to create cache dir {}: {e}",
+                self.dir.display()
+            ))
+        })?;
+
+        let bytes = bincode::serialize(cached).map_err(|e| {
+            DomainScanError::Cache(format!("failed to serialize cache entry: {e}"))
+        })?;
+
+        let path = self.disk_path(hash);
+        fs::write(&path, &bytes).map_err(|e| {
+            DomainScanError::Cache(format!(
+                "failed to write cache file {}: {e}",
+                path.display()
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    /// Read a single `.bincode` file from disk.
+    fn read_from_disk_file(&self, path: &Path) -> Result<CachedFile, DomainScanError> {
+        let bytes = fs::read(path).map_err(|e| {
+            DomainScanError::Cache(format!(
+                "failed to read cache file {}: {e}",
+                path.display()
+            ))
+        })?;
+
+        bincode::deserialize(&bytes).map_err(|e| {
+            DomainScanError::Cache(format!(
+                "failed to deserialize cache file {}: {e}",
+                path.display()
+            ))
+        })
+    }
+
+    /// Compute the total size of on-disk cache files.
+    fn disk_size(&self) -> u64 {
+        if !self.dir.is_dir() {
+            return 0;
+        }
+
+        let entries = match fs::read_dir(&self.dir) {
+            Ok(e) => e,
+            Err(_) => return 0,
+        };
+
+        let mut total = 0u64;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("bincode") {
+                if let Ok(meta) = fs::metadata(&path) {
+                    total = total.saturating_add(meta.len());
+                }
+            }
+        }
+        total
+    }
+}
+
+/// Current time as epoch milliseconds. Falls back to 0 on error.
+fn now_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::{BuildStatus, Language};
+    use std::path::PathBuf;
+
+    fn make_ir(name: &str) -> IrFile {
+        IrFile::new(
+            PathBuf::from(format!("src/{name}.ts")),
+            Language::TypeScript,
+            format!("hash_{name}"),
+            BuildStatus::Built,
+        )
+    }
+
+    #[test]
+    fn test_cache_insert_and_get() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+        let ir = make_ir("foo");
+        let hash = "abc123".to_string();
+
+        let result = cache.insert(hash.clone(), ir.clone());
+        assert!(result.is_ok());
+
+        let got = cache.get(&hash);
+        assert!(got.is_some());
+        assert_eq!(got.as_ref().map(|g| &g.path), Some(&ir.path));
+    }
+
+    #[test]
+    fn test_cache_miss() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+        assert!(cache.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_cache_remove() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+        let ir = make_ir("bar");
+
+        let _ = cache.insert("key1".to_string(), ir);
+        assert_eq!(cache.len(), 1);
+
+        cache.remove("key1");
+        assert!(cache.is_empty());
+        assert!(cache.get("key1").is_none());
+    }
+
+    #[test]
+    fn test_cache_clear() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache_dir = dir.path().join("cache");
+        let cache = Cache::new(cache_dir.clone(), 100);
+
+        let _ = cache.insert("a".to_string(), make_ir("a"));
+        let _ = cache.insert("b".to_string(), make_ir("b"));
+        assert_eq!(cache.len(), 2);
+
+        let result = cache.clear();
+        assert!(result.is_ok());
+        assert!(cache.is_empty());
+        assert!(!cache_dir.is_dir());
+    }
+
+    #[test]
+    fn test_cache_disk_persistence() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache_dir = dir.path().join("cache");
+
+        // Write entries with first cache instance
+        {
+            let cache = Cache::new(cache_dir.clone(), 100);
+            let _ = cache.insert("h1".to_string(), make_ir("one"));
+            let _ = cache.insert("h2".to_string(), make_ir("two"));
+            assert_eq!(cache.len(), 2);
+        }
+
+        // Read them back with a fresh cache instance
+        {
+            let cache = Cache::new(cache_dir, 100);
+            assert!(cache.is_empty());
+
+            let loaded = cache.load_from_disk();
+            assert!(loaded.is_ok());
+            assert_eq!(loaded.ok(), Some(2));
+            assert_eq!(cache.len(), 2);
+
+            assert!(cache.get("h1").is_some());
+            assert!(cache.get("h2").is_some());
+        }
+    }
+
+    #[test]
+    fn test_cache_stats() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 50);
+        let _ = cache.insert("s1".to_string(), make_ir("stats"));
+
+        let stats = cache.stats();
+        assert_eq!(stats.entries, 1);
+        assert!(stats.disk_size_bytes > 0);
+        assert_eq!(stats.max_size_bytes, 50 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_cache_eviction() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        // Use a tiny max size (1 byte) to force eviction
+        let cache = Cache::new(dir.path().join("cache"), 0);
+
+        let _ = cache.insert("e1".to_string(), make_ir("evict1"));
+        let _ = cache.insert("e2".to_string(), make_ir("evict2"));
+
+        let evicted = cache.evict();
+        assert!(evicted.is_ok());
+        // With max_size 0, all entries should be evicted
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_prune_removes_stale() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        // Insert an entry pointing to a nonexistent file
+        let ir = IrFile::new(
+            PathBuf::from("/nonexistent/file.ts"),
+            Language::TypeScript,
+            "hash_gone".to_string(),
+            BuildStatus::Built,
+        );
+        let _ = cache.insert("gone".to_string(), ir);
+        assert_eq!(cache.len(), 1);
+
+        let pruned = cache.prune();
+        assert_eq!(pruned, 1);
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_load_from_empty_dir() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("no_such_dir"), 100);
+        let loaded = cache.load_from_disk();
+        assert!(loaded.is_ok());
+        assert_eq!(loaded.ok(), Some(0));
+    }
+
+    #[test]
+    fn test_cache_corrupted_file_removed() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache_dir = dir.path().join("cache");
+        fs::create_dir_all(&cache_dir).ok();
+
+        // Write a corrupted bincode file
+        let corrupt_path = cache_dir.join("corrupt.bincode");
+        fs::write(&corrupt_path, b"not valid bincode").ok();
+        assert!(corrupt_path.exists());
+
+        let cache = Cache::new(cache_dir, 100);
+        let loaded = cache.load_from_disk();
+        assert!(loaded.is_ok());
+        assert_eq!(loaded.ok(), Some(0));
+        // Corrupted file should have been removed
+        assert!(!corrupt_path.exists());
+    }
+
+    #[test]
+    fn test_cache_get_updates_last_accessed() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+        let _ = cache.insert("ts1".to_string(), make_ir("time"));
+
+        let before = cache
+            .entries
+            .get("ts1")
+            .map(|e| e.last_accessed_ms)
+            .unwrap_or(0);
+
+        // Small delay to ensure time moves forward
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        let _ = cache.get("ts1");
+
+        let after = cache
+            .entries
+            .get("ts1")
+            .map(|e| e.last_accessed_ms)
+            .unwrap_or(0);
+
+        assert!(after >= before);
+    }
+}
