@@ -212,6 +212,15 @@ enum Commands {
         #[arg(long)]
         include_scan: bool,
     },
+
+    /// Dump the JSON schema for a subcommand's input/output types
+    Schema {
+        /// Subcommand name (e.g. scan, interfaces, services, methods, schemas, impls, search, stats, validate, match, prompt)
+        command: Option<String>,
+        /// Dump all schemas in a single JSON object keyed by subcommand name
+        #[arg(long)]
+        all: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -422,6 +431,10 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             ref focus,
             include_scan,
         } => cmd_prompt(&cli, *agents, focus.clone(), *include_scan),
+        Commands::Schema {
+            ref command,
+            all,
+        } => cmd_schema(&cli, command.clone(), *all),
     }
 }
 
@@ -1318,6 +1331,43 @@ fn cmd_prompt(
 
     let prompt_text = prompt::generate_prompt(&scan_index, &config)?;
     emit(cli, &prompt_text)
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: schema
+// ---------------------------------------------------------------------------
+
+fn cmd_schema(
+    cli: &Cli,
+    command: Option<String>,
+    all: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use domain_scan_core::schema;
+
+    if all {
+        let all_schemas = schema::all_schemas();
+        let json = serde_json::to_string_pretty(&all_schemas)?;
+        emit(cli, &json)
+    } else if let Some(ref cmd_name) = command {
+        match schema::schema_for_command(cmd_name) {
+            Some(cmd_schema) => {
+                let json = serde_json::to_string_pretty(&cmd_schema)?;
+                emit(cli, &json)
+            }
+            None => {
+                let names = schema::all_command_names().join(", ");
+                Err(format!(
+                    "Unknown command: '{cmd_name}'. Valid commands: {names}"
+                )
+                .into())
+            }
+        }
+    } else {
+        // No command specified and --all not set: list available commands
+        let names = schema::all_command_names();
+        let json = serde_json::to_string_pretty(&names)?;
+        emit(cli, &json)
+    }
 }
 
 // ---------------------------------------------------------------------------

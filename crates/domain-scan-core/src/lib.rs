@@ -18,6 +18,7 @@ pub mod output;
 pub mod parser;
 pub mod prompt;
 pub mod query_engine;
+pub mod schema;
 pub mod resolver;
 pub mod validate;
 pub mod types;

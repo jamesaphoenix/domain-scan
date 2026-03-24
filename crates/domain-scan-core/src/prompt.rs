@@ -12,6 +12,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as FmtWrite;
 use std::path::{Path, PathBuf};
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::ir::{BuildStatus, IrFile, ScanIndex, ScanStats};
 use crate::DomainScanError;
 
@@ -20,7 +23,7 @@ use crate::DomainScanError;
 // ---------------------------------------------------------------------------
 
 /// Configuration for prompt generation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PromptConfig {
     /// Number of sub-agents to generate assignments for.
     pub agents: usize,

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 // ---------------------------------------------------------------------------
 
 /// Build status of the module this file belongs to.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum BuildStatus {
     /// Compiles/runs. Source code is truth.
@@ -45,7 +46,7 @@ impl std::fmt::Display for BuildStatus {
 }
 
 /// Confidence level for extracted entities.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Confidence {
     /// From a Built module. Tree-sitter extraction is authoritative.
@@ -62,7 +63,7 @@ pub enum Confidence {
 
 /// Supported programming languages.
 /// TypeScript also covers JavaScript (.js, .jsx, .mjs, .cjs).
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 pub enum Language {
     TypeScript,
     Python,
@@ -102,7 +103,7 @@ impl std::fmt::Display for Language {
 // ---------------------------------------------------------------------------
 
 /// Source location span.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default, JsonSchema)]
 pub struct Span {
     pub start_line: u32,
     pub start_col: u32,
@@ -112,7 +113,7 @@ pub struct Span {
 }
 
 /// Visibility modifier.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Visibility {
     Public,
@@ -131,7 +132,7 @@ pub enum Visibility {
 // ---------------------------------------------------------------------------
 
 /// An interface / trait / protocol definition.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct InterfaceDef {
     pub name: String,
     pub file: PathBuf,
@@ -145,7 +146,7 @@ pub struct InterfaceDef {
     pub decorators: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InterfaceKind {
     /// TS/Java/Go/C#/Kotlin/PHP
@@ -167,7 +168,7 @@ pub enum InterfaceKind {
 // ---------------------------------------------------------------------------
 
 /// A service definition (framework-specific).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ServiceDef {
     pub name: String,
     pub file: PathBuf,
@@ -179,7 +180,7 @@ pub struct ServiceDef {
     pub routes: Vec<RouteDef>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ServiceKind {
     HttpController,
@@ -199,7 +200,7 @@ pub enum ServiceKind {
 // ---------------------------------------------------------------------------
 
 /// A concrete method (with body).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct MethodDef {
     pub name: String,
     pub file: PathBuf,
@@ -218,7 +219,7 @@ pub struct MethodDef {
 }
 
 /// A method signature (no body, in interface/trait).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct MethodSignature {
     pub name: String,
     pub span: Span,
@@ -230,7 +231,7 @@ pub struct MethodSignature {
 }
 
 /// A standalone function (not a method).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct FunctionDef {
     pub name: String,
     pub file: PathBuf,
@@ -243,7 +244,7 @@ pub struct FunctionDef {
     pub decorators: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct Parameter {
     pub name: String,
     pub type_annotation: Option<String>,
@@ -258,7 +259,7 @@ pub struct Parameter {
 // ---------------------------------------------------------------------------
 
 /// A class / struct definition.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ClassDef {
     pub name: String,
     pub file: PathBuf,
@@ -274,7 +275,7 @@ pub struct ClassDef {
 }
 
 /// An implementation block (Rust impl, Go method set, Swift extension).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ImplDef {
     /// The type being implemented.
     pub target: String,
@@ -286,7 +287,7 @@ pub struct ImplDef {
 }
 
 /// A property / field definition.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct PropertyDef {
     pub name: String,
     pub type_annotation: Option<String>,
@@ -299,14 +300,14 @@ pub struct PropertyDef {
 // Route & HTTP
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct RouteDef {
     pub method: HttpMethod,
     pub path: String,
     pub handler: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
     Get,
@@ -322,7 +323,7 @@ pub enum HttpMethod {
 // Type Alias
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct TypeAlias {
     pub name: String,
     pub file: PathBuf,
@@ -337,7 +338,7 @@ pub struct TypeAlias {
 // Imports & Exports
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ImportDef {
     /// Module path.
     pub source: String,
@@ -346,7 +347,7 @@ pub struct ImportDef {
     pub span: Span,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ImportedSymbol {
     pub name: String,
     /// import { Foo as Bar } -> alias = Some("Bar")
@@ -355,7 +356,7 @@ pub struct ImportedSymbol {
     pub is_namespace: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ExportDef {
     pub name: String,
     pub kind: ExportKind,
@@ -364,7 +365,7 @@ pub struct ExportDef {
     pub span: Span,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExportKind {
     Named,
@@ -376,7 +377,7 @@ pub enum ExportKind {
 // Schema (Runtime type boundaries)
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct SchemaDef {
     pub name: String,
     pub file: PathBuf,
@@ -393,7 +394,7 @@ pub struct SchemaDef {
     pub visibility: Visibility,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SchemaKind {
     /// Zod, Effect Schema, io-ts, Yup
@@ -406,7 +407,7 @@ pub enum SchemaKind {
     DomainEvent,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct SchemaField {
     pub name: String,
     pub type_annotation: Option<String>,
@@ -420,7 +421,7 @@ pub struct SchemaField {
 // ---------------------------------------------------------------------------
 
 /// A parsed file's complete structural census.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct IrFile {
     pub path: PathBuf,
     pub language: Language,
@@ -470,7 +471,7 @@ impl IrFile {
 // ---------------------------------------------------------------------------
 
 /// Union type for any extracted entity. Used by Tauri IPC and MCP tools.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 #[serde(tag = "kind")]
 pub enum Entity {
     Interface(InterfaceDef),
@@ -483,7 +484,7 @@ pub enum Entity {
 }
 
 /// Lightweight summary for list views.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct EntitySummary {
     pub name: String,
     pub kind: EntityKind,
@@ -494,7 +495,7 @@ pub struct EntitySummary {
     pub confidence: Confidence,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum EntityKind {
     Interface,
@@ -512,7 +513,7 @@ pub enum EntityKind {
 // ---------------------------------------------------------------------------
 
 /// Filter parameters for querying the index.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 pub struct FilterParams {
     pub languages: Option<Vec<Language>>,
     /// Regex pattern.
@@ -523,7 +524,7 @@ pub struct FilterParams {
 }
 
 /// Scan configuration (parsed from .domain-scan.toml or CLI flags).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ScanConfig {
     pub root: PathBuf,
     /// Glob patterns for files to include.
@@ -557,7 +558,7 @@ impl ScanConfig {
 // ---------------------------------------------------------------------------
 
 /// Result of `domain-scan validate`.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ValidationResult {
     pub violations: Vec<Violation>,
     pub rules_checked: usize,
@@ -566,7 +567,7 @@ pub struct ValidationResult {
     pub fail_count: usize,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct Violation {
     pub rule: String,
     pub severity: ViolationSeverity,
@@ -576,7 +577,7 @@ pub struct Violation {
     pub line: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ViolationSeverity {
     Warn,
@@ -590,7 +591,7 @@ pub enum ViolationSeverity {
 /// The complete scan result.
 /// Lookup tables use indices (file_idx, entity_idx) into the `files` vec
 /// to avoid lifetime parameters. Query methods on ScanIndex resolve indices.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ScanIndex {
     pub root: PathBuf,
     pub version: String,
@@ -637,7 +638,7 @@ impl ScanIndex {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default, JsonSchema)]
 pub struct ScanStats {
     pub total_files: usize,
     pub files_by_language: HashMap<Language, usize>,
@@ -659,7 +660,7 @@ pub struct ScanStats {
 // ---------------------------------------------------------------------------
 
 /// Result of `domain-scan match`.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct MatchResult {
     pub matched: Vec<MatchedEntity>,
     pub unmatched: Vec<UnmatchedEntity>,
@@ -667,7 +668,7 @@ pub struct MatchResult {
     pub coverage_percent: f64,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct MatchedEntity {
     pub entity: EntitySummary,
     pub subsystem_id: String,
@@ -675,7 +676,7 @@ pub struct MatchedEntity {
     pub match_strategy: MatchStrategy,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MatchStrategy {
     /// Entity file falls under subsystem filePath.
@@ -686,7 +687,7 @@ pub enum MatchStrategy {
     NameMatch,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct UnmatchedEntity {
     pub entity: EntitySummary,
     /// Best-guess subsystem IDs (for LLM prompt).

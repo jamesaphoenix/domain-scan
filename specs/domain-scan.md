@@ -2690,13 +2690,13 @@ Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CL
 
 #### 6c.1 `domain-scan schema <command>` — Runtime Schema Introspection
 
-- [ ] New `schema` subcommand that dumps the full input/output JSON schema for any command
-- [ ] `domain-scan schema scan` → JSON schema of ScanIndex output + ScanConfig input
-- [ ] `domain-scan schema interfaces` → JSON schema of InterfaceDef[] output + filter params
-- [ ] `domain-scan schema services` / `methods` / `schemas` / `impls` / `search` / `stats` / `validate` / `match` / `prompt` — one schema per subcommand
-- [ ] `domain-scan schema --all` → dump all schemas in a single JSON object keyed by subcommand name
-- [ ] Schemas generated from Rust types at compile time via `schemars` crate (`#[derive(JsonSchema)]` on all IR types, FilterParams, ScanConfig, PromptConfig, ValidationResult, MatchResult)
-- [ ] Output includes: input params (with types, defaults, required/optional), output type, example values
+- [x] New `schema` subcommand that dumps the full input/output JSON schema for any command
+- [x] `domain-scan schema scan` → JSON schema of ScanIndex output + ScanConfig input
+- [x] `domain-scan schema interfaces` → JSON schema of InterfaceDef[] output + filter params
+- [x] `domain-scan schema services` / `methods` / `schemas` / `impls` / `search` / `stats` / `validate` / `match` / `prompt` — one schema per subcommand
+- [x] `domain-scan schema --all` → dump all schemas in a single JSON object keyed by subcommand name
+- [x] Schemas generated from Rust types at compile time via `schemars` crate (`#[derive(JsonSchema)]` on all IR types, FilterParams, ScanConfig, PromptConfig, ValidationResult, MatchResult)
+- [x] Output includes: input params (with types, defaults, required/optional), output type, example values
 
 **Implementation:** Add `#[derive(JsonSchema)]` to all public IR types. The `schema` subcommand calls `schemars::schema_for::<T>()` and serializes. No hand-written schemas.
 
