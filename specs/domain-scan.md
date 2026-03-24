@@ -3443,7 +3443,7 @@ Add to **Phase 10** (Polish + Performance):
 - [x] All CLI commands route inputs through validation before any processing
 - [x] Adversarial test suite: all 8 test files in `tests/adversarial/`
 - [x] Adversarial repo fixtures: all 10 synthetic repos generated and committed
-- [ ] Real codebase tests: `#[ignore]`'d tests for 5 real repos, CI scheduled job
+- [x] Real codebase tests: `#[ignore]`'d tests for 5 real repos, CI scheduled job
 - [ ] `--dry-run` flag on all mutating commands (`match --apply`, `validate --fix`, `cache clear`)
 
 **Acceptance criteria:**
