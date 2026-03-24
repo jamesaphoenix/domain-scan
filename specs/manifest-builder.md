@@ -586,191 +586,40 @@ These heuristics run first, then the LLM refines them (better names, better grou
 
 ---
 
-## 9. LLM Provider Abstraction (Ported from flowdiff)
+## 9. Claude Code / Codex Skill — The Actual Interface
 
-Port the proven LLM abstraction from flowdiff (`crates/flowdiff-core/src/llm/`). This gives us structured outputs across all three providers with zero hallucination in the response schema.
+There is no LLM provider abstraction to build. The user is already inside Claude Code or Codex — *that agent IS the LLM*. It reads the scan output, proposes the manifest JSON, and runs the CLI commands to apply it. All we need is:
 
-### 9.1 Provider Trait
+1. **CLI commands** that output scan data as JSON and accept manifest patches as JSON
+2. **A skill file** that teaches the agent how to use those commands and what a good manifest looks like
 
-```rust
-// In domain_scan_core::llm::mod.rs
-
-#[async_trait]
-pub trait LlmProvider: Send + Sync {
-    fn name(&self) -> &str;
-    fn model(&self) -> &str;
-    fn max_context_tokens(&self) -> usize;
-
-    async fn propose_domains(&self, request: &DomainProposalRequest) -> Result<DomainProposalResponse, LlmError>;
-    async fn map_entities(&self, request: &EntityMappingRequest) -> Result<EntityMappingResponse, LlmError>;
-    async fn infer_connections(&self, request: &ConnectionInferenceRequest) -> Result<ConnectionInferenceResponse, LlmError>;
-    async fn refine_manifest(&self, request: &ManifestRefinementRequest) -> Result<ManifestRefinementResponse, LlmError>;
-}
-```
-
-### 9.2 Structured Output Methods (Per Provider)
-
-Each provider enforces typed JSON responses using its native structured output mechanism:
-
-| Provider | Method | Schema Source |
-|----------|--------|---------------|
-| **Anthropic** | Tool use with forced `tool_choice: { type: "tool", name: "structured_output" }` | `schemars::schema_for::<T>()` passed as tool `input_schema` |
-| **OpenAI** | `response_format: { type: "json_schema", json_schema: { strict: true } }` | Flattened schema (inline `$ref`, add `additionalProperties: false`) |
-| **Gemini** | `generation_config: { response_mime_type: "application/json", response_schema }` | Flattened schema |
-
-All response types derive `#[derive(Serialize, Deserialize, JsonSchema)]` so schemas are generated at compile time via `schemars`.
-
-### 9.3 Response Types with JSON Schema
-
-```rust
-// All derive JsonSchema for automatic schema generation
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct DomainProposalResponse {
-    pub domains: Vec<DomainProposal>,
-    pub reasoning: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct EntityMappingResponse {
-    pub subsystems: Vec<SubsystemProposal>,
-    pub unmapped_entities: Vec<String>,  // entities LLM couldn't place
-    pub reasoning: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ConnectionInferenceResponse {
-    pub connections: Vec<Connection>,
-    pub reasoning: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct ManifestRefinementResponse {
-    pub splits: Vec<SubsystemSplit>,
-    pub merges: Vec<SubsystemMerge>,
-    pub renames: Vec<SubsystemRename>,
-    pub moved_entities: Vec<EntityMove>,
-    pub new_connections: Vec<Connection>,
-    pub removed_connections: Vec<String>,  // connection IDs
-    pub reasoning: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct SubsystemSplit {
-    pub source_id: String,
-    pub new_subsystems: Vec<SubsystemProposal>,
-    pub reason: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct SubsystemMerge {
-    pub subsystem_ids: Vec<String>,
-    pub merged_name: String,
-    pub merged_id: String,
-    pub reason: String,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct EntityMove {
-    pub entity_name: String,
-    pub from_subsystem: String,
-    pub to_subsystem: String,
-    pub reason: String,
-}
-```
-
-### 9.4 Provider Implementations
-
-#### Anthropic (`llm/anthropic.rs`)
-```rust
-pub struct AnthropicProvider {
-    api_key: String,
-    model: String,  // claude-sonnet-4-6, claude-opus-4-6, claude-haiku-4-5
-    client: reqwest::Client,
-}
-
-// Structured output via tool_choice forcing:
-// 1. Define tool "structured_output" with schema_for::<DomainProposalResponse>()
-// 2. Force tool_choice: { type: "tool", name: "structured_output" }
-// 3. Parse response.content[].tool_use.input as DomainProposalResponse
-```
-
-#### OpenAI (`llm/openai.rs`)
-```rust
-pub struct OpenAiProvider {
-    api_key: String,
-    model: String,  // gpt-4.1, gpt-4o, o3-mini
-    client: reqwest::Client,
-}
-
-// Structured output via response_format strict mode:
-// 1. Flatten schema (inline $ref, remove $schema, add additionalProperties: false)
-// 2. Set response_format: { type: "json_schema", json_schema: { strict: true, schema } }
-// 3. Handle reasoning models (o1/o3): no system message, prepend to user
-```
-
-#### Gemini (`llm/gemini.rs`)
-```rust
-pub struct GeminiProvider {
-    api_key: String,
-    model: String,  // gemini-2.5-flash, gemini-2.5-pro
-    client: reqwest::Client,
-}
-
-// Structured output via response_schema:
-// 1. Flatten schema
-// 2. Set generation_config.response_mime_type: "application/json"
-// 3. Set generation_config.response_schema: flattened_schema
-```
-
-### 9.5 API Key Resolution (Same as flowdiff)
-
-Priority order:
-1. `key_cmd` in `.domain-scan.toml` — e.g., `op read op://vault/domain-scan/api-key`
-2. `key` in `.domain-scan.toml` — direct (not recommended)
-3. `DOMAIN_SCAN_API_KEY` env var
-4. Provider-specific: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
-
-### 9.6 Configuration (`.domain-scan.toml`)
-
-```toml
-[llm]
-provider = "anthropic"                    # "anthropic" | "openai" | "gemini"
-model = "claude-sonnet-4-6"
-key_cmd = "op read op://octospark-services/domain-scan/api-key"
-
-[llm.refinement]
-enabled = true
-provider = "anthropic"                    # can differ from main provider
-model = "claude-opus-4-6"                # use a stronger model for refinement
-max_iterations = 2                        # max refinement loops
-```
-
-### 9.7 Security
-
-- `key_cmd` validated against shell metacharacters (`` ` `` `$` `|` `;` `&` `<` `>`)
-- API keys redacted from error messages (`sk-ant-...` → `[REDACTED_ANTHROPIC_KEY]`)
-- Max response body: 10 MB
-- Schema flattening removes `$schema` and `definitions` (no external resolution)
-
----
-
-## 10. CLI Skill for Vibe-Coding Manifest Refinement
-
-### 10.1 The Idea
-
-A user should be able to refine their tube map in realtime during a Claude Code or Codex session:
+### 9.1 How It Works
 
 ```
-user> the auth subsystem is too big, split JWT and OAuth into separate subsystems
-claude> [uses domain-scan-init skill]
-        Running: domain-scan init --step refine --instruction "split auth into auth-jwt and auth-oauth"
-        ...
-        Updated system.json: auth split into auth-jwt (4 interfaces) and auth-oauth (3 interfaces)
-        Tube map updated.
+user> build me a tube map for this repo
+
+claude> [reads skills/domain-scan-init.md]
+        1. Running: domain-scan scan --root . --output json --fields files.path,files.language,stats
+        2. [reads the scan output, sees 45 interfaces across src/auth/, src/billing/, src/media/...]
+        3. [proposes system.json based on directory structure and entity names]
+        4. Running: domain-scan init --apply-manifest system.json --dry-run
+        5. [shows the user: "5 domains, 12 subsystems, 18 connections — 87% coverage"]
+        6. User approves
+        7. Running: domain-scan init --apply-manifest system.json
+        Done. Open the Tauri app to see your tube map.
+
+user> the auth subsystem is too big, split JWT and OAuth
+
+claude> [reads current system.json]
+        [edits it: splits auth into auth-jwt and auth-oauth, moves entities]
+        Running: domain-scan match --manifest system.json --output json --fields coverage_percent,unmatched
+        Coverage: 87% → 89% (2 previously unmatched entities now mapped)
+        [writes updated system.json]
 ```
 
-### 10.2 Skill File: `skills/domain-scan-init.md`
+The agent doesn't call any LLM API. It *is* the LLM. It reads files, writes JSON, and runs CLI commands. The structured output is just "write valid system.json" — which Claude Code already does perfectly.
+
+### 9.2 Skill File: `skills/domain-scan-init.md`
 
 ```yaml
 ---
@@ -939,7 +788,7 @@ This is what makes the vibe-coding loop work — the user says "split auth" in C
 
 ---
 
-## 11. Build Phases (Updated)
+## 10. Build Phases (Updated)
 
 ### Phase G.1: Core Prompt Generation (unchanged)
 
@@ -951,49 +800,75 @@ This is what makes the vibe-coding loop work — the user says "split auth" in C
 
 ### Phase G.5: Tauri Wizard UI (unchanged)
 
-### Phase G.6: LLM Provider Abstraction
+### Phase G.6: Agent Skill Files + `--apply-manifest` CLI
 
-- [ ] Create `crates/domain-scan-core/src/llm/mod.rs` — `LlmProvider` trait, `LlmError`, key resolution, `create_provider()`
-- [ ] Create `crates/domain-scan-core/src/llm/schema.rs` — all request/response types with `#[derive(JsonSchema)]`
-- [ ] Create `crates/domain-scan-core/src/llm/anthropic.rs` — tool-use structured output
-- [ ] Create `crates/domain-scan-core/src/llm/openai.rs` — strict mode JSON schema, reasoning model handling
-- [ ] Create `crates/domain-scan-core/src/llm/gemini.rs` — response_schema structured output
-- [ ] Add `reqwest` and `tokio` dependencies to `domain-scan-core` Cargo.toml
-- [ ] Add `[llm]` section parsing to `config.rs`
-- [ ] Key resolution: `key_cmd` → `key` → `DOMAIN_SCAN_API_KEY` → provider-specific env var
-- [ ] Key command injection prevention (reject shell metacharacters)
-- [ ] API key redaction in error messages
-- [ ] Schema flattening for OpenAI/Gemini (inline `$ref`, `additionalProperties: false`)
-- [ ] Unit tests for each provider with mock HTTP (wiremock)
-- [ ] Live provider tests (gated behind `DOMAIN_SCAN_RUN_LIVE_LLM_TESTS=1`)
-
-### Phase G.7: Refinement Loop
-
-- [ ] Create `crates/domain-scan-core/src/llm/refinement.rs` — refinement request/response/apply
-- [ ] Implement `build_refinement_request(manifest, instruction, index)` — builds context for LLM
-- [ ] Implement `validate_refinement(response, manifest)` — check all references exist
-- [ ] Implement `apply_refinement(manifest, response)` — apply splits, merges, renames, moves
-- [ ] Add `--refine` flag to `domain-scan init` CLI command
-- [ ] `--instruction` flag for natural language input
-- [ ] `--dry-run` shows diff without writing
-- [ ] Multi-iteration support: `max_iterations` from config, re-refine if LLM says "needs more work"
-- [ ] Tests: split, merge, rename, move entity, add/remove connection
-
-### Phase G.8: Agent Skill Files
-
-- [ ] Create `skills/domain-scan-init.md` — build/refine manifest skill
-- [ ] Create `skills/domain-scan-tube-map.md` — view/interact with tube map data
+- [ ] Add `--apply-manifest <PATH>` flag to `domain-scan init` — validates and writes a system.json
+- [ ] Add `--dry-run` to `--apply-manifest` — shows coverage and validation without writing
+- [ ] `domain-scan schema init` — dumps the system.json JSON Schema so the agent can validate before writing
+- [ ] Create `skills/domain-scan-init.md` — full manifest building/refining skill with patch guidelines
+- [ ] Create `skills/domain-scan-tube-map.md` — tube map viewing/interaction skill
 - [ ] Update `skills/domain-scan-scan.md` — add init workflow reference
+- [ ] `domain-scan init --bootstrap` — generates a starter system.json from heuristic defaults (directory grouping + import clustering) that the agent then refines
+- [ ] Embed skill files in the CLI binary via `include_str!`
+- [ ] Add `domain-scan skills list|show|dump|install` subcommand
+- [ ] `--claude-code` flag installs skills to `~/.claude/skills/`
+- [ ] `--codex` flag installs skills to `~/.codex/skills/` (or equivalent)
+- [ ] Add "AGENT SKILLS" section to `--help` output pointing to `domain-scan skills`
 - [ ] Test: Claude Code session using skill files can create a manifest from scratch
-- [ ] Test: Claude Code session can refine an existing manifest with natural language
+- [ ] Test: Claude Code session can refine an existing manifest with natural language edits to system.json
 
-**Acceptance criteria (all phases):**
-- `domain-scan init --refine --instruction "split auth" --dry-run` shows proposed changes without writing
-- `domain-scan init --refine --instruction "merge media subsystems" --manifest system.json` produces valid manifest
-- Structured outputs work with all 3 providers (Anthropic tool-use, OpenAI strict mode, Gemini response_schema)
+**Acceptance criteria:**
+- `domain-scan init --bootstrap -o system.json` generates a usable starter manifest from scan data
+- `domain-scan init --apply-manifest system.json --dry-run` shows coverage % and validation errors
+- `domain-scan schema init` outputs the JSON Schema for system.json
 - A Claude Code user can say "build me a tube map for this repo" and the skill file guides the full workflow
-- A Claude Code user can say "the auth subsystem is too big, split it" and the manifest updates in one command
-- The skill file teaches the LLM what a good manifest patch looks like (naming conventions, grouping principles, connection semantics)
+- A Claude Code user can edit system.json directly and run `domain-scan match` to verify coverage
+- The skill file teaches the agent what a good manifest looks like (naming, grouping, connections)
+
+---
+
+---
+
+## 11. Skill Bootstrapping
+
+The skills should be auto-discoverable. When a user runs `domain-scan` for the first time, the agent should be able to find and install the skills.
+
+### 11.1 `domain-scan skills` CLI Command
+
+```bash
+# List available skills
+domain-scan skills list
+
+# Print a skill to stdout (agent reads it)
+domain-scan skills show domain-scan-init
+
+# Print all skills concatenated (for injecting into agent context)
+domain-scan skills dump
+
+# Install skills to Claude Code config
+domain-scan skills install --claude-code
+
+# Install skills to Codex config
+domain-scan skills install --codex
+```
+
+Under the hood, skills are embedded in the binary at compile time via `include_str!("../../skills/*.md")`. No external file dependencies.
+
+### 11.2 Auto-Discovery
+
+When the agent runs `domain-scan --help` or `domain-scan schema init`, the output includes:
+
+```
+AGENT SKILLS:
+  Run `domain-scan skills show domain-scan-init` to learn how to build a tube map manifest.
+  Run `domain-scan skills dump` to load all skills into your context.
+```
+
+This teaches any agent (Claude Code, Codex, Gemini CLI) how to bootstrap itself — it reads `--help`, sees the skills hint, loads the skill, and knows the full workflow.
+
+### 11.3 Skill Installation
+
+`domain-scan skills install --claude-code` writes the skill files to `~/.claude/skills/` (or whatever the configured skills directory is). This makes them available in every Claude Code session without manual setup.
 
 ---
 
