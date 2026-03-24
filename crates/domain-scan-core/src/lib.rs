@@ -12,6 +12,7 @@ pub mod ir;
 pub mod lang;
 pub mod output;
 pub mod parser;
+pub mod query_engine;
 pub mod types;
 pub mod walker;
 
@@ -38,6 +39,9 @@ pub enum DomainScanError {
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    #[error("Query compilation error: {0}")]
+    QueryCompile(String),
 }
 
 /// Compute SHA-256 content hash for caching.

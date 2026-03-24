@@ -2003,20 +2003,20 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - `IrFile.confidence` is correctly derived from `BuildStatus`
 
 ### Phase 2: Query Engine + First Language (TypeScript)
-- [ ] `query_engine.rs`: load .scm files via `include_str!`, lazy compile per language, dispatch captures to IR
-- [ ] `queries/typescript/interfaces.scm`
-- [ ] `queries/typescript/classes.scm`
-- [ ] `queries/typescript/methods.scm`
-- [ ] `queries/typescript/functions.scm`
-- [ ] `queries/typescript/types.scm`
-- [ ] `queries/typescript/imports.scm`
-- [ ] `queries/typescript/exports.scm`
-- [ ] `queries/typescript/services.scm` (Express, NestJS, tRPC)
-- [ ] `queries/typescript/schemas.scm` (Effect.ts Schema.Struct, Zod z.object, Drizzle pgTable)
-- [ ] Schema field sub-parsing logic (`fields_source` raw text -> `Vec<SchemaField>`)
-- [ ] 7+ fixture files in `tests/fixtures/typescript/` with expected JSON
-- [ ] Integration tests: each .scm file has at least one test parsing a real fixture
-- [ ] Property-based tests: IR roundtrip serialization (NOT source code generation)
+- [x] `query_engine.rs`: load .scm files via `include_str!`, lazy compile per language, dispatch captures to IR
+- [x] `queries/typescript/interfaces.scm`
+- [x] `queries/typescript/classes.scm`
+- [x] `queries/typescript/methods.scm`
+- [x] `queries/typescript/functions.scm`
+- [x] `queries/typescript/types.scm`
+- [x] `queries/typescript/imports.scm`
+- [x] `queries/typescript/exports.scm`
+- [x] `queries/typescript/services.scm` (Express, NestJS, tRPC)
+- [x] `queries/typescript/schemas.scm` (Effect.ts Schema.Struct, Zod z.object, Drizzle pgTable)
+- [x] Schema field sub-parsing logic (`fields_source` raw text -> `Vec<SchemaField>`)
+- [x] 7+ fixture files in `tests/fixtures/typescript/` with expected JSON
+- [x] Integration tests: each .scm file has at least one test parsing a real fixture
+- [x] Property-based tests: IR roundtrip serialization (NOT source code generation)
 
 **Acceptance criteria:**
 - Parse real TypeScript files and extract all interfaces, classes, methods, schemas
