@@ -2598,7 +2598,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 
 ### Phase 4b: Systems/Scripting Languages (C#, Swift, C++, PHP, Ruby)
 - [x] C# queries: interfaces, classes, methods, services (ASP.NET), imports
-- [ ] Swift queries: protocols, classes, methods, extensions, imports
+- [x] Swift queries: protocols, classes, methods, extensions, imports
 - [ ] C++ queries: classes, methods, functions, templates, virtual, imports
 - [ ] PHP queries: interfaces, classes, methods, traits, imports
 - [ ] Ruby queries: modules, classes, methods, imports

@@ -39,6 +39,11 @@ pub fn csharp_language() -> tree_sitter::Language {
     language_from_fn(tree_sitter_c_sharp::LANGUAGE)
 }
 
+/// Get tree-sitter Language for Swift (exposed for query compilation).
+pub fn swift_language() -> tree_sitter::Language {
+    tree_sitter_swift::language()
+}
+
 thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
 }
@@ -78,6 +83,7 @@ fn get_tree_sitter_language(language: Language) -> Result<tree_sitter::Language,
         Language::Kotlin => Ok(language_from_fn(tree_sitter_kotlin_ng::LANGUAGE)),
         Language::Scala => Ok(language_from_fn(tree_sitter_scala::LANGUAGE)),
         Language::CSharp => Ok(language_from_fn(tree_sitter_c_sharp::LANGUAGE)),
+        Language::Swift => Ok(tree_sitter_swift::language()),
         other => Err(DomainScanError::UnsupportedLanguage(other)),
     }
 }
@@ -143,6 +149,14 @@ mod tests {
     fn test_parse_scala() -> Result<(), Box<dyn std::error::Error>> {
         let source = b"object Main { def main(args: Array[String]): Unit = {} }";
         let tree = parse_source(source, Language::Scala)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_swift() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"protocol Foo { func bar() }";
+        let tree = parse_source(source, Language::Swift)?;
         assert!(!tree.root_node().has_error());
         Ok(())
     }

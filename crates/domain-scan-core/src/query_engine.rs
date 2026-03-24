@@ -92,6 +92,19 @@ const CS_SERVICES_SCM: &str = include_str!("../queries/csharp/services.scm");
 const CS_SCHEMAS_SCM: &str = include_str!("../queries/csharp/schemas.scm");
 
 // ---------------------------------------------------------------------------
+// Swift .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const SW_INTERFACES_SCM: &str = include_str!("../queries/swift/interfaces.scm");
+const SW_CLASSES_SCM: &str = include_str!("../queries/swift/classes.scm");
+#[allow(dead_code)]
+const SW_METHODS_SCM: &str = include_str!("../queries/swift/methods.scm");
+const SW_IMPORTS_SCM: &str = include_str!("../queries/swift/imports.scm");
+const SW_SERVICES_SCM: &str = include_str!("../queries/swift/services.scm");
+const SW_SCHEMAS_SCM: &str = include_str!("../queries/swift/schemas.scm");
+const SW_EXTENSIONS_SCM: &str = include_str!("../queries/swift/extensions.scm");
+
+// ---------------------------------------------------------------------------
 // Scala .scm sources (embedded at compile time)
 // ---------------------------------------------------------------------------
 
@@ -167,6 +180,14 @@ static CS_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static CS_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static CS_SERVICES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static CS_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// Swift query statics
+static SW_INTERFACES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static SW_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static SW_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static SW_SERVICES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static SW_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static SW_EXTENSIONS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 
 // Scala query statics
 static SC_TRAITS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
@@ -288,6 +309,21 @@ fn get_cs_query(
         .map_err(|e| DomainScanError::QueryCompile(e.clone()))
 }
 
+fn compile_sw_query(source: &str) -> Result<Query, String> {
+    let lang = crate::parser::swift_language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_sw_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_sw_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
 fn compile_sc_query(source: &str) -> Result<Query, String> {
     let lang = crate::parser::scala_language();
     Query::new(&lang, source).map_err(|e| format!("{e}"))
@@ -327,6 +363,7 @@ pub fn extract(
         Language::Kotlin => extract_kotlin(tree, source, path, &mut ir)?,
         Language::Scala => extract_scala(tree, source, path, &mut ir)?,
         Language::CSharp => extract_csharp(tree, source, path, &mut ir)?,
+        Language::Swift => extract_swift(tree, source, path, &mut ir)?,
         other => return Err(DomainScanError::UnsupportedLanguage(other)),
     }
 
@@ -5601,6 +5638,932 @@ fn extract_cs_attributes(node: Node<'_>, source: &[u8]) -> Vec<String> {
                             attributes.push(full);
                         } else {
                             attributes.push(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    attributes
+}
+
+// ---------------------------------------------------------------------------
+// Swift extraction
+// ---------------------------------------------------------------------------
+
+fn extract_swift(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    ir.interfaces = extract_sw_interfaces(tree, source, path)?;
+    ir.classes = extract_sw_classes(tree, source, path)?;
+    ir.functions = extract_sw_functions(tree, source, path)?;
+    ir.imports = extract_sw_imports(tree, source)?;
+    ir.services = extract_sw_services(tree, source, path)?;
+    ir.schemas = extract_sw_schemas(tree, source, path)?;
+    ir.implementations = extract_sw_extensions(tree, source, path)?;
+    Ok(())
+}
+
+// --- Swift Interfaces (protocols) ---
+
+fn extract_sw_interfaces(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_sw_query(&SW_INTERFACES_Q, SW_INTERFACES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut interfaces = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "interface.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "interface.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "interface.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = sw_visibility(def_node, source);
+        let generics = extract_sw_generics(def_node, source);
+        let extends = extract_sw_inheritance(def_node, source);
+
+        let methods = body_node
+            .map(|b| extract_sw_protocol_methods(b, source))
+            .unwrap_or_default();
+
+        let properties = body_node
+            .map(|b| extract_sw_protocol_properties(b, source))
+            .unwrap_or_default();
+
+        interfaces.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            methods,
+            properties,
+            language_kind: InterfaceKind::Protocol,
+            decorators: extract_sw_attributes(def_node, source),
+        });
+    }
+
+    Ok(interfaces)
+}
+
+fn extract_sw_protocol_methods(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "protocol_function_declaration" {
+            continue;
+        }
+
+        let name = sw_func_name(child, source);
+        let span = node_span(child);
+        let parameters = extract_sw_parameters(child, source);
+        let return_type = extract_sw_return_type(child, source);
+        let has_default = false; // Protocols don't have default implementations in the declaration
+
+        methods.push(MethodSignature {
+            name,
+            span,
+            is_async: false,
+            parameters,
+            return_type,
+            has_default,
+        });
+    }
+
+    methods
+}
+
+fn extract_sw_protocol_properties(body: Node<'_>, source: &[u8]) -> Vec<PropertyDef> {
+    let mut props = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "protocol_property_declaration" {
+            continue;
+        }
+
+        let name = sw_property_name(child, source);
+        let type_annotation = sw_type_annotation(child, source);
+
+        // Check for getter/setter specifiers
+        let is_readonly = !sw_has_setter_specifier(child);
+
+        props.push(PropertyDef {
+            name,
+            type_annotation,
+            is_optional: false,
+            is_readonly,
+            visibility: Visibility::Public,
+        });
+    }
+
+    props
+}
+
+// --- Swift Classes/Structs/Enums ---
+
+fn extract_sw_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_sw_query(&SW_CLASSES_Q, SW_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+
+        // Skip extensions — they're handled by extract_sw_extensions
+        if sw_is_extension(def_node, source) {
+            continue;
+        }
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = sw_visibility(def_node, source);
+        let generics = extract_sw_generics(def_node, source);
+        let decorators = extract_sw_attributes(def_node, source);
+        let is_abstract = false; // Swift has no abstract keyword
+
+        let inheritance = extract_sw_inheritance(def_node, source);
+        let extends = inheritance.first().cloned();
+        let implements = if inheritance.len() > 1 {
+            inheritance[1..].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        let body_node = find_capture(&m, query, "class.body");
+        let mut methods = body_node
+            .map(|b| extract_sw_class_methods(b, source, path))
+            .unwrap_or_default();
+        let properties = body_node
+            .map(|b| extract_sw_properties(b, source))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            implements,
+            methods,
+            properties,
+            is_abstract,
+            decorators,
+        });
+    }
+
+    Ok(classes)
+}
+
+fn extract_sw_class_methods(body: Node<'_>, source: &[u8], path: &Path) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        match child.kind() {
+            "function_declaration" => {
+                let name = sw_func_name(child, source);
+                let span = node_span(child);
+                let visibility = sw_member_visibility(child, source);
+                let is_static = sw_has_modifier(child, source, "static");
+                let is_async = false; // Swift async is handled at call site, not in AST modifiers for this grammar
+                let decorators = extract_sw_attributes(child, source);
+                let parameters = extract_sw_parameters(child, source);
+                let return_type = extract_sw_return_type(child, source);
+
+                methods.push(MethodDef {
+                    name,
+                    file: path.to_path_buf(),
+                    span,
+                    visibility,
+                    is_async,
+                    is_static,
+                    is_generator: false,
+                    parameters,
+                    return_type,
+                    decorators,
+                    owner: None,
+                    implements: None,
+                });
+            }
+            "init_declaration" => {
+                let span = node_span(child);
+                let visibility = sw_member_visibility(child, source);
+                let parameters = extract_sw_init_parameters(child, source);
+
+                methods.push(MethodDef {
+                    name: "init".to_string(),
+                    file: path.to_path_buf(),
+                    span,
+                    visibility,
+                    is_async: false,
+                    is_static: false,
+                    is_generator: false,
+                    parameters,
+                    return_type: None,
+                    decorators: Vec::new(),
+                    owner: None,
+                    implements: None,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    methods
+}
+
+fn extract_sw_properties(body: Node<'_>, source: &[u8]) -> Vec<PropertyDef> {
+    let mut props = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "property_declaration" {
+            continue;
+        }
+
+        let name = sw_property_name(child, source);
+        let type_annotation = sw_type_annotation(child, source);
+        let visibility = sw_member_visibility(child, source);
+        let is_readonly = sw_is_let_binding(child);
+
+        props.push(PropertyDef {
+            name,
+            type_annotation,
+            is_optional: false,
+            is_readonly,
+            visibility,
+        });
+    }
+
+    props
+}
+
+// --- Swift Functions (top-level) ---
+
+fn extract_sw_functions(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<FunctionDef>, DomainScanError> {
+    let mut functions = Vec::new();
+    let root = tree.root_node();
+    let mut cursor = root.walk();
+
+    for child in root.named_children(&mut cursor) {
+        if child.kind() != "function_declaration" {
+            continue;
+        }
+
+        let name = sw_func_name(child, source);
+        let span = node_span(child);
+        let visibility = sw_visibility(child, source);
+        let parameters = extract_sw_parameters(child, source);
+        let return_type = extract_sw_return_type(child, source);
+        let decorators = extract_sw_attributes(child, source);
+
+        functions.push(FunctionDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            is_async: false,
+            is_generator: false,
+            parameters,
+            return_type,
+            decorators,
+        });
+    }
+
+    Ok(functions)
+}
+
+// --- Swift Imports ---
+
+fn extract_sw_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_sw_query(&SW_IMPORTS_Q, SW_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+
+        let span = node_span(def_node);
+
+        // Extract module name from identifier child
+        let mut module_name = String::new();
+        let mut ic = def_node.walk();
+        for child in def_node.named_children(&mut ic) {
+            if child.kind() == "identifier" {
+                module_name = node_text(child, source);
+                break;
+            }
+        }
+
+        if module_name.is_empty() {
+            continue;
+        }
+
+        imports.push(ImportDef {
+            source: module_name,
+            symbols: Vec::new(),
+            is_wildcard: true, // Swift imports are always module-level
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- Swift Services ---
+
+fn extract_sw_services(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ServiceDef>, DomainScanError> {
+    let query = get_sw_query(&SW_SERVICES_Q, SW_SERVICES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut services = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "service.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "service.def") else {
+            continue;
+        };
+
+        // Skip extensions
+        if sw_is_extension(def_node, source) {
+            continue;
+        }
+
+        let name = node_text(name_node, source);
+        let decorators = extract_sw_attributes(def_node, source);
+
+        // Classify service by name suffix or attributes
+        let kind = classify_sw_service_kind(&name, &decorators);
+        let Some(kind) = kind else { continue; };
+
+        let span = node_span(def_node);
+        let body_node = find_capture(&m, query, "service.body");
+        let methods = body_node
+            .map(|b| extract_sw_class_methods(b, source, path))
+            .unwrap_or_default();
+
+        services.push(ServiceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind,
+            methods,
+            dependencies: Vec::new(),
+            decorators,
+            routes: Vec::new(),
+        });
+    }
+
+    Ok(services)
+}
+
+fn classify_sw_service_kind(name: &str, _attributes: &[String]) -> Option<ServiceKind> {
+    if name.ends_with("Service") {
+        Some(ServiceKind::Microservice)
+    } else if name.ends_with("Controller") {
+        Some(ServiceKind::HttpController)
+    } else if name.ends_with("Repository") {
+        Some(ServiceKind::Repository)
+    } else {
+        None
+    }
+}
+
+// --- Swift Schemas ---
+
+fn extract_sw_schemas(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<SchemaDef>, DomainScanError> {
+    let query = get_sw_query(&SW_SCHEMAS_Q, SW_SCHEMAS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut schemas = Vec::new();
+    let mut seen = HashSet::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "schema.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "schema.def") else {
+            continue;
+        };
+
+        // Skip extensions
+        if sw_is_extension(def_node, source) {
+            continue;
+        }
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        // Deduplicate
+        let key = (name.clone(), span.start_line);
+        if seen.contains(&key) {
+            continue;
+        }
+
+        // Check for Codable conformance
+        let inheritance = extract_sw_inheritance(def_node, source);
+        let is_codable = inheritance.iter().any(|t| t == "Codable" || t == "Decodable" || t == "Encodable");
+        if !is_codable {
+            continue;
+        }
+
+        let body_node = find_capture(&m, query, "schema.body");
+        let fields = body_node
+            .map(|b| extract_sw_schema_fields(b, source))
+            .unwrap_or_default();
+
+        let is_struct = sw_is_struct(def_node, source);
+        let kind = if is_struct {
+            SchemaKind::DataTransfer
+        } else {
+            SchemaKind::OrmModel
+        };
+
+        seen.insert(key);
+        schemas.push(SchemaDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind,
+            fields,
+            source_framework: "swift-codable".to_string(),
+            table_name: None,
+            derives: inheritance,
+            visibility: sw_visibility(def_node, source),
+        });
+    }
+
+    Ok(schemas)
+}
+
+fn extract_sw_schema_fields(body: Node<'_>, source: &[u8]) -> Vec<SchemaField> {
+    let mut fields = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "property_declaration" {
+            continue;
+        }
+
+        let name = sw_property_name(child, source);
+        let type_annotation = sw_type_annotation(child, source);
+        let is_optional = type_annotation
+            .as_ref()
+            .map(|t| t.ends_with('?'))
+            .unwrap_or(false);
+
+        fields.push(SchemaField {
+            name,
+            type_annotation,
+            is_optional,
+            is_primary_key: false,
+            constraints: Vec::new(),
+        });
+    }
+
+    fields
+}
+
+// --- Swift Extensions ---
+
+fn extract_sw_extensions(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ImplDef>, DomainScanError> {
+    let query = get_sw_query(&SW_EXTENSIONS_Q, SW_EXTENSIONS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut impls = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "extension.def") else {
+            continue;
+        };
+
+        // Only process extension declarations
+        if !sw_is_extension(def_node, source) {
+            continue;
+        }
+
+        let target = sw_extension_target(def_node, source);
+        if target.is_empty() {
+            continue;
+        }
+
+        let span = node_span(def_node);
+
+        // Check for protocol conformance in extension
+        let inheritance = extract_sw_inheritance(def_node, source);
+        let trait_name = inheritance.first().cloned();
+
+        // Extract methods from extension body
+        let body_node = sw_extension_body(def_node);
+        let methods = body_node
+            .map(|b| extract_sw_class_methods(b, source, path))
+            .unwrap_or_default();
+
+        impls.push(ImplDef {
+            target,
+            trait_name,
+            file: path.to_path_buf(),
+            span,
+            methods,
+        });
+    }
+
+    Ok(impls)
+}
+
+// --- Swift Helpers ---
+
+/// Check if a class_declaration is actually an extension
+fn sw_is_extension(node: Node<'_>, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "extension" {
+            return true;
+        }
+        // Stop after first keyword (class, struct, enum, extension)
+        let text = node_text(child, source);
+        if text == "class" || text == "struct" || text == "enum" {
+            return false;
+        }
+    }
+    false
+}
+
+/// Check if a class_declaration is a struct
+fn sw_is_struct(node: Node<'_>, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        let text = node_text(child, source);
+        if text == "struct" {
+            return true;
+        }
+        if text == "class" || text == "enum" || text == "extension" {
+            return false;
+        }
+    }
+    false
+}
+
+/// Get the target type name of an extension
+fn sw_extension_target(node: Node<'_>, source: &[u8]) -> String {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "user_type" {
+            // user_type > type_identifier
+            let mut uc = child.walk();
+            for uchild in child.named_children(&mut uc) {
+                if uchild.kind() == "type_identifier" {
+                    return node_text(uchild, source);
+                }
+            }
+            return node_text(child, source);
+        }
+    }
+    String::new()
+}
+
+/// Get the body node of an extension (class_body)
+#[allow(clippy::manual_find)]
+fn sw_extension_body(node: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "class_body" {
+            return Some(child);
+        }
+    }
+    None
+}
+
+/// Extract the function name from a function_declaration
+fn sw_func_name(node: Node<'_>, source: &[u8]) -> String {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "simple_identifier" {
+            return node_text(child, source);
+        }
+    }
+    String::new()
+}
+
+/// Extract property name from a property_declaration
+fn sw_property_name(node: Node<'_>, source: &[u8]) -> String {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "pattern" {
+            let mut pc = child.walk();
+            for pchild in child.named_children(&mut pc) {
+                if pchild.kind() == "simple_identifier" {
+                    return node_text(pchild, source);
+                }
+            }
+        }
+    }
+    String::new()
+}
+
+/// Check if a property uses `let` (readonly) vs `var`
+fn sw_is_let_binding(node: Node<'_>) -> bool {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "value_binding_pattern" {
+            let mut vc = child.walk();
+            for vchild in child.children(&mut vc) {
+                if vchild.kind() == "let" {
+                    return true;
+                }
+                if vchild.kind() == "var" {
+                    return false;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Extract type annotation from a node (looks for type_annotation child)
+fn sw_type_annotation(node: Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "type_annotation" {
+            // type_annotation contains `:` and a type node
+            let mut tc = child.walk();
+            for tchild in child.named_children(&mut tc) {
+                if tchild.kind() != ":" {
+                    return Some(node_text(tchild, source));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Check if a protocol_property_declaration has a set specifier
+fn sw_has_setter_specifier(node: Node<'_>) -> bool {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "protocol_property_requirements" {
+            let mut rc = child.walk();
+            for rchild in child.named_children(&mut rc) {
+                if rchild.kind() == "setter_specifier" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Get visibility from modifiers
+fn sw_visibility(node: Node<'_>, source: &[u8]) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.named_children(&mut mc) {
+                if modifier.kind() == "visibility_modifier" {
+                    let mut vc = modifier.walk();
+                    for vchild in modifier.children(&mut vc) {
+                        let text = node_text(vchild, source);
+                        match text.as_str() {
+                            "public" | "open" => return Visibility::Public,
+                            "private" => return Visibility::Private,
+                            "fileprivate" => return Visibility::Private,
+                            "internal" => return Visibility::Internal,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Swift default: internal
+    Visibility::Internal
+}
+
+/// Get member visibility (same as sw_visibility but defaults to internal)
+fn sw_member_visibility(node: Node<'_>, source: &[u8]) -> Visibility {
+    sw_visibility(node, source)
+}
+
+/// Check if a node has a specific modifier
+fn sw_has_modifier(node: Node<'_>, source: &[u8], modifier_name: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.named_children(&mut mc) {
+                if modifier.kind() == "property_modifier" || modifier.kind() == "member_modifier" {
+                    let mut vc = modifier.walk();
+                    for vchild in modifier.children(&mut vc) {
+                        if node_text(vchild, source) == modifier_name {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Extract generics (type parameters) from a node
+fn extract_sw_generics(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut generics = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "type_parameters" {
+            let mut tc = child.walk();
+            for tp in child.named_children(&mut tc) {
+                if tp.kind() == "type_parameter" {
+                    generics.push(node_text(tp, source));
+                }
+            }
+        }
+    }
+
+    generics
+}
+
+/// Extract inheritance list (protocols/superclass) from a class/protocol declaration
+fn extract_sw_inheritance(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut types = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "inheritance_specifier" {
+            let mut ic = child.walk();
+            for ichild in child.named_children(&mut ic) {
+                if ichild.kind() == "user_type" {
+                    // user_type > type_identifier
+                    let mut uc = ichild.walk();
+                    for uchild in ichild.named_children(&mut uc) {
+                        if uchild.kind() == "type_identifier" {
+                            types.push(node_text(uchild, source));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    types
+}
+
+/// Extract parameters from a function declaration
+fn extract_sw_parameters(node: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "parameter" {
+            let name = sw_param_name(child, source);
+            let type_annotation = sw_param_type(child, source);
+
+            parameters.push(Parameter {
+                name,
+                type_annotation,
+                is_optional: false,
+                has_default: false,
+                is_rest: false,
+            });
+        }
+    }
+
+    parameters
+}
+
+/// Extract parameters from an init declaration
+fn extract_sw_init_parameters(node: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "parameter" {
+            let name = sw_param_name(child, source);
+            let type_annotation = sw_param_type(child, source);
+
+            parameters.push(Parameter {
+                name,
+                type_annotation,
+                is_optional: false,
+                has_default: false,
+                is_rest: false,
+            });
+        }
+    }
+
+    parameters
+}
+
+/// Get parameter name (first simple_identifier)
+fn sw_param_name(node: Node<'_>, source: &[u8]) -> String {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "simple_identifier" {
+            return node_text(child, source);
+        }
+    }
+    String::new()
+}
+
+/// Get parameter type from type annotation
+fn sw_param_type(node: Node<'_>, source: &[u8]) -> Option<String> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "user_type" || child.kind() == "optional_type" || child.kind() == "array_type" || child.kind() == "dictionary_type" {
+            return Some(node_text(child, source));
+        }
+    }
+    None
+}
+
+/// Extract return type from a function declaration (after ->)
+fn extract_sw_return_type(node: Node<'_>, source: &[u8]) -> Option<String> {
+    let mut found_arrow = false;
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        if child.kind() == "->" {
+            found_arrow = true;
+            continue;
+        }
+        if found_arrow && child.kind() != "function_body" {
+            return Some(node_text(child, source));
+        }
+    }
+
+    None
+}
+
+/// Extract attributes (decorators) from a node's modifiers
+fn extract_sw_attributes(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut attributes = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "modifiers" {
+            let mut mc = child.walk();
+            for modifier in child.named_children(&mut mc) {
+                if modifier.kind() == "attribute" {
+                    // attribute contains @ and user_type
+                    let mut ac = modifier.walk();
+                    for achild in modifier.named_children(&mut ac) {
+                        if achild.kind() == "user_type" {
+                            let mut uc = achild.walk();
+                            for uchild in achild.named_children(&mut uc) {
+                                if uchild.kind() == "type_identifier" {
+                                    attributes.push(node_text(uchild, source));
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
