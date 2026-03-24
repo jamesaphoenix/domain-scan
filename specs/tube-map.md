@@ -596,6 +596,43 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 - [ ] Test: corrupt cache directory → scan falls back to no-cache mode, completes successfully
 - [ ] Test: extremely long subsystem names (500+ chars) → node renders without overflow, tooltip shows full name
 
+#### F.10 Manifest Builder — CLI Integration Tests
+
+- [ ] Test: `domain-scan init --bootstrap -o system.json` on fixture codebase → produces valid JSON matching system.json schema
+- [ ] Test: `domain-scan init --bootstrap` on empty directory → produces manifest with zero subsystems, no crash
+- [ ] Test: `domain-scan init --apply-manifest system.json --dry-run` → shows coverage %, validation errors, writes nothing
+- [ ] Test: `domain-scan init --apply-manifest system.json` → writes file, re-reading it produces identical SystemManifest
+- [ ] Test: `domain-scan init --apply-manifest malformed.json` → structured error, no file written
+- [ ] Test: `domain-scan schema init` → output is valid JSON Schema, validates octospark system.json
+- [ ] Test: bootstrap → match pipeline: `--bootstrap` output piped to `match --manifest` → coverage > 0%
+- [ ] Test: heuristic domains match directory structure (each top-level src/ dir → one domain candidate)
+- [ ] Test: heuristic connections inferred from cross-directory imports (if A imports B → connection exists)
+- [ ] Test: bootstrap on domain-scan's own codebase → produces ≥2 domains (core, cli at minimum)
+
+#### F.11 Manifest Builder — Tauri Wizard Integration Tests
+
+- [ ] Test: wizard step 1 (domains) renders directory census from scan data
+- [ ] Test: editing a domain name in wizard → reflected in generated manifest
+- [ ] Test: wizard step 2 (subsystems) shows entities grouped by domain
+- [ ] Test: moving an entity between subsystems in wizard → manifest updated correctly
+- [ ] Test: wizard step 3 (connections) shows inferred connections from imports
+- [ ] Test: wizard step 4 (review) → "Save Manifest" writes file and switches to tube map view
+- [ ] Test: wizard → save → tube map renders matching stations/edges from saved manifest
+- [ ] Test: re-opening wizard after saving → loads existing manifest, not blank slate
+
+#### F.12 Skill Bootstrapping Tests
+
+- [ ] Test: `domain-scan skills list` → outputs all embedded skill names
+- [ ] Test: `domain-scan skills show domain-scan-init` → outputs valid YAML frontmatter + markdown
+- [ ] Test: `domain-scan skills dump` → concatenated output contains all skills
+- [ ] Test: `domain-scan skills install --claude-code` → creates `.claude/skills/domain-scan-init.md` in project root
+- [ ] Test: `domain-scan skills install --codex` → creates `.codex/skills/domain-scan-init.md` in project root
+- [ ] Test: `domain-scan skills install --dir custom/path/` → creates `custom/path/domain-scan-init.md`
+- [ ] Test: running install twice → files overwritten, no duplicates
+- [ ] Test: `.gitignore` updated to include skills directory after install
+- [ ] Test: `domain-scan --help` output contains "AGENT SKILLS" section
+- [ ] Test: installed skill file content matches embedded `skills show` output exactly
+
 **Acceptance criteria:**
 - All E2E tests pass in CI (GitHub Actions with `cargo tauri build` + Playwright)
 - Zero crashes across all adversarial fixtures
@@ -605,6 +642,9 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 - All keyboard shortcuts work only in their correct tab context
 - Error states show structured messages (never blank screens or stack traces)
 - Data integrity: entity counts, coverage %, and match results are all consistent
+- Bootstrap produces valid manifests for any scanned codebase
+- Wizard round-trips correctly (save → reload → identical manifest)
+- Skill files install to project directory, not global config
 
 ---
 
