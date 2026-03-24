@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "crates/domain-scan-core",
+    "crates/domain-scan-cli",
+    "crates/domain-scan-mcp",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[profile.test]
+opt-level = 1

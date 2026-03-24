@@ -1,0 +1,67 @@
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
+#![deny(clippy::todo)]
+#![deny(clippy::unimplemented)]
+#![deny(clippy::dbg_macro)]
+#![deny(clippy::print_stdout)]
+#![deny(clippy::print_stderr)]
+
+pub mod build_status;
+pub mod ir;
+pub mod lang;
+pub mod output;
+pub mod parser;
+pub mod types;
+pub mod walker;
+
+use sha2::{Digest, Sha256};
+use thiserror::Error;
+
+/// Crate-wide error type. All errors via `thiserror`, all propagation via `?`.
+#[derive(Debug, Error)]
+pub enum DomainScanError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Walk error: {0}")]
+    Walk(String),
+
+    #[error("Tree-sitter language error: {0}")]
+    TreeSitterLanguage(String),
+
+    #[error("Parse failed for: {0}")]
+    ParseFailed(std::path::PathBuf),
+
+    #[error("Language not supported: {0:?}")]
+    UnsupportedLanguage(ir::Language),
+
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+}
+
+/// Compute SHA-256 content hash for caching.
+pub fn content_hash(content: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    format!("{:x}", hasher.finalize())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_content_hash_deterministic() {
+        let a = content_hash(b"hello world");
+        let b = content_hash(b"hello world");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn test_content_hash_differs() {
+        let a = content_hash(b"hello");
+        let b = content_hash(b"world");
+        assert_ne!(a, b);
+    }
+}

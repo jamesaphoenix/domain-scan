@@ -1,0 +1,7 @@
+[package]
+name = "domain-scan-cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+domain-scan-core = { path = "../domain-scan-core" }
