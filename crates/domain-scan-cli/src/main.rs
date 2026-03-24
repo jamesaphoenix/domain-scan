@@ -189,6 +189,9 @@ enum Commands {
         /// Treat warnings as failures (exit 1 on WARN)
         #[arg(long)]
         strict: bool,
+        /// Validate domain-scan's own codebase (uses crate root as --root)
+        #[arg(long)]
+        self_test: bool,
     },
 
     /// Match entities to subsystems defined in a manifest
@@ -661,9 +664,31 @@ fn validate_config_path(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    // Early validation for common mistakes
-    validate_root_path(&cli)?;
+/// Find the workspace root by searching upward for a Cargo.toml containing [workspace].
+fn find_workspace_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let mut dir = std::env::current_dir()?;
+    loop {
+        let cargo_toml = dir.join("Cargo.toml");
+        if cargo_toml.is_file() {
+            let content = std::fs::read_to_string(&cargo_toml)?;
+            if content.contains("[workspace]") {
+                return Ok(dir);
+            }
+        }
+        if !dir.pop() {
+            return Err("Could not find workspace root (Cargo.toml with [workspace]). \
+                        Run from within the domain-scan repository."
+                .into());
+        }
+    }
+}
+
+fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // Early validation for common mistakes (skip for self-test which overrides root)
+    let is_self_test = matches!(&cli.command, Commands::Validate { self_test, .. } if *self_test);
+    if !is_self_test {
+        validate_root_path(&cli)?;
+    }
     validate_config_path(&cli)?;
 
     let format: OutputFormat = resolve_format(cli.output);
@@ -817,7 +842,15 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             ref rules,
             manifest: ref manifest_path,
             strict,
+            self_test,
         } => {
+            if *self_test {
+                // Find the workspace root by looking for Cargo.toml with [workspace]
+                cli.root = find_workspace_root()?;
+                // Self-test scans only Rust production source
+                cli.languages = vec![LanguageArg::Rust];
+                return cmd_validate_self_test(&cli, format);
+            }
             if let Some(ref json) = cli.json_input {
                 check_json_conflicts(&[
                     ("--rules", rules.is_some()),
@@ -1856,6 +1889,97 @@ fn cmd_stats(cli: &Cli, format: OutputFormat) -> Result<(), Box<dyn std::error::
 // ---------------------------------------------------------------------------
 // Subcommand: validate
 // ---------------------------------------------------------------------------
+
+/// Self-test: scan domain-scan's own Rust source (excluding test fixtures) and validate.
+fn cmd_validate_self_test(
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config = build_scan_config(cli);
+    // Exclude test fixtures and benches — scan only production source
+    config.exclude = vec![
+        "**/tests/fixtures/**".to_string(),
+        "**/tests/adversarial/**".to_string(),
+    ];
+
+    if !cli.quiet {
+        eprintln!(
+            "Self-test: scanning domain-scan source at {}",
+            config.root.display()
+        );
+    }
+
+    let start = std::time::Instant::now();
+    let walked = walker::walk_directory(&config)?;
+
+    if walked.is_empty() {
+        return Err("Self-test: no Rust source files found. \
+                     Are you in the domain-scan repository?"
+            .into());
+    }
+
+    if !cli.quiet {
+        eprintln!("Found {} Rust source files", walked.len());
+    }
+
+    let mut ir_files = Vec::new();
+    for walked_file in &walked {
+        let build_status = config
+            .build_status_override
+            .unwrap_or(BuildStatus::Built);
+        let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)?;
+        let ir = query_engine::extract(
+            &tree,
+            &source,
+            &walked_file.path,
+            walked_file.language,
+            build_status,
+        )?;
+        ir_files.push(ir);
+    }
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+    let scan_index = index::build_index(config.root, ir_files, duration_ms, 0, 0);
+    let result = validate::validate(&scan_index);
+
+    match format {
+        OutputFormat::Json => {
+            emit_json(cli, &result, format, Some("validate"))?;
+        }
+        OutputFormat::Table | OutputFormat::Compact => {
+            let mut out = String::new();
+            out.push_str(&format!(
+                "Self-test: {} files scanned in {}ms\n",
+                scan_index.stats.total_files, duration_ms,
+            ));
+            out.push_str(&format!(
+                "Validation: {} rules checked, {} pass, {} warn, {} fail\n\n",
+                result.rules_checked, result.pass_count, result.warn_count, result.fail_count,
+            ));
+            if result.violations.is_empty() {
+                out.push_str("All checks passed.\n");
+            } else {
+                for v in &result.violations {
+                    let severity = match v.severity {
+                        domain_scan_core::ir::ViolationSeverity::Warn => "WARN",
+                        domain_scan_core::ir::ViolationSeverity::Fail => "FAIL",
+                    };
+                    let entity = v.entity_name.as_deref().unwrap_or("-");
+                    out.push_str(&format!(
+                        "[{severity}] {}: {entity} - {}\n",
+                        v.rule, v.message,
+                    ));
+                }
+            }
+            emit(cli, &out)?;
+        }
+    }
+
+    if result.fail_count > 0 {
+        process::exit(1);
+    }
+    Ok(())
+}
 
 fn cmd_validate(
     cli: &Cli,

@@ -2836,7 +2836,7 @@ metadata:
 - [x] Benchmark: CLI startup (target: <100ms for <50 files)
 - [x] `--verbose` output with timing details
 - [x] Error messages for common mistakes (wrong path, no files found, bad config)
-- [ ] `domain-scan validate --self-test` (validates domain-scan's own codebase)
+- [x] `domain-scan validate --self-test` (validates domain-scan's own codebase)
 - [ ] README.md with usage examples
 - [ ] rayon parallelism tuning
 - [ ] No deadlocks under parallel load
