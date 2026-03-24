@@ -8,6 +8,7 @@ use domain_scan_core::ir::{
 use domain_scan_core::output::{self, OutputFormat};
 use domain_scan_core::prompt::PromptConfig;
 use domain_scan_core::{cache, index, manifest, parser, prompt, query_engine, validate, walker};
+use serde::Deserialize;
 
 mod tui;
 
@@ -70,6 +71,13 @@ struct Cli {
     /// Example: --fields name,methods or --fields files.path,stats
     #[arg(long, global = true)]
     fields: Option<String>,
+
+    /// Raw JSON payload input that replaces individual filter flags for the subcommand.
+    /// Structure mirrors `domain-scan schema <command>` output.
+    /// Mutually exclusive with individual filter flags (--name, --kind, etc.).
+    /// Max size: 1 MB. Max nesting depth: 32.
+    #[arg(long = "json", global = true)]
+    json_input: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -149,8 +157,8 @@ enum Commands {
 
     /// Search across all entity names
     Search {
-        /// Search query (substring match)
-        query: String,
+        /// Search query (substring match). Required unless --json is used.
+        query: Option<String>,
         /// Filter by entity kind (comma-separated)
         #[arg(long)]
         kind: Option<String>,
@@ -177,9 +185,9 @@ enum Commands {
 
     /// Match entities to subsystems defined in a manifest
     Match {
-        /// Path to the manifest file (e.g. system.json)
+        /// Path to the manifest file (e.g. system.json). Required unless --json is used.
         #[arg(long)]
-        manifest: PathBuf,
+        manifest: Option<PathBuf>,
         /// Show only unmatched entities
         #[arg(long)]
         unmatched_only: bool,
@@ -315,6 +323,191 @@ impl From<LanguageArg> for Language {
 }
 
 // ---------------------------------------------------------------------------
+// JSON input types for --json flag (one per subcommand)
+// ---------------------------------------------------------------------------
+
+const MAX_JSON_INPUT_SIZE: usize = 1_048_576; // 1 MB
+const MAX_JSON_DEPTH: usize = 32;
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InterfacesJsonInput {
+    name: Option<String>,
+    #[serde(default)]
+    show_methods: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ServicesJsonInput {
+    kind: Option<String>,
+    name: Option<String>,
+    #[serde(default)]
+    show_routes: bool,
+    #[serde(default)]
+    show_deps: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MethodsJsonInput {
+    owner: Option<String>,
+    #[serde(default, rename = "async")]
+    is_async: bool,
+    visibility: Option<String>,
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SchemasJsonInput {
+    framework: Option<String>,
+    kind: Option<String>,
+    name: Option<String>,
+    #[serde(default)]
+    show_fields: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ImplsJsonInput {
+    name: Option<String>,
+    #[serde(default)]
+    all: bool,
+    #[serde(default)]
+    show_methods: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SearchJsonInput {
+    query: String,
+    kind: Option<String>,
+    /// Accepted for schema completeness; search regex support is handled upstream.
+    #[serde(default)]
+    #[allow(dead_code)]
+    regex: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ValidateJsonInput {
+    rules: Option<String>,
+    manifest: Option<String>,
+    #[serde(default)]
+    strict: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MatchJsonInput {
+    manifest: String,
+    #[serde(default)]
+    unmatched_only: bool,
+    /// Accepted for schema completeness; prompt generation not yet wired through --json.
+    #[serde(default)]
+    #[allow(dead_code)]
+    prompt_unmatched: bool,
+    /// Accepted for schema completeness; agent count not yet wired through --json.
+    #[serde(default = "default_match_agents")]
+    #[allow(dead_code)]
+    agents: usize,
+    /// Accepted for schema completeness; write-back not yet wired through --json.
+    #[serde(default)]
+    #[allow(dead_code)]
+    write_back: bool,
+    /// Accepted for schema completeness; dry-run not yet wired through --json.
+    #[serde(default)]
+    #[allow(dead_code)]
+    dry_run: bool,
+    #[serde(default)]
+    fail_on_unmatched: bool,
+}
+
+fn default_match_agents() -> usize {
+    3
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PromptJsonInput {
+    #[serde(default = "default_prompt_agents")]
+    agents: usize,
+    focus: Option<String>,
+    #[serde(default)]
+    include_scan: bool,
+}
+
+fn default_prompt_agents() -> usize {
+    5
+}
+
+// ---------------------------------------------------------------------------
+// JSON input validation & parsing
+// ---------------------------------------------------------------------------
+
+fn json_depth(value: &serde_json::Value) -> usize {
+    match value {
+        serde_json::Value::Array(arr) => 1 + arr.iter().map(json_depth).max().unwrap_or(0),
+        serde_json::Value::Object(obj) => 1 + obj.values().map(json_depth).max().unwrap_or(0),
+        _ => 1,
+    }
+}
+
+fn parse_json_input<T: serde::de::DeserializeOwned>(
+    raw: &str,
+    command: &str,
+) -> Result<T, Box<dyn std::error::Error>> {
+    if raw.len() > MAX_JSON_INPUT_SIZE {
+        return Err(format!(
+            "JSON input is {} bytes, exceeds maximum of {} bytes (1 MB)",
+            raw.len(),
+            MAX_JSON_INPUT_SIZE,
+        )
+        .into());
+    }
+
+    let value: serde_json::Value = serde_json::from_str(raw).map_err(|e| {
+        format!(
+            "Invalid JSON syntax: {e}. Run `domain-scan schema {command}` to see expected structure"
+        )
+    })?;
+
+    let depth = json_depth(&value);
+    if depth > MAX_JSON_DEPTH {
+        return Err(format!(
+            "JSON nesting depth is {depth}, exceeds maximum of {MAX_JSON_DEPTH}"
+        )
+        .into());
+    }
+
+    serde_json::from_value(value).map_err(|e| {
+        format!(
+            "JSON does not match expected schema for '{command}': {e}. \
+             Run `domain-scan schema {command}` to see the expected input structure"
+        )
+        .into()
+    })
+}
+
+fn check_json_conflicts(flags: &[(&str, bool)]) -> Result<(), Box<dyn std::error::Error>> {
+    let conflicts: Vec<&str> = flags
+        .iter()
+        .filter(|(_, set)| *set)
+        .map(|(name, _)| *name)
+        .collect();
+    if !conflicts.is_empty() {
+        return Err(format!(
+            "--json and individual filter flags are mutually exclusive. \
+             Remove these flags when using --json: {}",
+            conflicts.join(", ")
+        )
+        .into());
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -367,7 +560,14 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Interfaces { ref name, show_methods } => {
-            if cli.interactive {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("--name", name.is_some()),
+                    ("--show-methods", *show_methods),
+                ])?;
+                let input: InterfacesJsonInput = parse_json_input(json, "interfaces")?;
+                cmd_interfaces(&cli, format, input.name, input.show_methods)
+            } else if cli.interactive {
                 let scan_index = run_scan(&cli)?;
                 run_tui(tui::TuiApp::from_interfaces(&scan_index))
             } else {
@@ -380,7 +580,23 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             show_routes,
             show_deps,
         } => {
-            if cli.interactive {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("--kind", kind.is_some()),
+                    ("--name", name.is_some()),
+                    ("--show-routes", *show_routes),
+                    ("--show-deps", *show_deps),
+                ])?;
+                let input: ServicesJsonInput = parse_json_input(json, "services")?;
+                cmd_services(
+                    &cli,
+                    format,
+                    input.kind,
+                    input.name,
+                    input.show_routes,
+                    input.show_deps,
+                )
+            } else if cli.interactive {
                 let scan_index = run_scan(&cli)?;
                 run_tui(tui::TuiApp::from_services(&scan_index))
             } else {
@@ -392,14 +608,50 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             is_async,
             ref visibility,
             ref name,
-        } => cmd_methods(&cli, format, owner.clone(), *is_async, visibility.clone(), name.clone()),
+        } => {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("--owner", owner.is_some()),
+                    ("--async", *is_async),
+                    ("--visibility", visibility.is_some()),
+                    ("--name", name.is_some()),
+                ])?;
+                let input: MethodsJsonInput = parse_json_input(json, "methods")?;
+                cmd_methods(
+                    &cli,
+                    format,
+                    input.owner,
+                    input.is_async,
+                    input.visibility,
+                    input.name,
+                )
+            } else {
+                cmd_methods(&cli, format, owner.clone(), *is_async, visibility.clone(), name.clone())
+            }
+        }
         Commands::Schemas {
             ref framework,
             ref kind,
             ref name,
             show_fields,
         } => {
-            if cli.interactive {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("--framework", framework.is_some()),
+                    ("--kind", kind.is_some()),
+                    ("--name", name.is_some()),
+                    ("--show-fields", *show_fields),
+                ])?;
+                let input: SchemasJsonInput = parse_json_input(json, "schemas")?;
+                cmd_schemas(
+                    &cli,
+                    format,
+                    input.framework,
+                    input.kind,
+                    input.name,
+                    input.show_fields,
+                )
+            } else if cli.interactive {
                 let scan_index = run_scan(&cli)?;
                 run_tui(tui::TuiApp::from_schemas(&scan_index))
             } else {
@@ -410,18 +662,62 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             ref name,
             all,
             show_methods,
-        } => cmd_impls(&cli, format, name.clone(), *all, *show_methods),
+        } => {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("name (positional)", name.is_some()),
+                    ("--all", *all),
+                    ("--show-methods", *show_methods),
+                ])?;
+                let input: ImplsJsonInput = parse_json_input(json, "impls")?;
+                cmd_impls(&cli, format, input.name, input.all, input.show_methods)
+            } else {
+                cmd_impls(&cli, format, name.clone(), *all, *show_methods)
+            }
+        }
         Commands::Search {
             ref query,
             ref kind,
             regex: _,
-        } => cmd_search(&cli, format, query.clone(), kind.clone()),
+        } => {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("query (positional)", query.is_some()),
+                    ("--kind", kind.is_some()),
+                ])?;
+                let input: SearchJsonInput = parse_json_input(json, "search")?;
+                cmd_search(&cli, format, input.query, input.kind)
+            } else {
+                let q = query.clone().ok_or(
+                    "Search requires a query. Provide it as a positional argument or via --json",
+                )?;
+                cmd_search(&cli, format, q, kind.clone())
+            }
+        }
         Commands::Stats => cmd_stats(&cli, format),
         Commands::Validate {
             ref rules,
             manifest: ref manifest_path,
             strict,
-        } => cmd_validate(&cli, format, rules.clone(), manifest_path.clone(), *strict),
+        } => {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("--rules", rules.is_some()),
+                    ("--manifest", manifest_path.is_some()),
+                    ("--strict", *strict),
+                ])?;
+                let input: ValidateJsonInput = parse_json_input(json, "validate")?;
+                cmd_validate(
+                    &cli,
+                    format,
+                    input.rules,
+                    input.manifest.map(PathBuf::from),
+                    input.strict,
+                )
+            } else {
+                cmd_validate(&cli, format, rules.clone(), manifest_path.clone(), *strict)
+            }
+        }
         Commands::Match {
             manifest: ref manifest_path,
             unmatched_only,
@@ -430,13 +726,46 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             write_back: _,
             dry_run: _,
             fail_on_unmatched,
-        } => cmd_match(&cli, format, manifest_path.clone(), *unmatched_only, *fail_on_unmatched),
+        } => {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("--manifest", manifest_path.is_some()),
+                    ("--unmatched-only", *unmatched_only),
+                    ("--fail-on-unmatched", *fail_on_unmatched),
+                ])?;
+                let input: MatchJsonInput = parse_json_input(json, "match")?;
+                cmd_match(
+                    &cli,
+                    format,
+                    PathBuf::from(input.manifest),
+                    input.unmatched_only,
+                    input.fail_on_unmatched,
+                )
+            } else {
+                let path = manifest_path.clone().ok_or(
+                    "Match requires --manifest <path>. Provide it as a flag or via --json",
+                )?;
+                cmd_match(&cli, format, path, *unmatched_only, *fail_on_unmatched)
+            }
+        }
         Commands::Cache { ref action } => cmd_cache(&cli, action),
         Commands::Prompt {
             agents,
             ref focus,
             include_scan,
-        } => cmd_prompt(&cli, *agents, focus.clone(), *include_scan),
+        } => {
+            if let Some(ref json) = cli.json_input {
+                check_json_conflicts(&[
+                    ("--agents", *agents != 5),
+                    ("--focus", focus.is_some()),
+                    ("--include-scan", *include_scan),
+                ])?;
+                let input: PromptJsonInput = parse_json_input(json, "prompt")?;
+                cmd_prompt(&cli, input.agents, input.focus, input.include_scan)
+            } else {
+                cmd_prompt(&cli, *agents, focus.clone(), *include_scan)
+            }
+        }
         Commands::Schema {
             ref command,
             all,

@@ -2714,12 +2714,12 @@ Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CL
 
 #### 6c.3 `--json` — Raw JSON Payload Input
 
-- [ ] Global `--json <JSON>` flag that accepts a full filter/config payload as raw JSON
-- [ ] Replaces individual flags when used: `domain-scan interfaces --json '{"name": ".*Repo", "languages": ["typescript"], "show_methods": true}'`
-- [ ] JSON structure mirrors the subcommand's input schema (same types as `domain-scan schema <cmd>` outputs)
-- [ ] `--json` and individual filter flags are mutually exclusive (clap conflict group)
-- [ ] JSON validated against the schema with structured errors on mismatch
-- [ ] Max input size: 1 MB. Max depth: 32. (Reuse Section 17 input hardening)
+- [x] Global `--json <JSON>` flag that accepts a full filter/config payload as raw JSON
+- [x] Replaces individual flags when used: `domain-scan interfaces --json '{"name": ".*Repo", "languages": ["typescript"], "show_methods": true}'`
+- [x] JSON structure mirrors the subcommand's input schema (same types as `domain-scan schema <cmd>` outputs)
+- [x] `--json` and individual filter flags are mutually exclusive (clap conflict group)
+- [x] JSON validated against the schema with structured errors on mismatch
+- [x] Max input size: 1 MB. Max depth: 32. (Reuse Section 17 input hardening)
 
 #### 6c.4 NDJSON Pagination — `--page-all`
 

@@ -484,6 +484,260 @@ fn test_fields_stats_single_field() {
 }
 
 // ---------------------------------------------------------------------------
+// --json flag (raw JSON payload input)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_json_interfaces_name_filter() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--json")
+        .arg(r#"{"name": "Event"}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+    assert_eq!(arr.len(), 1, "only EventHandler should match");
+    assert_eq!(arr[0]["name"], "EventHandler");
+}
+
+#[test]
+fn test_json_interfaces_show_methods() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--json")
+        .arg(r#"{"name": "Event", "show_methods": true}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+    assert_eq!(arr.len(), 1);
+}
+
+#[test]
+fn test_json_interfaces_empty_object() {
+    // An empty JSON object should return all interfaces (no filter)
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--json")
+        .arg("{}")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+    assert!(arr.len() >= 3, "should have at least 3 interfaces");
+}
+
+#[test]
+fn test_json_search() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("search")
+        .arg("--json")
+        .arg(r#"{"query": "Handler"}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+    assert!(arr.len() >= 3, "should find at least 3 Handler entities");
+}
+
+#[test]
+fn test_json_search_with_kind() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("search")
+        .arg("--json")
+        .arg(r#"{"query": "Handler", "kind": "interface"}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+    assert_eq!(arr.len(), 1, "only EventHandler interface should match");
+}
+
+#[test]
+fn test_json_conflict_with_flags() {
+    // --json and --name should conflict
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--name")
+        .arg("Event")
+        .arg("--json")
+        .arg(r#"{"name": "Repo"}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success(), "should fail with conflict");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("mutually exclusive"),
+        "should mention mutually exclusive, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_json_invalid_syntax() {
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--json")
+        .arg("{not valid json}")
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success(), "should fail with invalid JSON");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Invalid JSON syntax") || stderr.contains("JSON_PARSE_ERROR") || stderr.contains("CLI_ERROR"),
+        "should report JSON parse error, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_json_unknown_field_rejected() {
+    // deny_unknown_fields should reject unknown fields
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--json")
+        .arg(r#"{"name": "Event", "nonexistent_field": true}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success(), "should fail with unknown field");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("nonexistent_field") || stderr.contains("schema"),
+        "should mention the unknown field or schema mismatch, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_json_wrong_type() {
+    // show_methods should be bool, not string
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--json")
+        .arg(r#"{"show_methods": "yes"}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success(), "should fail with type mismatch");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("schema") || stderr.contains("interfaces"),
+        "should mention schema mismatch, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_json_depth_limit() {
+    // Create deeply nested JSON (depth > 32)
+    let mut json = String::from(r#"{"name": "#);
+    for _ in 0..35 {
+        json.push_str(r#"{"nested": "#);
+    }
+    json.push_str(r#""deep""#);
+    for _ in 0..35 {
+        json.push('}');
+    }
+    json.push('}');
+
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("interfaces")
+        .arg("--json")
+        .arg(&json)
+        .output()
+        .expect("command should run");
+
+    assert!(!output.status.success(), "should fail with depth limit");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("depth") || stderr.contains("nesting"),
+        "should mention depth limit, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_json_works_with_table_output() {
+    // --json should work with any output format, not just JSON output
+    let output = base_cmd()
+        .arg("--output")
+        .arg("table")
+        .arg("interfaces")
+        .arg("--json")
+        .arg(r#"{"name": "Event"}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("EventHandler"), "table output should contain EventHandler");
+}
+
+#[test]
+fn test_json_works_with_fields() {
+    // --json and --fields should be compatible (--json is input, --fields is output)
+    let output = base_cmd()
+        .arg("--output")
+        .arg("json")
+        .arg("--fields")
+        .arg("name")
+        .arg("interfaces")
+        .arg("--json")
+        .arg(r#"{"name": "Event"}"#)
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    let arr = json.as_array().expect("should be array");
+    assert_eq!(arr.len(), 1);
+    let obj = arr[0].as_object().expect("should be object");
+    assert_eq!(obj.len(), 1, "should have exactly 1 field after masking");
+    assert!(obj.contains_key("name"));
+}
+
+// ---------------------------------------------------------------------------
 // Snapshot tests for output format stability
 // ---------------------------------------------------------------------------
 
