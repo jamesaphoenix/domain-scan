@@ -1,0 +1,123 @@
+---
+source: crates/domain-scan-core/src/prompt.rs
+expression: prompt
+---
+# Codebase Structural Analysis: project
+
+## Context
+
+You are analyzing the codebase at `/project`.
+A structural scan has identified the following high-level statistics:
+
+- **Total files:** 4
+- **Interfaces:** 4
+- **Services:** 0
+- **Classes:** 0
+- **Functions:** 0
+- **Methods:** 0
+- **Schemas:** 0
+- **Type aliases:** 0
+- **Implementations:** 0
+- **Languages:** TypeScript (4)
+
+## Your Task
+
+Launch 5 sub-agents to perform a deep structural analysis of this codebase.
+Each sub-agent should scan its assigned partition and report back with findings.
+
+## Sub-Agent Assignments
+
+### Agent 1: Interface & Type Boundary Audit
+**Scope:** All interface, trait, and protocol definitions
+**Directory focus:** src
+**Instructions:**
+1. Read every interface/trait/protocol definition in your assigned files
+2. For each, document: name, methods, extends chain, which types implement it
+3. Flag any interface with >10 methods (possible god-interface)
+4. Flag any interface with 0 implementors (dead interface)
+5. Flag any partial implementations (missing methods)
+
+**Files to scan (built — structural output is authoritative):**
+
+> These files are from modules that compile successfully. The domain-scan structural output is authoritative. Verify the scan results are complete, catalog any patterns the static analysis missed (e.g. runtime registration, reflection-based DI), and document the architecture.
+
+```
+/project/src/built.ts
+```
+
+**Files to scan (unbuilt/error/rebuild — best-effort extraction):**
+
+> These files are from modules that do not currently build. The domain-scan output is a best-effort extraction. Read each file carefully. Infer the intended interfaces and services from naming patterns, comments, and partial definitions. Flag conflicts between old and new definitions. Mark your findings with confidence levels.
+
+```
+/project/src/error.ts
+/project/src/rebuild.ts
+/project/src/unbuilt.ts
+```
+
+### Agent 2: Service Architecture Map
+**Scope:** All service definitions (HTTP controllers, gRPC, workers, etc.)
+**Instructions:**
+1. Read every service definition in your assigned files
+2. Document: name, kind, routes/methods, injected dependencies
+3. Map the dependency graph between services
+4. Flag any service with >15 methods (possible god-service)
+5. Flag circular dependencies between services
+
+**Files to scan:** (no files matched this category)
+
+### Agent 3: Method Signature Census
+**Scope:** All public methods across classes, structs, impls
+**Instructions:**
+1. Catalog all public methods with their full signatures
+2. Group by owner (class/struct/trait)
+3. Flag inconsistent naming patterns (mixedCase vs snake_case in same module)
+4. Flag methods with >5 parameters (possible refactor target)
+5. Identify async/sync boundary crossings
+
+**Files to scan:** (no files matched this category)
+
+### Agent 4: Cross-Cutting Concerns
+**Scope:** Decorators, middleware, annotations, generic constraints
+**Instructions:**
+1. Catalog all decorator/annotation usage patterns
+2. Identify middleware chains and their ordering
+3. Map generic type parameter constraints
+4. Flag unused or redundant decorators
+5. Document the authentication/authorization boundary
+
+**Files to scan:** (no files matched this category)
+
+### Agent 5: Implementation Completeness Audit
+**Scope:** All impl blocks, class implementations, protocol conformances
+**Instructions:**
+1. For every interface/trait, verify all implementations are complete
+2. Document which methods have default implementations vs required
+3. Flag orphaned implementations (impl for trait that doesn't exist)
+4. Map the inheritance/composition hierarchy
+5. Identify diamond inheritance or conflicting implementations
+
+**Files to scan:** (no files matched this category)
+
+## Synthesis
+
+After all agents complete, synthesize findings into:
+
+1. **Architecture Map**: Top-level service → interface → implementation hierarchy
+2. **Health Report**: God objects, dead interfaces, incomplete impls, circular deps
+3. **API Surface**: Complete public API with method signatures
+4. **Recommendations**: Specific refactoring suggestions with file:line references
+
+## Output Format
+
+Each agent should return structured JSON:
+```json
+{
+  "agent_id": 1,
+  "scope": "Interface & Type Boundary Audit",
+  "findings": [...],
+  "flags": [...],
+  "file_count": 42,
+  "entity_count": 156
+}
+```

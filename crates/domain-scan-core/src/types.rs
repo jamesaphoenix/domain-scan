@@ -13,4 +13,5 @@ pub use crate::ir::{
     SchemaDef, SchemaField, SchemaKind, ServiceDef, ServiceKind, Span, TypeAlias,
     UnmatchedEntity, ValidationResult, Violation, ViolationSeverity, Visibility,
 };
+pub use crate::prompt::PromptConfig;
 pub use crate::DomainScanError;

@@ -6,7 +6,8 @@ use domain_scan_core::ir::{
     BuildStatus, EntityKind, FilterParams, Language, ScanConfig,
 };
 use domain_scan_core::output::{self, OutputFormat};
-use domain_scan_core::{cache, index, manifest, parser, query_engine, validate, walker};
+use domain_scan_core::prompt::PromptConfig;
+use domain_scan_core::{cache, index, manifest, parser, prompt, query_engine, validate, walker};
 
 mod tui;
 
@@ -417,13 +418,10 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         } => cmd_match(&cli, format, manifest_path.clone(), *unmatched_only, *fail_on_unmatched),
         Commands::Cache { ref action } => cmd_cache(&cli, action),
         Commands::Prompt {
-            agents: _,
-            focus: _,
-            include_scan: _,
-        } => {
-            eprintln!("Prompt generation is not yet implemented (Phase 7).");
-            Ok(())
-        }
+            agents,
+            ref focus,
+            include_scan,
+        } => cmd_prompt(&cli, *agents, focus.clone(), *include_scan),
     }
 }
 
@@ -1298,6 +1296,28 @@ fn cmd_cache(cli: &Cli, action: &CacheAction) -> Result<(), Box<dyn std::error::
         }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: prompt
+// ---------------------------------------------------------------------------
+
+fn cmd_prompt(
+    cli: &Cli,
+    agents: usize,
+    focus: Option<String>,
+    include_scan: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let scan_index = run_scan(cli)?;
+
+    let config = PromptConfig {
+        agents,
+        focus,
+        include_scan,
+    };
+
+    let prompt_text = prompt::generate_prompt(&scan_index, &config)?;
+    emit(cli, &prompt_text)
 }
 
 // ---------------------------------------------------------------------------

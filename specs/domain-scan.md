@@ -2669,14 +2669,14 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - `--interactive` and `--output` are mutually exclusive (clap conflict)
 
 ### Phase 7: LLM Prompt Generation
-- [ ] `prompt` subcommand (already scaffolded in Phase 6a)
-- [ ] Partitioning strategy: auto-select by file count (< 500: by concern, 500-2000: hybrid, > 2000: by directory)
-- [ ] Build-status-aware partitioning: different agent instructions for Built vs Unbuilt/Rebuild files
-- [ ] Prompt template with embedded scan results
-- [ ] Agent assignment generation with file lists from index
-- [ ] `--focus` flag: filter scan index by entity name regex, scope prompt to matching files only
-- [ ] `--include-scan` flag for full scan embedding
-- [ ] Snapshot tests (insta) for prompt output
+- [x] `prompt` subcommand (already scaffolded in Phase 6a)
+- [x] Partitioning strategy: auto-select by file count (< 500: by concern, 500-2000: hybrid, > 2000: by directory)
+- [x] Build-status-aware partitioning: different agent instructions for Built vs Unbuilt/Rebuild files
+- [x] Prompt template with embedded scan results
+- [x] Agent assignment generation with file lists from index
+- [x] `--focus` flag: filter scan index by entity name regex, scope prompt to matching files only
+- [x] `--include-scan` flag for full scan embedding
+- [x] Snapshot tests (insta) for prompt output
 
 **Acceptance criteria:**
 - `domain-scan prompt --agents 5` produces a valid prompt with 5 agent sections

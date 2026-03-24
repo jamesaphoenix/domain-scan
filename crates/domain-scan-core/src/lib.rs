@@ -16,6 +16,7 @@ pub mod lang;
 pub mod manifest;
 pub mod output;
 pub mod parser;
+pub mod prompt;
 pub mod query_engine;
 pub mod resolver;
 pub mod validate;
