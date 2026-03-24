@@ -838,12 +838,23 @@ The agent then refines the bootstrap output (better names, better groupings, con
 
 ### Phase G.2: CLI `domain-scan init`
 
-- [ ] Add `init` subcommand with `--step`, `--apply`, `-o`, `--bootstrap` flags
+- [ ] Add `init` subcommand with `--bootstrap`, `--validate`, `-o` flags
 - [ ] `--bootstrap` generates starter manifest from heuristic defaults
-- [ ] `--apply-manifest <PATH>` validates and writes a system.json
-- [ ] `--dry-run` shows coverage and validation without writing
-- [ ] `domain-scan schema init` dumps the system.json JSON Schema
+- [ ] `--validate <PATH>` checks a system.json is well-formed:
+  - All subsystem IDs unique
+  - All `domain` fields reference a key in `domains` map
+  - All `connections.from`/`connections.to` reference valid subsystem IDs
+  - All `dependencies` reference valid subsystem IDs
+  - No orphan domains (defined but no subsystems use them)
+  - Outputs structured JSON: `{ valid: bool, errors: [...], warnings: [...] }`
+- [ ] `domain-scan schema init` dumps the system.json JSON Schema (so agents can validate before writing)
 - [ ] CLI integration tests with assert_cmd
+
+The agent's workflow for editing manifests is just:
+1. Read `system.json` → edit it directly (split, merge, rename, move entities)
+2. Run `domain-scan init --validate system.json` → fix any errors
+3. Run `domain-scan match --manifest system.json` → check coverage
+No special patch API needed — the agent edits JSON files natively.
 
 ### Phase G.3: Tauri Wizard UI
 
