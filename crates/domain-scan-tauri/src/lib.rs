@@ -11,6 +11,8 @@ pub fn run() {
         .manage(AppState {
             current_index: Mutex::new(None),
             current_root: Mutex::new(None),
+            current_manifest: Mutex::new(None),
+            current_match_result: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             commands::scan_directory,
@@ -24,6 +26,11 @@ pub fn run() {
             commands::get_build_status,
             commands::open_in_editor,
             commands::check_editors_available,
+            commands::load_manifest,
+            commands::match_manifest,
+            commands::get_tube_map_data,
+            commands::get_subsystem_entities,
+            commands::get_subsystem_detail,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

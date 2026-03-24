@@ -396,18 +396,18 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 
 ### Phase A: Foundation — Bug Fix + Tab Shell + IPC Commands
 
-- [ ] Create `capabilities/default.json` with `dialog:allow-open` and `shell:allow-open`
-- [ ] Add `TabBar.tsx` component
-- [ ] Add `activeTab` state to App.tsx, render tab bar between status bar and content
-- [ ] Wrap existing three-panel layout in entities tab conditional
-- [ ] Create placeholder `TubeMapView.tsx` (empty state: "Load a manifest to view the subsystem tube map")
-- [ ] Extend `Manifest` struct → `SystemManifest` (parse `meta`, `domains`, `connections`)
-- [ ] Extend `AppState` with `current_manifest` and `current_match_result`
-- [ ] Implement `load_manifest` IPC command
-- [ ] Implement `match_manifest` IPC command
-- [ ] Implement `get_tube_map_data` IPC command
-- [ ] Implement `get_subsystem_entities` IPC command
-- [ ] Implement `get_subsystem_detail` IPC command
+- [x] Create `capabilities/default.json` with `dialog:allow-open` and `shell:allow-open`
+- [x] Add `TabBar.tsx` component
+- [x] Add `activeTab` state to App.tsx, render tab bar between status bar and content
+- [x] Wrap existing three-panel layout in entities tab conditional
+- [x] Create placeholder `TubeMapView.tsx` (empty state: "Load a manifest to view the subsystem tube map")
+- [x] Extend `Manifest` struct → `SystemManifest` (parse `meta`, `domains`, `connections`)
+- [x] Extend `AppState` with `current_manifest` and `current_match_result`
+- [x] Implement `load_manifest` IPC command
+- [x] Implement `match_manifest` IPC command
+- [x] Implement `get_tube_map_data` IPC command
+- [x] Implement `get_subsystem_entities` IPC command
+- [x] Implement `get_subsystem_detail` IPC command
 
 **Acceptance criteria:**
 - Open Directory button works (native file picker appears)

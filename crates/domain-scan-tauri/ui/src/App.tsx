@@ -7,12 +7,15 @@ import { EntityTree } from "./components/EntityTree";
 import { SourcePreview } from "./components/SourcePreview";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { FilterBar } from "./components/FilterBar";
+import { TabBar, type Tab } from "./components/TabBar";
+import { TubeMapView } from "./components/TubeMapView";
 import type { Entity, Language, FilterParams } from "./types";
 
 function App() {
   const scan = useScan();
   const tree = useTreeState();
 
+  const [activeTab, setActiveTab] = useState<Tab>("entities");
   const [selectedDetail, setSelectedDetail] = useState<Entity | null>(null);
   const [sourceCode, setSourceCode] = useState<string | null>(null);
   const [sourceStartLine, setSourceStartLine] = useState(1);
@@ -221,104 +224,111 @@ function App() {
         </div>
       </div>
 
-      {/* Three-panel layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Entity Tree + Filter Bar */}
-        <div className="w-72 border-r border-gray-700 flex flex-col flex-shrink-0">
-          <div className="flex-1 overflow-y-auto p-1">
-            <EntityTree
-              nodes={tree.nodes}
-              selectedIndex={tree.selectedIndex}
-              onSelect={tree.select}
-              onToggleExpand={(index) => {
-                tree.select(index);
-                tree.toggleExpand(index);
-              }}
+      {/* Tab bar */}
+      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+
+      {/* Tab content */}
+      {activeTab === "entities" ? (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: Entity Tree + Filter Bar */}
+          <div className="w-72 border-r border-gray-700 flex flex-col flex-shrink-0">
+            <div className="flex-1 overflow-y-auto p-1">
+              <EntityTree
+                nodes={tree.nodes}
+                selectedIndex={tree.selectedIndex}
+                onSelect={tree.select}
+                onToggleExpand={(index) => {
+                  tree.select(index);
+                  tree.toggleExpand(index);
+                }}
+              />
+            </div>
+            <FilterBar
+              onSearch={handleSearch}
+              onFilterKind={(kinds) => applyFilters({ kind: kinds })}
+              onFilterBuildStatus={(status) =>
+                applyFilters({ build_status: status })
+              }
+              onFilterLanguage={(langs) => applyFilters({ languages: langs })}
+              availableLanguages={availableLanguages}
+              searchInputRef={searchInputRef}
             />
           </div>
-          <FilterBar
-            onSearch={handleSearch}
-            onFilterKind={(kinds) => applyFilters({ kind: kinds })}
-            onFilterBuildStatus={(status) =>
-              applyFilters({ build_status: status })
-            }
-            onFilterLanguage={(langs) => applyFilters({ languages: langs })}
-            availableLanguages={availableLanguages}
-            searchInputRef={searchInputRef}
-          />
-        </div>
 
-        {/* Center: Source Preview */}
-        <div className="flex-1 overflow-hidden">
-          {promptOutput ? (
-            <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700 flex-shrink-0">
-                <span className="text-xs text-gray-400">
-                  Generated Prompt
-                </span>
-                <div className="flex gap-2">
-                  <button
-                    className="text-xs text-blue-400 hover:text-blue-300"
-                    onClick={() => navigator.clipboard.writeText(promptOutput)}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    className="text-xs text-gray-500 hover:text-gray-300"
-                    onClick={() => setPromptOutput(null)}
-                  >
-                    Close
-                  </button>
+          {/* Center: Source Preview */}
+          <div className="flex-1 overflow-hidden">
+            {promptOutput ? (
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700 flex-shrink-0">
+                  <span className="text-xs text-gray-400">
+                    Generated Prompt
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      className="text-xs text-blue-400 hover:text-blue-300"
+                      onClick={() => navigator.clipboard.writeText(promptOutput)}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      className="text-xs text-gray-500 hover:text-gray-300"
+                      onClick={() => setPromptOutput(null)}
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
+                <pre className="flex-1 overflow-auto p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
+                  {promptOutput}
+                </pre>
               </div>
-              <pre className="flex-1 overflow-auto p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
-                {promptOutput}
-              </pre>
-            </div>
-          ) : exportOutput ? (
-            <div className="h-full flex flex-col">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700 flex-shrink-0">
-                <span className="text-xs text-gray-400">Export Output</span>
-                <div className="flex gap-2">
-                  <button
-                    className="text-xs text-blue-400 hover:text-blue-300"
-                    onClick={() => navigator.clipboard.writeText(exportOutput)}
-                  >
-                    Copy
-                  </button>
-                  <button
-                    className="text-xs text-gray-500 hover:text-gray-300"
-                    onClick={() => setExportOutput(null)}
-                  >
-                    Close
-                  </button>
+            ) : exportOutput ? (
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between px-3 py-1.5 bg-gray-800/50 border-b border-gray-700 flex-shrink-0">
+                  <span className="text-xs text-gray-400">Export Output</span>
+                  <div className="flex gap-2">
+                    <button
+                      className="text-xs text-blue-400 hover:text-blue-300"
+                      onClick={() => navigator.clipboard.writeText(exportOutput)}
+                    >
+                      Copy
+                    </button>
+                    <button
+                      className="text-xs text-gray-500 hover:text-gray-300"
+                      onClick={() => setExportOutput(null)}
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
+                <pre className="flex-1 overflow-auto p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
+                  {exportOutput}
+                </pre>
               </div>
-              <pre className="flex-1 overflow-auto p-3 text-xs text-gray-300 font-mono whitespace-pre-wrap">
-                {exportOutput}
-              </pre>
-            </div>
-          ) : (
-            <SourcePreview
-              source={sourceCode}
-              startLine={sourceStartLine}
-              language={tree.selectedEntity?.language ?? null}
-              file={tree.selectedEntity?.file ?? null}
+            ) : (
+              <SourcePreview
+                source={sourceCode}
+                startLine={sourceStartLine}
+                language={tree.selectedEntity?.language ?? null}
+                file={tree.selectedEntity?.file ?? null}
+              />
+            )}
+          </div>
+
+          {/* Right: Details Panel */}
+          <div className="w-80 border-l border-gray-700 overflow-y-auto p-4 flex-shrink-0">
+            <DetailsPanel
+              entity={tree.selectedEntity}
+              detail={selectedDetail}
+              onGeneratePrompt={handleGeneratePrompt}
+              onExport={handleExport}
+              onOpenInEditor={handleOpenInEditor}
             />
-          )}
+          </div>
         </div>
-
-        {/* Right: Details Panel */}
-        <div className="w-80 border-l border-gray-700 overflow-y-auto p-4 flex-shrink-0">
-          <DetailsPanel
-            entity={tree.selectedEntity}
-            detail={selectedDetail}
-            onGeneratePrompt={handleGeneratePrompt}
-            onExport={handleExport}
-            onOpenInEditor={handleOpenInEditor}
-          />
-        </div>
-      </div>
+      ) : (
+        <TubeMapView />
+      )}
     </div>
   );
 }

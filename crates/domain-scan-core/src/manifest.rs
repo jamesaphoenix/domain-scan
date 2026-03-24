@@ -8,6 +8,7 @@
 //! 2. Name matching against interfaces/operations/tables/events
 //! 3. Unmatched bucket for human review or LLM enrichment
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -26,6 +27,62 @@ use crate::DomainScanError;
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Manifest {
     pub subsystems: Vec<ManifestSubsystem>,
+}
+
+/// Extended manifest with meta, domains, and connections (system.json format).
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct SystemManifest {
+    pub meta: ManifestMeta,
+    #[serde(default)]
+    pub domains: HashMap<String, DomainDef>,
+    pub subsystems: Vec<ManifestSubsystem>,
+    #[serde(default)]
+    pub connections: Vec<Connection>,
+}
+
+impl SystemManifest {
+    /// Convert to the simpler `Manifest` (for matching).
+    pub fn as_manifest(&self) -> Manifest {
+        Manifest {
+            subsystems: self.subsystems.clone(),
+        }
+    }
+}
+
+/// Metadata about the system.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct ManifestMeta {
+    pub name: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// A domain definition with label and color.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct DomainDef {
+    pub label: String,
+    pub color: String,
+}
+
+/// A connection between two subsystems.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct Connection {
+    pub from: String,
+    pub to: String,
+    pub label: String,
+    #[serde(rename = "type")]
+    pub connection_type: ConnectionType,
+}
+
+/// The type of connection between subsystems.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionType {
+    DependsOn,
+    Uses,
+    Triggers,
 }
 
 /// A subsystem in the manifest (recursive via `children`).
@@ -144,6 +201,18 @@ pub fn parse_manifest(json: &str) -> Result<Manifest, DomainScanError> {
 pub fn parse_manifest_file(path: &Path) -> Result<Manifest, DomainScanError> {
     let content = std::fs::read_to_string(path)?;
     parse_manifest(&content)
+}
+
+/// Parse a system manifest (extended format with meta, domains, connections).
+pub fn parse_system_manifest(json: &str) -> Result<SystemManifest, DomainScanError> {
+    serde_json::from_str(json)
+        .map_err(|e| DomainScanError::Config(format!("system manifest parse error: {e}")))
+}
+
+/// Parse a system manifest from a file path.
+pub fn parse_system_manifest_file(path: &Path) -> Result<SystemManifest, DomainScanError> {
+    let content = std::fs::read_to_string(path)?;
+    parse_system_manifest(&content)
 }
 
 // ---------------------------------------------------------------------------
@@ -783,5 +852,135 @@ mod tests {
         let result = match_entities(&index, &manifest);
         assert_eq!(result.total_entities, 0);
         assert!((result.coverage_percent - 100.0).abs() < f64::EPSILON);
+    }
+
+    fn sample_system_manifest_json() -> &'static str {
+        r##"{
+            "meta": {
+                "name": "TestSystem",
+                "version": "1.0",
+                "description": "A test system"
+            },
+            "domains": {
+                "platform-core": { "label": "Platform Core", "color": "#3b82f6" },
+                "services": { "label": "Services", "color": "#f97316" }
+            },
+            "subsystems": [
+                {
+                    "id": "auth",
+                    "name": "Auth & Identity",
+                    "domain": "platform-core",
+                    "status": "built",
+                    "filePath": "/project/src/auth/",
+                    "interfaces": ["AuthPrincipal"],
+                    "operations": [],
+                    "tables": ["users"],
+                    "events": [],
+                    "children": [],
+                    "dependencies": ["billing"]
+                },
+                {
+                    "id": "billing",
+                    "name": "Billing",
+                    "domain": "services",
+                    "status": "new",
+                    "filePath": "/project/src/billing/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                }
+            ],
+            "connections": [
+                {
+                    "from": "auth",
+                    "to": "billing",
+                    "label": "checks subscription",
+                    "type": "depends_on"
+                },
+                {
+                    "from": "billing",
+                    "to": "auth",
+                    "label": "validates identity",
+                    "type": "uses"
+                }
+            ]
+        }"##
+    }
+
+    #[test]
+    fn test_parse_system_manifest() {
+        let manifest = parse_system_manifest(sample_system_manifest_json())
+            .unwrap_or_else(|e| panic!("Failed to parse system manifest: {e}"));
+
+        assert_eq!(manifest.meta.name, "TestSystem");
+        assert_eq!(manifest.meta.version, "1.0");
+        assert_eq!(manifest.domains.len(), 2);
+        assert_eq!(manifest.domains["platform-core"].color, "#3b82f6");
+        assert_eq!(manifest.subsystems.len(), 2);
+        assert_eq!(manifest.connections.len(), 2);
+        assert_eq!(manifest.connections[0].connection_type, ConnectionType::DependsOn);
+        assert_eq!(manifest.connections[1].connection_type, ConnectionType::Uses);
+    }
+
+    #[test]
+    fn test_system_manifest_as_manifest() {
+        let sys = parse_system_manifest(sample_system_manifest_json())
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = sys.as_manifest();
+        assert_eq!(manifest.subsystems.len(), 2);
+        assert_eq!(manifest.subsystems[0].id, "auth");
+    }
+
+    #[test]
+    fn test_system_manifest_matching() {
+        let sys = parse_system_manifest(sample_system_manifest_json())
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = sys.as_manifest();
+
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("LoginService", "/project/src/auth/login.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+        assert_eq!(result.matched.len(), 1);
+        assert_eq!(result.matched[0].subsystem_id, "auth");
+    }
+
+    #[test]
+    fn test_system_manifest_empty_domains() {
+        let json = r#"{
+            "meta": { "name": "Minimal", "version": "0.1", "description": "" },
+            "subsystems": [],
+            "connections": []
+        }"#;
+        let manifest = parse_system_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        assert!(manifest.domains.is_empty());
+        assert!(manifest.subsystems.is_empty());
+        assert!(manifest.connections.is_empty());
+    }
+
+    #[test]
+    fn test_connection_type_serde() {
+        let conn = Connection {
+            from: "a".to_string(),
+            to: "b".to_string(),
+            label: "test".to_string(),
+            connection_type: ConnectionType::Triggers,
+        };
+        let json = serde_json::to_string(&conn)
+            .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
+        assert!(json.contains("\"type\":\"triggers\""));
+        let deserialized: Connection = serde_json::from_str(&json)
+            .unwrap_or_else(|e| panic!("Failed to deserialize: {e}"));
+        assert_eq!(deserialized.connection_type, ConnectionType::Triggers);
     }
 }

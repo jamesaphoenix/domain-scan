@@ -3,11 +3,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use domain_scan_core::ir::{
-    BuildStatus, Entity, EntitySummary, FilterParams, ScanConfig, ScanIndex, ScanStats,
+    BuildStatus, Entity, EntityKind, EntitySummary, FilterParams, MatchResult, ScanConfig,
+    ScanIndex, ScanStats,
+};
+use domain_scan_core::manifest::{
+    Connection, DomainDef, ManifestMeta, ManifestSubsystem, SystemManifest,
 };
 use domain_scan_core::prompt::PromptConfig;
-use domain_scan_core::{cache, index, parser, prompt, query_engine, walker};
-use serde::Serialize;
+use domain_scan_core::{cache, index, manifest, parser, prompt, query_engine, walker};
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 // ---------------------------------------------------------------------------
@@ -17,6 +21,56 @@ use tauri::State;
 pub struct AppState {
     pub current_index: Mutex<Option<ScanIndex>>,
     pub current_root: Mutex<Option<PathBuf>>,
+    pub current_manifest: Mutex<Option<SystemManifest>>,
+    pub current_match_result: Mutex<Option<MatchResult>>,
+}
+
+// ---------------------------------------------------------------------------
+// Tube Map Data Types (IPC DTOs)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TubeMapData {
+    pub meta: ManifestMeta,
+    pub domains: HashMap<String, DomainDef>,
+    pub subsystems: Vec<TubeMapSubsystem>,
+    pub connections: Vec<Connection>,
+    pub coverage_percent: f64,
+    pub unmatched_count: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TubeMapSubsystem {
+    pub id: String,
+    pub name: String,
+    pub domain: String,
+    pub status: String,
+    pub description: String,
+    pub file_path: String,
+    pub matched_entity_count: usize,
+    pub interface_count: usize,
+    pub operation_count: usize,
+    pub table_count: usize,
+    pub event_count: usize,
+    pub has_children: bool,
+    pub child_count: usize,
+    pub dependency_count: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SubsystemDetail {
+    pub id: String,
+    pub name: String,
+    pub domain: String,
+    pub status: String,
+    pub file_path: String,
+    pub interfaces: Vec<String>,
+    pub operations: Vec<String>,
+    pub tables: Vec<String>,
+    pub events: Vec<String>,
+    pub dependencies: Vec<String>,
+    pub children: Vec<SubsystemDetail>,
+    pub matched_entities: Vec<EntitySummary>,
 }
 
 // ---------------------------------------------------------------------------
@@ -456,4 +510,267 @@ pub fn check_editors_available() -> HashMap<String, bool> {
         result.insert((*editor).to_string(), available);
     }
     result
+}
+
+// ---------------------------------------------------------------------------
+// Tube Map IPC Commands
+// ---------------------------------------------------------------------------
+
+/// Load a system manifest from a file path, storing it in AppState.
+#[tauri::command]
+pub fn load_manifest(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<SystemManifest, CommandError> {
+    let manifest_path = Path::new(&path);
+    if !manifest_path.is_file() {
+        return Err(CommandError::Io(format!("Not a file: {path}")));
+    }
+
+    let sys_manifest = manifest::parse_system_manifest_file(manifest_path)?;
+
+    let mut manifest_lock = state
+        .current_manifest
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    *manifest_lock = Some(sys_manifest.clone());
+
+    Ok(sys_manifest)
+}
+
+/// Run matching: maps scanned entities to manifest subsystems.
+/// Requires both a scan index and a manifest to be loaded.
+#[tauri::command]
+pub fn match_manifest(
+    state: State<'_, AppState>,
+) -> Result<MatchResult, CommandError> {
+    let idx_lock = state
+        .current_index
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    let idx = idx_lock.as_ref().ok_or(CommandError::NoIndexLoaded)?;
+
+    let manifest_lock = state
+        .current_manifest
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    let sys_manifest = manifest_lock
+        .as_ref()
+        .ok_or_else(|| CommandError::Scan("No manifest loaded. Call load_manifest first.".to_string()))?;
+
+    let simple_manifest = sys_manifest.as_manifest();
+    let result = manifest::match_entities(idx, &simple_manifest);
+
+    // Store match result
+    drop(manifest_lock);
+    drop(idx_lock);
+    let mut match_lock = state
+        .current_match_result
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    *match_lock = Some(result.clone());
+
+    Ok(result)
+}
+
+/// Get composite tube map data: subsystems with match counts, domains, connections.
+#[tauri::command]
+pub fn get_tube_map_data(
+    state: State<'_, AppState>,
+) -> Result<TubeMapData, CommandError> {
+    let manifest_lock = state
+        .current_manifest
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    let sys_manifest = manifest_lock
+        .as_ref()
+        .ok_or_else(|| CommandError::Scan("No manifest loaded.".to_string()))?;
+
+    let match_lock = state
+        .current_match_result
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+
+    let subsystems = build_tube_map_subsystems(&sys_manifest.subsystems, match_lock.as_ref());
+
+    let (coverage_percent, unmatched_count) = match match_lock.as_ref() {
+        Some(mr) => (mr.coverage_percent, mr.unmatched.len()),
+        None => (0.0, 0),
+    };
+
+    Ok(TubeMapData {
+        meta: sys_manifest.meta.clone(),
+        domains: sys_manifest.domains.clone(),
+        subsystems,
+        connections: sys_manifest.connections.clone(),
+        coverage_percent,
+        unmatched_count,
+    })
+}
+
+/// Get entities matched to a specific subsystem.
+#[tauri::command]
+pub fn get_subsystem_entities(
+    subsystem_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<EntitySummary>, CommandError> {
+    let match_lock = state
+        .current_match_result
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    let match_result = match_lock
+        .as_ref()
+        .ok_or_else(|| CommandError::Scan("No match result. Call match_manifest first.".to_string()))?;
+
+    let entities: Vec<EntitySummary> = match_result
+        .matched
+        .iter()
+        .filter(|m| m.subsystem_id == subsystem_id)
+        .map(|m| m.entity.clone())
+        .collect();
+
+    Ok(entities)
+}
+
+/// Get full detail for a subsystem: metadata + matched entities.
+#[tauri::command]
+pub fn get_subsystem_detail(
+    subsystem_id: String,
+    state: State<'_, AppState>,
+) -> Result<SubsystemDetail, CommandError> {
+    let manifest_lock = state
+        .current_manifest
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    let sys_manifest = manifest_lock
+        .as_ref()
+        .ok_or_else(|| CommandError::Scan("No manifest loaded.".to_string()))?;
+
+    let match_lock = state
+        .current_match_result
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+
+    let subsystem = find_subsystem(&sys_manifest.subsystems, &subsystem_id)
+        .ok_or_else(|| CommandError::EntityNotFound(format!("Subsystem not found: {subsystem_id}")))?;
+
+    let matched_entities: Vec<EntitySummary> = match match_lock.as_ref() {
+        Some(mr) => mr
+            .matched
+            .iter()
+            .filter(|m| m.subsystem_id == subsystem_id)
+            .map(|m| m.entity.clone())
+            .collect(),
+        None => Vec::new(),
+    };
+
+    Ok(build_subsystem_detail(subsystem, &matched_entities, match_lock.as_ref()))
+}
+
+// ---------------------------------------------------------------------------
+// Helpers for tube map commands
+// ---------------------------------------------------------------------------
+
+fn build_tube_map_subsystems(
+    subsystems: &[ManifestSubsystem],
+    match_result: Option<&MatchResult>,
+) -> Vec<TubeMapSubsystem> {
+    let mut result = Vec::new();
+    collect_tube_map_subsystems(subsystems, match_result, &mut result);
+    result
+}
+
+fn collect_tube_map_subsystems(
+    subsystems: &[ManifestSubsystem],
+    match_result: Option<&MatchResult>,
+    out: &mut Vec<TubeMapSubsystem>,
+) {
+    for sub in subsystems {
+        let matched_entity_count = match match_result {
+            Some(mr) => mr.matched.iter().filter(|m| m.subsystem_id == sub.id).count(),
+            None => 0,
+        };
+
+        let (interface_count, operation_count, table_count, event_count) = match match_result {
+            Some(mr) => {
+                let matched_for_sub: Vec<_> = mr.matched.iter().filter(|m| m.subsystem_id == sub.id).collect();
+                let iface = matched_for_sub.iter().filter(|m| m.entity.kind == EntityKind::Interface).count();
+                let ops = matched_for_sub.iter().filter(|m| m.entity.kind == EntityKind::Method || m.entity.kind == EntityKind::Function).count();
+                let tables = matched_for_sub.iter().filter(|m| m.entity.kind == EntityKind::Schema).count();
+                let events = 0usize; // No event entity kind yet
+                (iface, ops, tables, events)
+            }
+            None => (0, 0, 0, 0),
+        };
+
+        out.push(TubeMapSubsystem {
+            id: sub.id.clone(),
+            name: sub.name.clone(),
+            domain: sub.domain.clone(),
+            status: format!("{:?}", sub.status).to_lowercase(),
+            description: String::new(),
+            file_path: sub.file_path.display().to_string(),
+            matched_entity_count,
+            interface_count,
+            operation_count,
+            table_count,
+            event_count,
+            has_children: !sub.children.is_empty(),
+            child_count: sub.children.len(),
+            dependency_count: sub.dependencies.len(),
+        });
+
+        collect_tube_map_subsystems(&sub.children, match_result, out);
+    }
+}
+
+fn find_subsystem<'a>(
+    subsystems: &'a [ManifestSubsystem],
+    id: &str,
+) -> Option<&'a ManifestSubsystem> {
+    for sub in subsystems {
+        if sub.id == id {
+            return Some(sub);
+        }
+        if let Some(found) = find_subsystem(&sub.children, id) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn build_subsystem_detail(
+    sub: &ManifestSubsystem,
+    matched_entities: &[EntitySummary],
+    match_result: Option<&MatchResult>,
+) -> SubsystemDetail {
+    SubsystemDetail {
+        id: sub.id.clone(),
+        name: sub.name.clone(),
+        domain: sub.domain.clone(),
+        status: format!("{:?}", sub.status).to_lowercase(),
+        file_path: sub.file_path.display().to_string(),
+        interfaces: sub.interfaces.clone(),
+        operations: sub.operations.clone(),
+        tables: sub.tables.clone(),
+        events: sub.events.clone(),
+        dependencies: sub.dependencies.clone(),
+        children: sub
+            .children
+            .iter()
+            .map(|child| {
+                let child_entities: Vec<EntitySummary> = match match_result {
+                    Some(mr) => mr
+                        .matched
+                        .iter()
+                        .filter(|m| m.subsystem_id == child.id)
+                        .map(|m| m.entity.clone())
+                        .collect(),
+                    None => Vec::new(),
+                };
+                build_subsystem_detail(child, &child_entities, match_result)
+            })
+            .collect(),
+        matched_entities: matched_entities.to_vec(),
+    }
 }
