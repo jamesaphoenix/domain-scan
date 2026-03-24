@@ -2839,7 +2839,7 @@ metadata:
 - [x] `domain-scan validate --self-test` (validates domain-scan's own codebase)
 - [x] README.md with usage examples
 - [x] rayon parallelism tuning
-- [ ] No deadlocks under parallel load
+- [x] No deadlocks under parallel load
 
 **Acceptance criteria:**
 - Performance targets from Section 15 are met
