@@ -2611,7 +2611,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 ### Phase 5: Cross-File Resolution + Index + Config + Cache
 - [x] `config.rs`: `.domain-scan.toml` parsing, custom service definitions, include/exclude globs
 - [x] `cache.rs`: content-addressed cache with DashMap, disk persistence with bincode, LRU eviction
-- [ ] `resolver.rs`: import/export tracking, implementation matching
+- [x] `resolver.rs`: import/export tracking, implementation matching
 - [ ] `index.rs`: ScanIndex construction with all lookup tables (interfaces, classes, services, methods, impls, schemas)
 - [ ] `manifest.rs`: Manifest struct, deserialization, flatten, validate, match algorithm, write-back
 - [ ] `validate.rs`: 10 validation rules (naming, completeness, god-objects, impls)
