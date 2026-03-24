@@ -120,7 +120,7 @@ function TubeMapInner() {
   useEffect(() => {
     if (layoutNodes.length === 0) return;
     const timer = setTimeout(() => {
-      reactFlowInstance.fitView({ padding: 0.15, maxZoom: 1 });
+      reactFlowInstance.fitView({ padding: 0.15, maxZoom: 1, duration: 300 });
     }, 100);
     return () => clearTimeout(timer);
   }, [reactFlowInstance, layoutNodes]);
@@ -182,7 +182,7 @@ function TubeMapInner() {
       switch (e.key) {
         case "f":
           e.preventDefault();
-          reactFlowInstance.fitView({ padding: 0.15, maxZoom: 1 });
+          reactFlowInstance.fitView({ padding: 0.15, maxZoom: 1, duration: 300 });
           break;
         case "/":
           e.preventDefault();
@@ -330,7 +330,7 @@ function TubeMapInner() {
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
             fitView
-            fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+            fitViewOptions={{ padding: 0.15, maxZoom: 1, duration: 300 }}
             minZoom={0.1}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
