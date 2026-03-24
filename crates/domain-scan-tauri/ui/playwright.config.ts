@@ -3,15 +3,16 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Playwright config for domain-scan Tauri E2E tests.
  *
- * Tests run against the Vite dev server at http://localhost:5173.
- * The Tauri app's webview loads from this same URL during `cargo tauri dev`,
- * so UI behavior is identical between browser and Tauri webview.
+ * Uses port 5179 to avoid conflicts with other Vite dev servers.
+ * Tauri IPC calls are mocked via `e2e/mocks.ts` (injected before page load).
  *
  * For full Tauri integration (native dialogs, IPC), run with:
  *   TAURI_TEST=1 cargo tauri dev
  * and then:
  *   npm run test:e2e
  */
+const E2E_PORT = 5179;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -22,7 +23,7 @@ export default defineConfig({
   timeout: 30_000,
 
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: `http://localhost:${E2E_PORT}`,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
@@ -35,8 +36,8 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:5173",
+    command: `npx vite --port ${E2E_PORT}`,
+    url: `http://localhost:${E2E_PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
   },

@@ -523,11 +523,11 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.2 E2E: Open Directory & Scan Flow
 
-- [ ] Test: click "Open Directory" → native dialog appears (or mock path injection in test mode)
-- [ ] Test: scan a fixture directory → stats bar shows correct file/entity counts
-- [ ] Test: scan completes → entities tab shows tree with nodes
-- [ ] Test: scan empty directory → structured error shown (not a crash)
-- [ ] Test: scan non-existent path → structured error shown
+- [x] Test: click "Open Directory" → native dialog appears (or mock path injection in test mode)
+- [x] Test: scan a fixture directory → stats bar shows correct file/entity counts
+- [x] Test: scan completes → entities tab shows tree with nodes
+- [x] Test: scan empty directory → structured error shown (not a crash)
+- [x] Test: scan non-existent path → structured error shown
 
 #### F.3 E2E: Tab Switching
 
