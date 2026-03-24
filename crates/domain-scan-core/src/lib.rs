@@ -12,6 +12,7 @@ pub mod cache;
 pub mod config;
 pub mod field_mask;
 pub mod index;
+pub mod input_validation;
 pub mod ir;
 pub mod lang;
 pub mod manifest;

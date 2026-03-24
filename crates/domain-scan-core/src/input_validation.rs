@@ -295,6 +295,11 @@ pub fn validate_json_input(input: &str) -> Result<serde_json::Value, DomainScanE
     Ok(value)
 }
 
+/// Alias for `validate_json_input` — matches the spec name `parse_json_input`.
+pub fn parse_json_input(input: &str) -> Result<serde_json::Value, DomainScanError> {
+    validate_json_input(input)
+}
+
 /// Recursively measure the nesting depth of a JSON value.
 fn json_depth(value: &serde_json::Value) -> usize {
     match value {
