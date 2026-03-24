@@ -2618,7 +2618,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - [x] Cross-file tests: interface in file A, implementation in file B
 - [x] Implementation completeness checking
 - [x] Full pipeline integration test: walk -> parse -> index -> query -> output
-- [ ] `--no-cache` and `-o, --out <FILE>` plumbing
+- [x] `--no-cache` and `-o, --out <FILE>` plumbing
 
 **Acceptance criteria:**
 - `domain-scan impls EventHandler` correctly finds all implementors across files

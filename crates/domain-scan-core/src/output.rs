@@ -1,4 +1,6 @@
-use crate::ir::{IrFile, ScanIndex};
+use std::path::Path;
+
+use crate::ir::{IrFile, ScanIndex, ValidationResult};
 use crate::DomainScanError;
 
 /// Output format for CLI and API responses.
@@ -77,6 +79,36 @@ fn format_ir_file_compact(file: &IrFile) -> String {
     format!("{} [{}]", file.path.display(), file.language)
 }
 
+/// Write formatted output to a file path.
+pub fn write_to_file(content: &str, path: &Path) -> Result<(), DomainScanError> {
+    // Create parent directories if they don't exist
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+/// Format and write a `ScanIndex` to a file.
+pub fn write_scan_index(
+    index: &ScanIndex,
+    format: OutputFormat,
+    path: &Path,
+) -> Result<(), DomainScanError> {
+    let content = format_scan_index(index, format)?;
+    write_to_file(&content, path)
+}
+
+/// Format a `ValidationResult` as JSON.
+pub fn format_validation_result(result: &ValidationResult) -> Result<String, DomainScanError> {
+    Ok(serde_json::to_string_pretty(result)?)
+}
+
+/// Format a `MatchResult` as JSON.
+pub fn format_match_result(result: &crate::ir::MatchResult) -> Result<String, DomainScanError> {
+    Ok(serde_json::to_string_pretty(result)?)
+}
+
 impl std::fmt::Display for crate::ir::Confidence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -144,6 +176,45 @@ mod tests {
         assert!(table.contains("test.ts"));
         assert!(table.contains("TypeScript"));
         assert!(table.contains("Built"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_to_file() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("output.json");
+
+        let index = ScanIndex::new(PathBuf::from("/tmp/test"));
+        write_scan_index(&index, OutputFormat::Json, &path)?;
+
+        let content = std::fs::read_to_string(&path)?;
+        let _: serde_json::Value = serde_json::from_str(&content)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_to_file_creates_dirs() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("nested/dir/output.json");
+
+        let index = ScanIndex::new(PathBuf::from("/tmp/test"));
+        write_scan_index(&index, OutputFormat::Json, &path)?;
+
+        assert!(path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn test_format_validation_result() -> Result<(), Box<dyn std::error::Error>> {
+        let result = crate::ir::ValidationResult {
+            violations: Vec::new(),
+            rules_checked: 10,
+            pass_count: 10,
+            warn_count: 0,
+            fail_count: 0,
+        };
+        let json = format_validation_result(&result)?;
+        let _: serde_json::Value = serde_json::from_str(&json)?;
         Ok(())
     }
 }
