@@ -2,9 +2,45 @@ import { useMemo } from "react";
 import type { Node, Edge } from "@xyflow/react";
 import type { TubeMapData, TubeMapSubsystem } from "../types";
 import type { SubsystemNodeData } from "../components/SubsystemNode";
-import type { DependencyEdgeData } from "../components/DependencyEdge";
+import type { DependencyEdgeData, BundledConnection } from "../components/DependencyEdge";
 import { buildDynamicLayout, NODE_WIDTH } from "../layout/tubeMap";
 import { assignDomainColors } from "../layout/colors";
+import type { TubeMapConnection } from "../types";
+
+/** Edges between the same two domains are bundled when count exceeds this */
+const BUNDLE_THRESHOLD = 3;
+
+/** Build an individual (non-bundled) edge from a connection */
+function buildIndividualEdge(
+  conn: TubeMapConnection,
+  sourceSub: TubeMapSubsystem | undefined,
+  targetSub: TubeMapSubsystem | undefined,
+  domainColors: Map<string, string>,
+): Edge {
+  const sourceDomainColor =
+    domainColors.get(sourceSub?.domain ?? "") ?? "#6b7280";
+  const targetDomainColor =
+    domainColors.get(targetSub?.domain ?? "") ?? "#6b7280";
+
+  const edgeData: DependencyEdgeData = {
+    connectionType: conn.type,
+    label: conn.label,
+    sourceName: sourceSub?.name ?? conn.from,
+    targetName: targetSub?.name ?? conn.to,
+    sourceInterfaces: [],
+    targetInterfaces: [],
+    sourceDomainColor,
+    targetDomainColor,
+  };
+
+  return {
+    id: `${conn.from}->${conn.to}`,
+    source: conn.from,
+    target: conn.to,
+    type: "dependency",
+    data: edgeData,
+  };
+}
 
 interface UseTubeLayoutOptions {
   tubeMapData: TubeMapData | null;
@@ -147,44 +183,122 @@ export function useTubeLayout({
       };
     });
 
-    // Build edges
-    const edges: Edge[] = tubeMapData.connections
-      .filter((conn) => {
-        if (!visibleIds.has(conn.from) || !visibleIds.has(conn.to))
-          return false;
-        if (activeEdgeKeys !== null) {
-          const key = `${conn.from}->${conn.to}`;
-          return activeEdgeKeys.has(key);
-        }
-        return true;
-      })
-      .map((conn) => {
+    // Filter visible connections
+    const visibleConnections = tubeMapData.connections.filter((conn) => {
+      if (!visibleIds.has(conn.from) || !visibleIds.has(conn.to)) return false;
+      if (activeEdgeKeys !== null) {
+        const key = `${conn.from}->${conn.to}`;
+        return activeEdgeKeys.has(key);
+      }
+      return true;
+    });
+
+    // Build edges — bundle dense inter-domain connections when not tracing
+    const edges: Edge[] = [];
+    const isTracing = activeEdgeKeys !== null;
+
+    if (isTracing) {
+      // During dependency trace, show individual edges (no bundling)
+      for (const conn of visibleConnections) {
         const sourceSub = subsystemMap.get(conn.from);
         const targetSub = subsystemMap.get(conn.to);
-        const sourceDomainColor =
-          domainColors.get(sourceSub?.domain ?? "") ?? "#6b7280";
-        const targetDomainColor =
-          domainColors.get(targetSub?.domain ?? "") ?? "#6b7280";
+        edges.push(buildIndividualEdge(conn, sourceSub, targetSub, domainColors));
+      }
+    } else {
+      // Group inter-domain connections by domain pair for bundling
+      const domainPairGroups = new Map<string, typeof visibleConnections>();
+      const intraDomainConns: typeof visibleConnections = [];
 
-        const edgeData: DependencyEdgeData = {
-          connectionType: conn.type,
-          label: conn.label,
-          sourceName: sourceSub?.name ?? conn.from,
-          targetName: targetSub?.name ?? conn.to,
-          sourceInterfaces: [],
-          targetInterfaces: [],
-          sourceDomainColor,
-          targetDomainColor,
-        };
+      for (const conn of visibleConnections) {
+        const sourceSub = subsystemMap.get(conn.from);
+        const targetSub = subsystemMap.get(conn.to);
+        if (!sourceSub || !targetSub || sourceSub.domain === targetSub.domain) {
+          // Same-domain edges are never bundled
+          intraDomainConns.push(conn);
+        } else {
+          // Normalize key so A->B and B->A bundle separately
+          const key = `${sourceSub.domain}::${targetSub.domain}`;
+          const group = domainPairGroups.get(key);
+          if (group) {
+            group.push(conn);
+          } else {
+            domainPairGroups.set(key, [conn]);
+          }
+        }
+      }
 
-        return {
-          id: `${conn.from}->${conn.to}`,
-          source: conn.from,
-          target: conn.to,
-          type: "dependency",
-          data: edgeData,
-        };
-      });
+      // Add intra-domain edges as individual
+      for (const conn of intraDomainConns) {
+        const sourceSub = subsystemMap.get(conn.from);
+        const targetSub = subsystemMap.get(conn.to);
+        edges.push(buildIndividualEdge(conn, sourceSub, targetSub, domainColors));
+      }
+
+      // Process inter-domain groups — bundle if count > threshold
+      for (const [pairKey, conns] of domainPairGroups) {
+        if (conns.length > BUNDLE_THRESHOLD) {
+          const [sourceDomainId, targetDomainId] = pairKey.split("::");
+          const sourceDomainColor = domainColors.get(sourceDomainId) ?? "#6b7280";
+          const targetDomainColor = domainColors.get(targetDomainId) ?? "#6b7280";
+
+          // Pick center station from each domain as the bundle anchor
+          const sourceStations = visibleSubsystems.filter(
+            (s) => s.domain === sourceDomainId,
+          );
+          const targetStations = visibleSubsystems.filter(
+            (s) => s.domain === targetDomainId,
+          );
+          const sourceAnchor =
+            sourceStations[Math.floor(sourceStations.length / 2)];
+          const targetAnchor =
+            targetStations[Math.floor(targetStations.length / 2)];
+
+          if (!sourceAnchor || !targetAnchor) continue;
+
+          const sourceDomainLabel =
+            tubeMapData.domains[sourceDomainId]?.label ?? sourceDomainId;
+          const targetDomainLabel =
+            tubeMapData.domains[targetDomainId]?.label ?? targetDomainId;
+
+          const bundledConnections: BundledConnection[] = conns.map((c) => ({
+            fromName: subsystemMap.get(c.from)?.name ?? c.from,
+            toName: subsystemMap.get(c.to)?.name ?? c.to,
+            label: c.label,
+            type: c.type,
+          }));
+
+          const edgeData: DependencyEdgeData = {
+            connectionType: "depends_on",
+            label: `${conns.length} connections`,
+            sourceName: sourceDomainLabel,
+            targetName: targetDomainLabel,
+            sourceInterfaces: [],
+            targetInterfaces: [],
+            sourceDomainColor,
+            targetDomainColor,
+            bundleCount: conns.length,
+            bundledConnections,
+          };
+
+          edges.push({
+            id: `bundle::${pairKey}`,
+            source: sourceAnchor.id,
+            target: targetAnchor.id,
+            type: "dependency",
+            data: edgeData,
+          });
+        } else {
+          // Below threshold — render individual edges
+          for (const conn of conns) {
+            const sourceSub = subsystemMap.get(conn.from);
+            const targetSub = subsystemMap.get(conn.to);
+            edges.push(
+              buildIndividualEdge(conn, sourceSub, targetSub, domainColors),
+            );
+          }
+        }
+      }
+    }
 
     return { nodes, edges };
   }, [

@@ -484,7 +484,7 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 
 ### Phase E: Polish
 
-- [ ] Edge bundling for dense inter-domain connections (>3 edges → single bundle edge with count)
+- [x] Edge bundling for dense inter-domain connections (>3 edges → single bundle edge with count)
 - [ ] Tube line stripe rendering (colored SVG paths behind stations)
 - [ ] Animate fitView transitions (duration: 300ms)
 - [ ] Toast notifications for file opening, manifest loading

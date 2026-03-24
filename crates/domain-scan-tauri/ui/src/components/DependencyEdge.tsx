@@ -8,6 +8,13 @@ import {
 import type { ConnectionType } from "../types";
 import { EdgeTooltip, type EdgeTooltipData } from "./EdgeTooltip";
 
+export interface BundledConnection {
+  fromName: string;
+  toName: string;
+  label: string;
+  type: ConnectionType;
+}
+
 export interface DependencyEdgeData extends Record<string, unknown> {
   connectionType: ConnectionType;
   label: string;
@@ -17,6 +24,10 @@ export interface DependencyEdgeData extends Record<string, unknown> {
   targetInterfaces: string[];
   sourceDomainColor: string;
   targetDomainColor: string;
+  /** Number of edges in this bundle (1 = normal edge, >1 = bundled) */
+  bundleCount?: number;
+  /** Individual connections in a bundle */
+  bundledConnections?: BundledConnection[];
 }
 
 type DependencyEdgeType = Edge<DependencyEdgeData, "dependency">;
@@ -73,9 +84,14 @@ export function DependencyEdge({
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
   const connType = edgeData.connectionType ?? "depends_on";
+  const isBundle = (edgeData.bundleCount ?? 1) > 1;
   const style = getTubeStyle(connType, edgeData.sourceDomainColor, hovered);
+  // Thicker stroke for bundled edges
+  if (isBundle) {
+    style.strokeWidth = hovered ? 10 : 8;
+  }
 
-  const [edgePath] = getSmoothStepPath({
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -107,6 +123,8 @@ export function DependencyEdge({
     targetInterfaces: edgeData.targetInterfaces ?? [],
     sourceDomainColor: edgeData.sourceDomainColor,
     targetDomainColor: edgeData.targetDomainColor,
+    bundleCount: edgeData.bundleCount,
+    bundledConnections: edgeData.bundledConnections,
   };
 
   return (
@@ -116,7 +134,7 @@ export function DependencyEdge({
         d={edgePath}
         fill="none"
         stroke="transparent"
-        strokeWidth={24}
+        strokeWidth={isBundle ? 32 : 24}
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
@@ -151,6 +169,30 @@ export function DependencyEdge({
           transition: "stroke-width 0.15s ease, opacity 0.15s ease",
         }}
       />
+
+      {/* Bundle count badge at edge midpoint */}
+      {isBundle && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan pointer-events-none absolute"
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            }}
+          >
+            <div
+              className="flex items-center justify-center rounded-full text-[10px] font-bold text-white shadow-md border border-white/20"
+              style={{
+                background: style.stroke,
+                minWidth: 22,
+                height: 22,
+                padding: "0 5px",
+              }}
+            >
+              {edgeData.bundleCount}
+            </div>
+          </div>
+        </EdgeLabelRenderer>
+      )}
 
       {/* Tooltip on hover */}
       {hovered && (

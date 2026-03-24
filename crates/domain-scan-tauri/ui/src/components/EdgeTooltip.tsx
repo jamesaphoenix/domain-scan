@@ -1,4 +1,5 @@
 import type { ConnectionType } from "../types";
+import type { BundledConnection } from "./DependencyEdge";
 
 export interface EdgeTooltipData {
   sourceName: string;
@@ -9,6 +10,8 @@ export interface EdgeTooltipData {
   targetInterfaces: string[];
   sourceDomainColor: string;
   targetDomainColor: string;
+  bundleCount?: number;
+  bundledConnections?: BundledConnection[];
 }
 
 interface EdgeTooltipProps {
@@ -39,6 +42,64 @@ const typeBadgeConfig: Record<
 };
 
 export function EdgeTooltip({ data, x, y }: EdgeTooltipProps) {
+  const isBundle = (data.bundleCount ?? 1) > 1;
+
+  if (isBundle && data.bundledConnections) {
+    return (
+      <div
+        className="pointer-events-none fixed z-50"
+        style={{
+          left: x + 14,
+          top: y - 6,
+        }}
+      >
+        <div
+          className="rounded-md border border-slate-600/60 bg-slate-900/95 backdrop-blur-sm
+                      shadow-lg shadow-black/50 px-2.5 py-1.5 max-w-[320px]"
+        >
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span
+              className="text-[11px] font-semibold"
+              style={{ color: data.sourceDomainColor }}
+            >
+              {data.sourceName}
+            </span>
+            <span className="text-[10px] text-slate-500">{"\u2192"}</span>
+            <span
+              className="text-[11px] font-semibold"
+              style={{ color: data.targetDomainColor }}
+            >
+              {data.targetName}
+            </span>
+            <span className="text-[9px] font-mono font-medium px-1.5 py-px rounded bg-slate-600/80 text-slate-100">
+              {data.bundleCount} connections
+            </span>
+          </div>
+          <div className="max-h-[120px] overflow-y-auto space-y-0.5">
+            {data.bundledConnections.map((conn, i) => {
+              const connBadge = typeBadgeConfig[conn.type];
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-1 text-[10px] text-slate-300"
+                >
+                  <span className="truncate max-w-[80px]">{conn.fromName}</span>
+                  <span className="text-slate-500">{"\u2192"}</span>
+                  <span className="truncate max-w-[80px]">{conn.toName}</span>
+                  <span
+                    className={`text-[8px] font-mono px-1 py-px rounded ${connBadge.bg} ${connBadge.text}`}
+                  >
+                    {connBadge.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const badge = typeBadgeConfig[data.connectionType];
 
   return (
