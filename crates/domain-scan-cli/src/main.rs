@@ -4,6 +4,7 @@ use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::{Parser, Subcommand, ValueEnum};
+use domain_scan_core::input_validation;
 use domain_scan_core::ir::{
     BuildStatus, EntityKind, FilterParams, Language, ScanConfig,
 };
@@ -684,7 +685,101 @@ fn find_workspace_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     }
 }
 
+/// Validate all user-supplied string inputs (name filters, kinds, patterns, etc.)
+/// through the input_validation module before any processing. Returns a structured
+/// error on invalid input (control chars, null bytes, etc.).
+fn validate_string_inputs(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // Helper: validate an optional string, mapping DomainScanError to CliError
+    let check = |value: &Option<String>, flag: &str| -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(ref v) = *value {
+            input_validation::validate_string_input(v).map_err(|e| {
+                let err = CliError {
+                    code: "INVALID_INPUT",
+                    message: format!("{flag}: {e}"),
+                    suggestion: Some(
+                        "Remove control characters and null bytes from the input value."
+                            .to_string(),
+                    ),
+                };
+                serde_json::to_string_pretty(&err)
+                    .unwrap_or_else(|_| e.to_string())
+            })?;
+        }
+        Ok(())
+    };
+
+    // Validate --fields
+    check(&cli.fields, "--fields")?;
+
+    // Validate --json input through core module validation
+    if let Some(ref json) = cli.json_input {
+        input_validation::validate_json_input(json).map_err(|e| {
+            let err = CliError {
+                code: "INVALID_JSON",
+                message: e.to_string(),
+                suggestion: Some(
+                    "Check JSON syntax, ensure nesting depth < 32, and size < 1 MB.".to_string(),
+                ),
+            };
+            serde_json::to_string_pretty(&err).unwrap_or_else(|_| e.to_string())
+        })?;
+    }
+
+    // Validate per-subcommand string inputs
+    match &cli.command {
+        Commands::Interfaces { name, .. } => {
+            check(name, "--name")?;
+        }
+        Commands::Services { kind, name, .. } => {
+            check(kind, "--kind")?;
+            check(name, "--name")?;
+        }
+        Commands::Methods {
+            owner,
+            visibility,
+            name,
+            ..
+        } => {
+            check(owner, "--owner")?;
+            check(visibility, "--visibility")?;
+            check(name, "--name")?;
+        }
+        Commands::Schemas {
+            framework,
+            kind,
+            name,
+            ..
+        } => {
+            check(framework, "--framework")?;
+            check(kind, "--kind")?;
+            check(name, "--name")?;
+        }
+        Commands::Impls { name, .. } => {
+            check(name, "name")?;
+        }
+        Commands::Search { query, kind, .. } => {
+            check(query, "query")?;
+            check(kind, "--kind")?;
+        }
+        Commands::Validate { rules, .. } => {
+            check(rules, "--rules")?;
+        }
+        Commands::Prompt { focus, .. } => {
+            check(focus, "--focus")?;
+        }
+        Commands::Schema { command, .. } => {
+            check(command, "command")?;
+        }
+        Commands::Scan | Commands::Stats | Commands::Match { .. } | Commands::Cache { .. } => {}
+    }
+
+    Ok(())
+}
+
 fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate all string inputs through input_validation before any processing
+    validate_string_inputs(&cli)?;
+
     // Early validation for common mistakes (skip for self-test which overrides root)
     let is_self_test = matches!(&cli.command, Commands::Validate { self_test, .. } if *self_test);
     if !is_self_test {

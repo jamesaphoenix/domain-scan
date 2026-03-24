@@ -3440,7 +3440,7 @@ fn adversarial_repo_massive_file() {
 
 Add to **Phase 10** (Polish + Performance):
 - [x] `input_validation.rs`: `validate_path`, `validate_string_input`, `validate_resource_id`, `validate_regex`, `parse_json_input` — all return structured `DomainScanError`
-- [ ] All CLI commands route inputs through validation before any processing
+- [x] All CLI commands route inputs through validation before any processing
 - [ ] Adversarial test suite: all 8 test files in `tests/adversarial/`
 - [ ] Adversarial repo fixtures: all 10 synthetic repos generated and committed
 - [ ] Real codebase tests: `#[ignore]`'d tests for 5 real repos, CI scheduled job
