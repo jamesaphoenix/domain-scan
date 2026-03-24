@@ -546,13 +546,13 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.4 E2E: Manifest Loading & Matching
 
-- [ ] Test: load `minimal.json` → 2 subsystem nodes render on canvas
-- [ ] Test: load `octospark-system.json` → 18 nodes render, 50 edges visible
-- [ ] Test: load `empty.json` → "No subsystems found" message, no crash
-- [ ] Test: load `malformed.json` → structured error toast, tube map stays on loader view
-- [ ] Test: load manifest before scan → matching skipped gracefully, entities show as unmatched
-- [ ] Test: load manifest after scan → matching runs, coverage % shown
-- [ ] Test: reload different manifest → old match results cleared, new data renders
+- [x] Test: load `minimal.json` → 2 subsystem nodes render on canvas
+- [x] Test: load `octospark-system.json` → 18 nodes render, 50 edges visible
+- [x] Test: load `empty.json` → "No subsystems found" message, no crash
+- [x] Test: load `malformed.json` → structured error toast, tube map stays on loader view
+- [x] Test: load manifest before scan → matching skipped gracefully, entities show as unmatched
+- [x] Test: load manifest after scan → matching runs, coverage % shown
+- [x] Test: reload different manifest → old match results cleared, new data renders
 
 #### F.5 E2E: Tube Map Interactions
 

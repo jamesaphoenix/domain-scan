@@ -64,7 +64,7 @@ function TubeMapInner() {
         state.drillIn(sub.id, sub.name);
       }
     },
-    [tubeMapData, state],
+    [tubeMapData, state.drillIn],
   );
 
   const handleOpenFile = useCallback(
@@ -104,7 +104,7 @@ function TubeMapInner() {
     (subsystemId: string) => {
       state.setFocusedSubsystemId(subsystemId);
     },
-    [state],
+    [state.setFocusedSubsystemId],
   );
 
   const handleGeneratePrompt = useCallback(
@@ -262,6 +262,26 @@ function TubeMapInner() {
         loading={state.loading}
         error={state.error}
       />
+    );
+  }
+
+  // If manifest loaded but has no subsystems, show empty state
+  if (tubeMapData.subsystems.length === 0) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <p className="text-lg text-slate-300 mb-2">No subsystems found</p>
+          <p className="text-sm text-slate-500 mb-4">
+            The loaded manifest has no subsystems defined. Add subsystems to your manifest to see them on the tube map.
+          </p>
+          <button
+            onClick={state.loadManifest}
+            className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+          >
+            Load Different Manifest
+          </button>
+        </div>
+      </div>
     );
   }
 

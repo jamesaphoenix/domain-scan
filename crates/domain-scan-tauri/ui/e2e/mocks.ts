@@ -7,7 +7,7 @@
  */
 
 import type { Page } from "@playwright/test";
-import type { ScanStats, EntitySummary } from "../src/types";
+import type { ScanStats, EntitySummary, TubeMapData, TubeMapSubsystem } from "../src/types";
 
 // ---------------------------------------------------------------------------
 // Mock data factories
@@ -60,6 +60,123 @@ export const MOCK_ENTITIES: EntitySummary[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Tube Map mock data factories
+// ---------------------------------------------------------------------------
+
+function makeSubsystem(overrides: Partial<TubeMapSubsystem> & { id: string; name: string; domain: string }): TubeMapSubsystem {
+  return {
+    status: "built",
+    description: "",
+    file_path: `src/${overrides.id}/`,
+    matched_entity_count: 0,
+    interface_count: 0,
+    operation_count: 0,
+    table_count: 0,
+    event_count: 0,
+    has_children: false,
+    child_count: 0,
+    dependency_count: 0,
+    ...overrides,
+  };
+}
+
+/** TubeMapData matching minimal.json: 1 domain, 2 subsystems, 1 connection */
+export const MOCK_MINIMAL_TUBE_MAP: TubeMapData = {
+  meta: { name: "Minimal Test App", version: "1.0", description: "Minimal manifest for smoke testing" },
+  domains: { core: { label: "Core", color: "#3b82f6" } },
+  subsystems: [
+    makeSubsystem({ id: "auth", name: "Authentication", domain: "core", matched_entity_count: 1, interface_count: 1, operation_count: 1, table_count: 1 }),
+    makeSubsystem({ id: "api", name: "API Gateway", domain: "core", matched_entity_count: 1, interface_count: 1, operation_count: 1, dependency_count: 1 }),
+  ],
+  connections: [{ from: "api", to: "auth", label: "validates identity", type: "depends_on" }],
+  coverage_percent: 0,
+  unmatched_count: 0,
+};
+
+/** TubeMapData matching octospark-system.json: 7 domains, 18 subsystems, 50 connections */
+export const MOCK_OCTOSPARK_TUBE_MAP: TubeMapData = (() => {
+  const domains: TubeMapData["domains"] = {
+    "platform-core": { label: "Platform Core", color: "#3b82f6" },
+    "media-storage": { label: "Media & Storage", color: "#22c55e" },
+    "services": { label: "Services", color: "#f97316" },
+    "experimentation": { label: "Experimentation", color: "#a855f7" },
+    "workflows": { label: "Workflows", color: "#ef4444" },
+    "frontends": { label: "Frontends", color: "#6b7280" },
+    "post-launch": { label: "Post-Launch", color: "#9ca3af" },
+  };
+  const subsystems: TubeMapSubsystem[] = [
+    makeSubsystem({ id: "auth", name: "Auth & Identity", domain: "platform-core", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "org-team", name: "Org & Team Management", domain: "platform-core", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "billing", name: "Billing & Subscriptions", domain: "platform-core", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "credit-service", name: "Credit Service", domain: "platform-core", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "notifications", name: "Notifications", domain: "platform-core", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "webhooks", name: "Webhooks", domain: "platform-core", has_children: true, child_count: 2 }),
+    makeSubsystem({ id: "asset-management", name: "Asset Management", domain: "media-storage", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "media-uploader", name: "Media Uploader", domain: "media-storage", has_children: true, child_count: 2 }),
+    makeSubsystem({ id: "media-enrichment", name: "Media Enrichment", domain: "media-storage", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "retention-cleaner", name: "Retention Cleaner", domain: "media-storage", has_children: true, child_count: 2 }),
+    makeSubsystem({ id: "social-oauth", name: "Social Media OAuth", domain: "services", has_children: true, child_count: 5 }),
+    makeSubsystem({ id: "publisher", name: "Social Media Publisher", domain: "services", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "analytics-collector", name: "Analytics Collector", domain: "services", has_children: true, child_count: 2 }),
+    makeSubsystem({ id: "ai-generation", name: "AI Generation", domain: "experimentation", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "prompt-bandit", name: "Contextual Prompt Bandit", domain: "experimentation", has_children: true, child_count: 7 }),
+    makeSubsystem({ id: "workflows", name: "Workflows", domain: "workflows", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "api-cli-sdk", name: "API / CLI / SDK", domain: "frontends", has_children: true, child_count: 3 }),
+    makeSubsystem({ id: "agency-onboarding", name: "Agency Client Onboarding", domain: "post-launch", has_children: true, child_count: 3 }),
+  ];
+  // Generate 50 connections (representative sample of cross-subsystem dependencies)
+  const connections: TubeMapData["connections"] = [];
+  const pairs: [string, string, string][] = [
+    ["org-team", "auth", "authenticates via"], ["billing", "auth", "validates identity"],
+    ["billing", "org-team", "bills per org"], ["credit-service", "billing", "consumes credits"],
+    ["notifications", "auth", "sends to user"], ["notifications", "org-team", "org notifications"],
+    ["webhooks", "auth", "validates webhook"], ["webhooks", "notifications", "triggers notification"],
+    ["asset-management", "auth", "asset ownership"], ["media-uploader", "asset-management", "stores assets"],
+    ["media-uploader", "auth", "upload auth"], ["media-enrichment", "asset-management", "enriches assets"],
+    ["media-enrichment", "ai-generation", "AI tagging"], ["retention-cleaner", "asset-management", "purges assets"],
+    ["social-oauth", "auth", "OAuth flow"], ["publisher", "social-oauth", "posts via OAuth"],
+    ["publisher", "media-uploader", "attaches media"], ["publisher", "asset-management", "reads assets"],
+    ["publisher", "credit-service", "costs credits"], ["analytics-collector", "social-oauth", "fetches metrics"],
+    ["analytics-collector", "publisher", "tracks posts"], ["ai-generation", "credit-service", "AI costs"],
+    ["ai-generation", "auth", "AI auth"], ["prompt-bandit", "ai-generation", "generates variants"],
+    ["prompt-bandit", "analytics-collector", "reward signal"], ["prompt-bandit", "publisher", "A/B publish"],
+    ["workflows", "publisher", "scheduled posts"], ["workflows", "media-enrichment", "media pipeline"],
+    ["workflows", "notifications", "workflow alerts"], ["workflows", "ai-generation", "AI in workflows"],
+    ["api-cli-sdk", "auth", "API auth"], ["api-cli-sdk", "org-team", "org scoping"],
+    ["api-cli-sdk", "billing", "usage tracking"], ["api-cli-sdk", "publisher", "publish API"],
+    ["api-cli-sdk", "analytics-collector", "analytics API"], ["api-cli-sdk", "asset-management", "asset API"],
+    ["agency-onboarding", "auth", "onboarding auth"], ["agency-onboarding", "org-team", "creates org"],
+    ["agency-onboarding", "social-oauth", "connects socials"], ["agency-onboarding", "billing", "setup billing"],
+    ["credit-service", "notifications", "low balance alert"], ["webhooks", "billing", "payment events"],
+    ["media-enrichment", "notifications", "enrichment done"], ["retention-cleaner", "notifications", "purge report"],
+    ["publisher", "notifications", "publish status"], ["analytics-collector", "notifications", "report ready"],
+    ["prompt-bandit", "credit-service", "bandit costs"], ["workflows", "credit-service", "workflow costs"],
+    ["agency-onboarding", "notifications", "welcome email"], ["agency-onboarding", "asset-management", "brand assets"],
+  ];
+  for (const [from, to, label] of pairs) {
+    connections.push({ from, to, label, type: "depends_on" });
+  }
+  return {
+    meta: { name: "Octospark", version: "1.0", description: "Autonomous social growth platform" },
+    domains,
+    subsystems,
+    connections,
+    coverage_percent: 85,
+    unmatched_count: 12,
+  };
+})();
+
+/** TubeMapData matching empty.json: valid manifest with 0 subsystems */
+export const MOCK_EMPTY_TUBE_MAP: TubeMapData = {
+  meta: { name: "Empty App", version: "1.0", description: "Valid manifest with zero subsystems" },
+  domains: {},
+  subsystems: [],
+  connections: [],
+  coverage_percent: 0,
+  unmatched_count: 0,
+};
+
+// ---------------------------------------------------------------------------
 // Mock IPC injection
 // ---------------------------------------------------------------------------
 
@@ -72,6 +189,12 @@ export interface MockIPCOptions {
   scanError?: string;
   /** Entities returned by filter_entities / search_entities. */
   entities?: EntitySummary[];
+  /** TubeMapData returned by get_tube_map_data. Null uses default empty. */
+  tubeMapData?: TubeMapData | null;
+  /** Error thrown by load_manifest (if set, load_manifest rejects). */
+  manifestError?: string;
+  /** Match result returned by match_manifest. Null = throw (no scan loaded). */
+  matchResult?: { matched: string[]; unmatched: string[]; coverage_percent: number } | null;
 }
 
 /**
@@ -87,6 +210,9 @@ export async function setupTauriMocks(
   const scanStats = options.scanStats !== undefined ? options.scanStats : MOCK_SCAN_STATS;
   const scanError = options.scanError !== undefined ? options.scanError : "Scan failed";
   const entities = options.entities !== undefined ? options.entities : MOCK_ENTITIES;
+  const tubeMapData = options.tubeMapData !== undefined ? options.tubeMapData : null;
+  const manifestError = options.manifestError ?? null;
+  const matchResult = options.matchResult !== undefined ? options.matchResult : { matched: [], unmatched: [], coverage_percent: 0 };
 
   // Serialize data for injection into browser context
   const serialized = JSON.stringify({
@@ -94,6 +220,9 @@ export async function setupTauriMocks(
     scanStats,
     scanError,
     entities,
+    tubeMapData,
+    manifestError,
+    matchResult,
   });
 
   await page.addInitScript((data: string) => {
@@ -105,6 +234,13 @@ export async function setupTauriMocks(
     w.__TAURI_INTERNALS__ = w.__TAURI_INTERNALS__ ?? {};
     w.__TAURI_EVENT_PLUGIN_INTERNALS__ =
       w.__TAURI_EVENT_PLUGIN_INTERNALS__ ?? {};
+
+    // Mutable tube map state (can be updated mid-test via page.evaluate)
+    w.__MOCK_TUBE_MAP__ = {
+      data: config.tubeMapData,
+      manifestError: config.manifestError,
+      matchResult: config.matchResult,
+    };
 
     const internals = w.__TAURI_INTERNALS__ as Record<string, unknown>;
     const callbacks = new Map<number, (data: unknown) => unknown>();
@@ -180,20 +316,24 @@ export async function setupTauriMocks(
         return JSON.stringify(config.entities);
       }
 
-      // Tube map commands — return empty defaults
+      // Tube map commands — use configurable mock data
       if (cmd === "load_manifest") {
-        return {
-          meta: { name: "Test", version: "1.0", description: "Test manifest" },
-          domains: {},
-          subsystems: [],
-          connections: [],
-        };
+        if (w.__MOCK_TUBE_MAP__?.manifestError) {
+          throw new Error(w.__MOCK_TUBE_MAP__.manifestError);
+        }
+        const data = w.__MOCK_TUBE_MAP__?.data;
+        return data
+          ? { meta: data.meta, domains: data.domains, subsystems: data.subsystems, connections: data.connections }
+          : { meta: { name: "Test", version: "1.0", description: "Test manifest" }, domains: {}, subsystems: [], connections: [] };
       }
       if (cmd === "match_manifest") {
-        return { matched: [], unmatched: [], coverage_percent: 0 };
+        if (w.__MOCK_TUBE_MAP__?.matchResult === null) {
+          throw new Error("No scan index loaded");
+        }
+        return w.__MOCK_TUBE_MAP__?.matchResult ?? { matched: [], unmatched: [], coverage_percent: 0 };
       }
       if (cmd === "get_tube_map_data") {
-        return {
+        return w.__MOCK_TUBE_MAP__?.data ?? {
           meta: { name: "Test", version: "1.0", description: "Test" },
           domains: {},
           subsystems: [],
@@ -201,6 +341,12 @@ export async function setupTauriMocks(
           coverage_percent: 0,
           unmatched_count: 0,
         };
+      }
+      if (cmd === "get_subsystem_detail") {
+        return { id: args?.subsystemId, name: "Mock Subsystem", domain: "core", status: "built", file_path: "src/mock/", interfaces: [], operations: [], tables: [], events: [], dependencies: [], children: [], matched_entities: [] };
+      }
+      if (cmd === "get_subsystem_entities") {
+        return [];
       }
 
       // Default: return null for unknown commands
