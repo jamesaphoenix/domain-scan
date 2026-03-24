@@ -22,6 +22,7 @@ import { TubeMapStatusBar } from "./TubeMapStatusBar";
 import { SubsystemDrillIn } from "./SubsystemDrillIn";
 import { CoverageOverlay } from "./CoverageOverlay";
 import { ShortcutHelp } from "./ShortcutHelp";
+import { TubeLineStripes } from "./TubeLineStripes";
 import { useTubeMapState } from "../hooks/useTubeMapState";
 import { useTubeLayout } from "../hooks/useTubeLayout";
 
@@ -94,7 +95,7 @@ function TubeMapInner() {
     [state],
   );
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useTubeLayout({
+  const { nodes: layoutNodes, edges: layoutEdges, tubeLines, stationPositions } = useTubeLayout({
     tubeMapData: state.tubeMapData,
     searchQuery,
     domainFilter,
@@ -341,6 +342,7 @@ function TubeMapInner() {
               size={1}
               color="#1e293b"
             />
+            <TubeLineStripes lines={tubeLines} positions={stationPositions} />
             <Controls showInteractive={false} />
             <MiniMap
               nodeColor={(node) => {

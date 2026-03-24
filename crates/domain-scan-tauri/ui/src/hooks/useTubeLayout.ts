@@ -3,6 +3,7 @@ import type { Node, Edge } from "@xyflow/react";
 import type { TubeMapData, TubeMapSubsystem } from "../types";
 import type { SubsystemNodeData } from "../components/SubsystemNode";
 import type { DependencyEdgeData, BundledConnection } from "../components/DependencyEdge";
+import type { ComputedLine } from "../layout/types";
 import { buildDynamicLayout, NODE_WIDTH } from "../layout/tubeMap";
 import { assignDomainColors } from "../layout/colors";
 import type { TubeMapConnection } from "../types";
@@ -57,6 +58,8 @@ interface UseTubeLayoutOptions {
 export interface UseTubeLayoutReturn {
   nodes: Node[];
   edges: Edge[];
+  tubeLines: ComputedLine[];
+  stationPositions: Map<string, { x: number; y: number }>;
 }
 
 export function useTubeLayout({
@@ -71,7 +74,7 @@ export function useTubeLayout({
   onFocusDependency,
 }: UseTubeLayoutOptions): UseTubeLayoutReturn {
   return useMemo(() => {
-    if (!tubeMapData) return { nodes: [], edges: [] };
+    if (!tubeMapData) return { nodes: [], edges: [], tubeLines: [], stationPositions: new Map() };
 
     // Build layout
     const layout = buildDynamicLayout(tubeMapData);
@@ -300,7 +303,15 @@ export function useTubeLayout({
       }
     }
 
-    return { nodes, edges };
+    // Build filtered tube lines for stripe rendering (only lines with ≥2 visible stations)
+    const tubeLines = layout.lines
+      .map((line) => ({
+        ...line,
+        stationIds: line.stationIds.filter((id) => visibleIds.has(id)),
+      }))
+      .filter((line) => line.stationIds.length >= 2);
+
+    return { nodes, edges, tubeLines, stationPositions: layout.positions };
   }, [
     tubeMapData,
     searchQuery,
