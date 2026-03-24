@@ -2730,9 +2730,9 @@ Make domain-scan a first-class tool for AI agents (Claude Code, Codex, Gemini CL
 
 #### 6c.5 Auto-Detect JSON Output
 
-- [ ] When stdout is not a TTY (piped to another command or redirected to file), default to `--output json` instead of `--table`
-- [ ] Explicit `--output` flag always overrides auto-detection
-- [ ] `atty::is(Stream::Stdout)` or `std::io::stdout().is_terminal()` for detection
+- [x] When stdout is not a TTY (piped to another command or redirected to file), default to `--output json` instead of `--table`
+- [x] Explicit `--output` flag always overrides auto-detection
+- [x] `atty::is(Stream::Stdout)` or `std::io::stdout().is_terminal()` for detection
 
 #### 6c.6 `--dry-run` Everywhere
 

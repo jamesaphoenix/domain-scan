@@ -174,6 +174,8 @@ fn test_stats_json() {
 #[test]
 fn test_stats_table() {
     let output = base_cmd()
+        .arg("--output")
+        .arg("table")
         .arg("stats")
         .output()
         .expect("command should run");
@@ -997,4 +999,111 @@ fn test_snapshot_search_json() {
         }
     }
     insta::assert_json_snapshot!("search_repo_json", serde_json::json!(arr));
+}
+
+// ---------------------------------------------------------------------------
+// Auto-detect JSON output when stdout is not a TTY (Phase 6c.5)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_auto_detect_json_when_piped() {
+    // When no --output is specified and stdout is piped (assert_cmd always pipes),
+    // the output should default to JSON.
+    let output = base_cmd()
+        .arg("scan")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    // Should be valid JSON (not table format)
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("piped output should default to JSON");
+    assert!(json.get("files").is_some(), "should have files field");
+    assert!(json.get("stats").is_some(), "should have stats field");
+}
+
+#[test]
+fn test_auto_detect_json_interfaces_when_piped() {
+    // Interfaces should also default to JSON when piped
+    let output = base_cmd()
+        .arg("interfaces")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("piped interfaces output should default to JSON");
+    let arr = json.as_array().expect("should be array");
+    assert!(arr.len() >= 3, "should have at least 3 interfaces");
+}
+
+#[test]
+fn test_explicit_output_overrides_auto_detect() {
+    // Explicit --output table should override auto-detection even when piped
+    let output = base_cmd()
+        .arg("--output")
+        .arg("table")
+        .arg("scan")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Should be table format, not JSON
+    assert!(stdout.contains("Scan:"), "explicit --output table should produce table format");
+    // And it should NOT be valid JSON
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+        "table output should not be valid JSON"
+    );
+}
+
+#[test]
+fn test_explicit_output_compact_overrides_auto_detect() {
+    // Explicit --output compact should override auto-detection
+    let output = base_cmd()
+        .arg("--output")
+        .arg("compact")
+        .arg("scan")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("3 files"), "compact output should mention file count");
+}
+
+#[test]
+fn test_auto_detect_json_stats_when_piped() {
+    // Stats should also default to JSON when piped
+    let output = base_cmd()
+        .arg("stats")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("piped stats output should default to JSON");
+    assert_eq!(json["total_files"], 3);
+}
+
+#[test]
+fn test_auto_detect_json_search_when_piped() {
+    // Search should also default to JSON when piped
+    let output = base_cmd()
+        .arg("search")
+        .arg("Handler")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("piped search output should default to JSON");
+    let arr = json.as_array().expect("should be array");
+    assert!(arr.len() >= 3, "should find at least 3 Handler entities");
 }

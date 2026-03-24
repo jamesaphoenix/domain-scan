@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process;
 
@@ -34,9 +35,10 @@ struct Cli {
     #[arg(long, global = true)]
     config: Option<PathBuf>,
 
-    /// Output format: json | table | compact
-    #[arg(long, global = true, default_value = "table", value_enum, conflicts_with = "interactive")]
-    output: OutputFormatArg,
+    /// Output format: json | table | compact.
+    /// Defaults to json when stdout is not a TTY (piped/redirected), table otherwise.
+    #[arg(long, global = true, value_enum, conflicts_with = "interactive")]
+    output: Option<OutputFormatArg>,
 
     /// Launch TUI mode (ratatui). Single-keypress tree navigation.
     #[arg(long, global = true, conflicts_with = "output")]
@@ -553,8 +555,26 @@ struct CliError<'a> {
     suggestion: Option<String>,
 }
 
+/// Resolve the effective output format.
+///
+/// If `--output` was explicitly provided, use it. Otherwise, default to JSON
+/// when stdout is not a TTY (piped or redirected to a file), and table when
+/// stdout is a TTY (interactive terminal).
+fn resolve_format(explicit: Option<OutputFormatArg>) -> OutputFormat {
+    match explicit {
+        Some(f) => f.into(),
+        None => {
+            if std::io::stdout().is_terminal() {
+                OutputFormat::Table
+            } else {
+                OutputFormat::Json
+            }
+        }
+    }
+}
+
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
-    let format: OutputFormat = cli.output.into();
+    let format: OutputFormat = resolve_format(cli.output);
 
     match &cli.command {
         Commands::Scan => {
@@ -1894,5 +1914,37 @@ fn interface_kind_str(kind: &domain_scan_core::ir::InterfaceKind) -> &'static st
         InterfaceKind::AbstractClass => "abstract",
         InterfaceKind::PureVirtual => "virtual",
         InterfaceKind::Module => "module",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_format_explicit_json() {
+        assert_eq!(resolve_format(Some(OutputFormatArg::Json)), OutputFormat::Json);
+    }
+
+    #[test]
+    fn resolve_format_explicit_table() {
+        assert_eq!(resolve_format(Some(OutputFormatArg::Table)), OutputFormat::Table);
+    }
+
+    #[test]
+    fn resolve_format_explicit_compact() {
+        assert_eq!(resolve_format(Some(OutputFormatArg::Compact)), OutputFormat::Compact);
+    }
+
+    #[test]
+    fn resolve_format_none_uses_tty_detection() {
+        // When no explicit format, the result depends on whether stdout is a TTY.
+        // In test context, stdout is typically not a TTY (piped), so JSON is expected.
+        let format = resolve_format(None);
+        if std::io::stdout().is_terminal() {
+            assert_eq!(format, OutputFormat::Table);
+        } else {
+            assert_eq!(format, OutputFormat::Json);
+        }
     }
 }
