@@ -580,7 +580,92 @@ fn resolve_format(explicit: Option<OutputFormatArg>) -> OutputFormat {
     }
 }
 
+/// Validate that --root points to an existing directory.
+fn validate_root_path(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    if !cli.root.exists() {
+        let err = CliError {
+            code: "PATH_NOT_FOUND",
+            message: format!(
+                "Root directory does not exist: {}",
+                cli.root.display()
+            ),
+            suggestion: Some(
+                "Check the path and ensure the directory exists. \
+                 Use --root to specify a different directory."
+                    .to_string(),
+            ),
+        };
+        let json = serde_json::to_string_pretty(&err)?;
+        eprintln!("{json}");
+        process::exit(1);
+    }
+    if !cli.root.is_dir() {
+        let err = CliError {
+            code: "NOT_A_DIRECTORY",
+            message: format!(
+                "Root path is not a directory: {}",
+                cli.root.display()
+            ),
+            suggestion: Some(
+                "The --root flag must point to a directory, not a file. \
+                 Provide the parent directory instead."
+                    .to_string(),
+            ),
+        };
+        let json = serde_json::to_string_pretty(&err)?;
+        eprintln!("{json}");
+        process::exit(1);
+    }
+    Ok(())
+}
+
+/// Validate that --config points to an existing file (if provided).
+fn validate_config_path(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(ref config_path) = cli.config {
+        if !config_path.exists() {
+            let err = CliError {
+                code: "CONFIG_NOT_FOUND",
+                message: format!(
+                    "Config file does not exist: {}",
+                    config_path.display()
+                ),
+                suggestion: Some(
+                    "Check the path to your .domain-scan.toml file. \
+                     If you don't have a config, omit the --config flag \
+                     to use defaults."
+                        .to_string(),
+                ),
+            };
+            let json = serde_json::to_string_pretty(&err)?;
+            eprintln!("{json}");
+            process::exit(1);
+        }
+        if !config_path.is_file() {
+            let err = CliError {
+                code: "CONFIG_NOT_FILE",
+                message: format!(
+                    "Config path is not a file: {}",
+                    config_path.display()
+                ),
+                suggestion: Some(
+                    "The --config flag must point to a .domain-scan.toml file, \
+                     not a directory."
+                        .to_string(),
+                ),
+            };
+            let json = serde_json::to_string_pretty(&err)?;
+            eprintln!("{json}");
+            process::exit(1);
+        }
+    }
+    Ok(())
+}
+
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // Early validation for common mistakes
+    validate_root_path(&cli)?;
+    validate_config_path(&cli)?;
+
     let format: OutputFormat = resolve_format(cli.output);
 
     match &cli.command {
@@ -865,7 +950,28 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
 
     if walked.is_empty() {
         if !cli.quiet {
-            eprintln!("No files found in {}", config.root.display());
+            let mut suggestion = String::from(
+                "Ensure the directory contains files with supported extensions: \
+                 .ts, .tsx, .js, .jsx, .rs, .go, .py, .java, .kt, .scala, .cs, \
+                 .swift, .cpp, .hpp, .php, .rb",
+            );
+            if !config.languages.is_empty() {
+                suggestion.push_str(&format!(
+                    ". You're filtering to {:?} — try removing --languages to scan all.",
+                    config.languages
+                ));
+            }
+            let err = CliError {
+                code: "NO_FILES_FOUND",
+                message: format!(
+                    "No recognized source files found in {}",
+                    config.root.display()
+                ),
+                suggestion: Some(suggestion),
+            };
+            if let Ok(json) = serde_json::to_string_pretty(&err) {
+                eprintln!("{json}");
+            }
         }
         return Ok(index::build_index(config.root, Vec::new(), 0, 0, 0));
     }
