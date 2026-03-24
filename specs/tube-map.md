@@ -671,3 +671,149 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 | `src/commands.rs` (extend) | 5 new IPC commands | 200 |
 | `core/src/manifest.rs` (extend) | SystemManifest, Connection types | 100 |
 | **Total** | | **~2,815** |
+
+---
+
+## 12. Manifest Builder — LLM-Driven Subsystem Discovery
+
+The tube map requires a `system.json` manifest. Today this must be hand-authored. The manifest builder closes that gap: the agent (Claude Code / Codex) reads scan output, proposes subsystems, and writes the manifest. No separate LLM provider needed — the agent IS the LLM.
+
+### 12.1 Workflow
+
+```
+Scan → Agent reads entity census → Agent proposes system.json → Validate → Tube map renders
+```
+
+```
+user> build me a tube map for this repo
+
+claude> [reads skills/domain-scan-init.md]
+        1. Running: domain-scan scan --root . --output json --fields files.path,files.language,stats
+        2. [sees 45 interfaces across src/auth/, src/billing/, src/media/...]
+        3. [proposes system.json based on directory structure and entity names]
+        4. Running: domain-scan init --apply-manifest system.json --dry-run
+        5. [shows: "5 domains, 12 subsystems, 18 connections — 87% coverage"]
+        6. User approves
+        7. Running: domain-scan init --apply-manifest system.json
+
+user> the auth subsystem is too big, split JWT and OAuth
+
+claude> [edits system.json directly: splits auth into auth-jwt and auth-oauth]
+        Running: domain-scan match --manifest system.json --output json --fields coverage_percent
+        Coverage: 87% → 89%
+        [writes updated system.json]
+```
+
+### 12.2 Skill Files
+
+Two skill files teach the agent the full workflow and what good manifests look like:
+
+**`skills/domain-scan-init.md`** — Build/refine manifests:
+- First-time workflow (scan → propose domains → map entities → infer connections → save)
+- Refining workflow (edit system.json → re-match → verify coverage)
+- Naming conventions (kebab-case IDs, verb-first connection labels)
+- Grouping principles (independently deployable, one responsibility, 3-8 per domain, schemas anchor subsystems)
+- Connection semantics (`depends_on` vs `uses` vs `triggers`)
+- Anti-patterns (no utility domains, no duplicates, no test-only connections)
+
+**`skills/domain-scan-tube-map.md`** — View/interact with tube map data:
+- `domain-scan match --manifest system.json` for coverage checking
+- `--unmatched-only` to find gaps
+- `--prompt-unmatched` to generate prompts for unmapped entities
+
+### 12.3 Skill Bootstrapping
+
+Skills are embedded in the binary via `include_str!` and installed to the **project directory** (not global):
+
+```bash
+domain-scan skills install --claude-code   # → .claude/skills/domain-scan-*.md
+domain-scan skills install --codex         # → .codex/skills/domain-scan-*.md
+domain-scan skills install --dir .cursor/skills/  # custom path
+
+domain-scan skills list                    # list available skills
+domain-scan skills show domain-scan-init   # print a skill to stdout
+domain-scan skills dump                    # all skills concatenated (for context injection)
+```
+
+`--help` includes an `AGENT SKILLS:` section so any agent can self-bootstrap.
+
+### 12.4 Smart Defaults (`--bootstrap`)
+
+Before the agent even proposes anything, heuristics generate a starter manifest:
+
+- **Directory grouping**: top-level `src/` directories → domain candidates, merge dirs sharing >50% imports
+- **Import clustering**: entities that import each other heavily → same subsystem
+- **Connection inference**: cross-subsystem imports → `depends_on` edges
+
+```bash
+domain-scan init --bootstrap -o system.json   # heuristic starter manifest
+```
+
+The agent then refines the bootstrap output (better names, better groupings, connection labels).
+
+---
+
+## 13. Manifest Builder Build Phases
+
+### Phase G.1: Core Prompt Generation
+
+- [ ] Create `crates/domain-scan-core/src/manifest_builder.rs` module
+- [ ] Implement `generate_domain_proposal_prompt(index)` — directory census, entity summary, import graph
+- [ ] Implement `parse_domain_proposals(json)` — validate JSON response
+- [ ] Implement `generate_entity_mapping_prompts(index, domains)` — per-domain entity listing
+- [ ] Implement `parse_entity_mappings(json)` — validate subsystem proposals
+- [ ] Implement `generate_connection_prompt(index, subsystems)` — import-graph-based
+- [ ] Implement `parse_connections(json)` — validate connection proposals
+- [ ] Implement `build_manifest(meta, domains, subsystems, connections)` — assemble SystemManifest
+- [ ] Unit tests for each function with fixture data
+- [ ] Integration test: generate prompts → parse mock responses → produce valid system.json
+
+### Phase G.2: Smart Defaults (Heuristic)
+
+- [ ] Implement `infer_domains_from_directories(index)` — directory grouping heuristic
+- [ ] Implement `infer_subsystems_from_imports(index, domain)` — import clustering
+- [ ] Implement `infer_connections_from_imports(index, subsystems)` — cross-subsystem import counting
+- [ ] Test: scan domain-scan's own codebase → heuristics produce reasonable domains/subsystems
+- [ ] Test: scan octospark fixtures → heuristics approximate the hand-crafted system.json
+
+### Phase G.3: CLI `domain-scan init`
+
+- [ ] Add `init` subcommand with `--step`, `--apply`, `-o`, `--bootstrap` flags
+- [ ] `--bootstrap` generates starter manifest from heuristic defaults
+- [ ] `--apply-manifest <PATH>` validates and writes a system.json
+- [ ] `--dry-run` shows coverage and validation without writing
+- [ ] `domain-scan schema init` dumps the system.json JSON Schema
+- [ ] CLI integration tests with assert_cmd
+
+### Phase G.4: Tauri Wizard UI
+
+- [ ] Create `ManifestWizard.tsx` — step navigation, progress indicator
+- [ ] Create `WizardStepDomains.tsx` — directory census + domain proposal cards
+- [ ] Create `WizardStepSubsystems.tsx` — per-domain entity mapping
+- [ ] Create `WizardStepConnections.tsx` — connection list with type/label editing
+- [ ] Create `WizardStepReview.tsx` — final review + save + tube map preview
+- [ ] Wire wizard into tube map tab (replaces "Load Manifest" CTA)
+- [ ] On "Save Manifest" → immediately load into tube map view
+
+### Phase G.5: Agent Skill Files + Bootstrapping
+
+- [ ] Create `skills/domain-scan-init.md` with patch guidelines
+- [ ] Create `skills/domain-scan-tube-map.md`
+- [ ] Update `skills/domain-scan-scan.md` — add init workflow reference
+- [ ] Embed skill files in CLI binary via `include_str!`
+- [ ] Add `domain-scan skills list|show|dump|install` subcommand
+- [ ] `--claude-code` installs to `.claude/skills/` in project root
+- [ ] `--codex` installs to `.codex/skills/` in project root
+- [ ] `--dir <PATH>` for custom install directory
+- [ ] Auto-add skills directory to `.gitignore`
+- [ ] Add "AGENT SKILLS" section to `--help` output
+- [ ] Test: Claude Code can create a manifest from scratch using the skill
+- [ ] Test: Claude Code can refine an existing manifest via direct system.json edits
+
+**Acceptance criteria (all G phases):**
+- `domain-scan init --bootstrap -o system.json` generates a usable starter manifest
+- `domain-scan init --apply-manifest system.json --dry-run` shows coverage % and validation errors
+- `domain-scan schema init` outputs the JSON Schema for system.json
+- `domain-scan skills install --claude-code` writes skills to `.claude/skills/` in project root
+- An agent can go from `git clone` to a rendered tube map in under 10 minutes
+- The skill file teaches the agent what good manifests look like

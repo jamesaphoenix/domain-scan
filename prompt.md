@@ -52,9 +52,26 @@ Phase F (Hardening — E2E Tests, Bug Hunting, Edge Cases):
 - Stress tests: 200 subsystems, circular deps, orphan domains, rapid tab switching
 - Data integrity: entity counts match, coverage % consistent, no cross-tab state corruption
 
+Phase G.1 (Core Prompt Generation):
+- crates/domain-scan-core/src/manifest_builder.rs - prompt generation + response parsing
+
+Phase G.2 (Smart Defaults):
+- crates/domain-scan-core/src/manifest_builder.rs - heuristic domain/subsystem/connection inference
+
+Phase G.3 (CLI `domain-scan init`):
+- crates/domain-scan-cli/src/main.rs - init subcommand with --bootstrap, --apply-manifest, --dry-run
+
+Phase G.4 (Tauri Wizard UI):
+- crates/domain-scan-tauri/ui/src/components/ManifestWizard.tsx + wizard step components
+
+Phase G.5 (Agent Skill Files + Bootstrapping):
+- skills/domain-scan-init.md - manifest building/refining skill with patch guidelines
+- skills/domain-scan-tube-map.md - tube map interaction skill
+- domain-scan skills install --claude-code → .claude/skills/ in project root
+
 ## Step 3: Pick the most important unchecked task and implement it
 
-CRITICAL: Complete phases sequentially (Phase A -> B -> C -> D -> E -> F). Do NOT skip ahead to a later phase while earlier phases have unchecked tasks.
+CRITICAL: Complete phases sequentially (Phase A -> B -> C -> D -> E -> F -> G.1 -> G.2 -> G.3 -> G.4 -> G.5). Do NOT skip ahead to a later phase while earlier phases have unchecked tasks.
 
 ## Housekeeping
 
