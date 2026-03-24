@@ -133,7 +133,7 @@ function TubeMapInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
 
   // Sync when layout changes
-  useMemo(() => {
+  useEffect(() => {
     setNodes(layoutNodes);
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);

@@ -531,10 +531,10 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.3 E2E: Tab Switching
 
-- [ ] Test: app starts on Entities tab by default
-- [ ] Test: click Tube Map tab → tube map placeholder renders (no manifest loaded)
-- [ ] Test: switch back to Entities → tree state preserved (selection, expansion)
-- [ ] Test: rapid tab switching (10x in 1 second) → no crash, no leaked state
+- [x] Test: app starts on Entities tab by default
+- [x] Test: click Tube Map tab → tube map placeholder renders (no manifest loaded)
+- [x] Test: switch back to Entities → tree state preserved (selection, expansion)
+- [x] Test: rapid tab switching (10x in 1 second) → no crash, no leaked state
 
 #### F.4 E2E: Manifest Loading & Matching
 

@@ -174,7 +174,7 @@ export async function assertActiveTab(
  */
 export async function assertManifestLoaderVisible(page: Page): Promise<void> {
   await expect(
-    page.getByText(/load a manifest/i),
+    page.getByText(/load a system manifest/i),
   ).toBeVisible();
 }
 
