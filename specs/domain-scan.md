@@ -2597,7 +2597,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - Each language has at least 4 fixture files
 
 ### Phase 4b: Systems/Scripting Languages (C#, Swift, C++, PHP, Ruby)
-- [ ] C# queries: interfaces, classes, methods, services (ASP.NET), imports
+- [x] C# queries: interfaces, classes, methods, services (ASP.NET), imports
 - [ ] Swift queries: protocols, classes, methods, extensions, imports
 - [ ] C++ queries: classes, methods, functions, templates, virtual, imports
 - [ ] PHP queries: interfaces, classes, methods, traits, imports

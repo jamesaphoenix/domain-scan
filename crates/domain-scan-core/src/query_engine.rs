@@ -79,6 +79,22 @@ const KT_SCHEMAS_SCM: &str = include_str!("../queries/kotlin/schemas.scm");
 // Scala .scm sources (embedded at compile time)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// C# .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
+const CS_INTERFACES_SCM: &str = include_str!("../queries/csharp/interfaces.scm");
+const CS_CLASSES_SCM: &str = include_str!("../queries/csharp/classes.scm");
+#[allow(dead_code)]
+const CS_METHODS_SCM: &str = include_str!("../queries/csharp/methods.scm");
+const CS_IMPORTS_SCM: &str = include_str!("../queries/csharp/imports.scm");
+const CS_SERVICES_SCM: &str = include_str!("../queries/csharp/services.scm");
+const CS_SCHEMAS_SCM: &str = include_str!("../queries/csharp/schemas.scm");
+
+// ---------------------------------------------------------------------------
+// Scala .scm sources (embedded at compile time)
+// ---------------------------------------------------------------------------
+
 const SC_TRAITS_SCM: &str = include_str!("../queries/scala/traits.scm");
 const SC_CLASSES_SCM: &str = include_str!("../queries/scala/classes.scm");
 #[allow(dead_code)]
@@ -144,6 +160,13 @@ static KT_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static KT_SERVICES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static KT_METHODS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 static KT_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+
+// C# query statics
+static CS_INTERFACES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CS_CLASSES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CS_IMPORTS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CS_SERVICES_Q: OnceLock<Result<Query, String>> = OnceLock::new();
+static CS_SCHEMAS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
 
 // Scala query statics
 static SC_TRAITS_Q: OnceLock<Result<Query, String>> = OnceLock::new();
@@ -250,6 +273,21 @@ fn get_kt_query(
         .map_err(|e| DomainScanError::QueryCompile(e.clone()))
 }
 
+fn compile_cs_query(source: &str) -> Result<Query, String> {
+    let lang = crate::parser::csharp_language();
+    Query::new(&lang, source).map_err(|e| format!("{e}"))
+}
+
+fn get_cs_query(
+    lock: &'static OnceLock<Result<Query, String>>,
+    source: &str,
+) -> Result<&'static Query, DomainScanError> {
+    let result = lock.get_or_init(|| compile_cs_query(source));
+    result
+        .as_ref()
+        .map_err(|e| DomainScanError::QueryCompile(e.clone()))
+}
+
 fn compile_sc_query(source: &str) -> Result<Query, String> {
     let lang = crate::parser::scala_language();
     Query::new(&lang, source).map_err(|e| format!("{e}"))
@@ -288,6 +326,7 @@ pub fn extract(
         Language::Java => extract_java(tree, source, path, &mut ir)?,
         Language::Kotlin => extract_kotlin(tree, source, path, &mut ir)?,
         Language::Scala => extract_scala(tree, source, path, &mut ir)?,
+        Language::CSharp => extract_csharp(tree, source, path, &mut ir)?,
         other => return Err(DomainScanError::UnsupportedLanguage(other)),
     }
 
@@ -4805,6 +4844,771 @@ fn extract_sc_parameters(node: Node<'_>, source: &[u8]) -> Vec<Parameter> {
     }
 
     parameters
+}
+
+// ===========================================================================
+// C# extraction
+// ===========================================================================
+
+fn extract_csharp(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+    ir: &mut IrFile,
+) -> Result<(), DomainScanError> {
+    ir.interfaces = extract_cs_interfaces(tree, source, path)?;
+    ir.classes = extract_cs_classes(tree, source, path)?;
+    ir.functions = extract_cs_functions(tree, source, path)?;
+    ir.imports = extract_cs_imports(tree, source)?;
+    ir.services = extract_cs_services(tree, source, path)?;
+    ir.schemas = extract_cs_schemas(tree, source, path)?;
+    Ok(())
+}
+
+// --- C# Interfaces ---
+
+fn extract_cs_interfaces(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<InterfaceDef>, DomainScanError> {
+    let query = get_cs_query(&CS_INTERFACES_Q, CS_INTERFACES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut interfaces = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "interface.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "interface.def") else {
+            continue;
+        };
+        let body_node = find_capture(&m, query, "interface.body");
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = cs_visibility(def_node, source);
+        let generics = extract_cs_generics(def_node, source);
+        let extends = extract_cs_base_types(def_node, source);
+
+        let methods = body_node
+            .map(|b| extract_cs_interface_methods(b, source))
+            .unwrap_or_default();
+
+        let properties = body_node
+            .map(|b| extract_cs_properties(b, source))
+            .unwrap_or_default();
+
+        interfaces.push(InterfaceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            methods,
+            properties,
+            language_kind: InterfaceKind::Interface,
+            decorators: extract_cs_attributes(def_node, source),
+        });
+    }
+
+    Ok(interfaces)
+}
+
+fn extract_cs_interface_methods(body: Node<'_>, source: &[u8]) -> Vec<MethodSignature> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "method_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+
+        let params_node = child.child_by_field_name("parameters");
+        let parameters = params_node
+            .map(|p| extract_cs_parameters(p, source))
+            .unwrap_or_default();
+
+        let return_type = child
+            .child_by_field_name("returns")
+            .map(|rt| node_text(rt, source));
+
+        let is_async = cs_has_modifier(child, source, "async");
+        let has_default = child.child_by_field_name("body").is_some();
+
+        methods.push(MethodSignature {
+            name,
+            span,
+            is_async,
+            parameters,
+            return_type,
+            has_default,
+        });
+    }
+
+    methods
+}
+
+// --- C# Classes ---
+
+fn extract_cs_classes(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ClassDef>, DomainScanError> {
+    let query = get_cs_query(&CS_CLASSES_Q, CS_CLASSES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut classes = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "class.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "class.def") else {
+            continue;
+        };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+        let visibility = cs_visibility(def_node, source);
+        let is_abstract = cs_has_modifier(def_node, source, "abstract");
+        let generics = extract_cs_generics(def_node, source);
+        let decorators = extract_cs_attributes(def_node, source);
+
+        // C# uses base_list for both extends and implements
+        let base_types = extract_cs_base_types(def_node, source);
+        // First base type could be a class (extends), rest are interfaces (implements)
+        // We put them all in implements since we can't distinguish at syntax level
+        let extends = base_types.first().cloned();
+        let implements = if base_types.len() > 1 {
+            base_types[1..].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        let body_node = find_capture(&m, query, "class.body");
+        let mut methods = body_node
+            .map(|b| extract_cs_class_methods(b, source, path))
+            .unwrap_or_default();
+        let properties = body_node
+            .map(|b| extract_cs_properties(b, source))
+            .unwrap_or_default();
+
+        for method in &mut methods {
+            method.owner = Some(name.clone());
+        }
+
+        classes.push(ClassDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            generics,
+            extends,
+            implements,
+            methods,
+            properties,
+            is_abstract,
+            decorators,
+        });
+    }
+
+    Ok(classes)
+}
+
+fn extract_cs_class_methods(body: Node<'_>, source: &[u8], path: &Path) -> Vec<MethodDef> {
+    let mut methods = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() != "method_declaration" && child.kind() != "constructor_declaration" {
+            continue;
+        }
+
+        let name = child
+            .child_by_field_name("name")
+            .map(|n| node_text(n, source))
+            .unwrap_or_default();
+        let span = node_span(child);
+        let visibility = cs_member_visibility(child, source);
+        let is_static = cs_has_modifier(child, source, "static");
+        let is_async = cs_has_modifier(child, source, "async");
+        let decorators = extract_cs_attributes(child, source);
+
+        let params_node = child.child_by_field_name("parameters");
+        let parameters = params_node
+            .map(|p| extract_cs_parameters(p, source))
+            .unwrap_or_default();
+
+        let return_type = child
+            .child_by_field_name("returns")
+            .map(|rt| node_text(rt, source));
+
+        methods.push(MethodDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            visibility,
+            is_async,
+            is_static,
+            is_generator: false,
+            parameters,
+            return_type,
+            decorators,
+            owner: None,
+            implements: None,
+        });
+    }
+
+    methods
+}
+
+fn extract_cs_properties(body: Node<'_>, source: &[u8]) -> Vec<PropertyDef> {
+    let mut props = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        match child.kind() {
+            "property_declaration" => {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| node_text(n, source))
+                    .unwrap_or_default();
+                let type_annotation = child
+                    .child_by_field_name("type")
+                    .map(|t| node_text(t, source));
+                let visibility = cs_member_visibility(child, source);
+                let is_readonly = !cs_has_accessor(child, "set");
+
+                props.push(PropertyDef {
+                    name,
+                    type_annotation,
+                    is_optional: false,
+                    is_readonly,
+                    visibility,
+                });
+            }
+            "field_declaration" => {
+                let visibility = cs_member_visibility(child, source);
+                let is_readonly = cs_has_modifier(child, source, "readonly");
+
+                // field_declaration has variable_declaration child
+                let mut fc = child.walk();
+                for fchild in child.named_children(&mut fc) {
+                    if fchild.kind() == "variable_declaration" {
+                        let type_annotation = fchild
+                            .child_by_field_name("type")
+                            .map(|t| node_text(t, source));
+                        let mut vc = fchild.walk();
+                        for vchild in fchild.named_children(&mut vc) {
+                            if vchild.kind() == "variable_declarator" {
+                                let name = vchild
+                                    .child_by_field_name("name")
+                                    .map(|n| node_text(n, source))
+                                    .unwrap_or_default();
+                                props.push(PropertyDef {
+                                    name,
+                                    type_annotation: type_annotation.clone(),
+                                    is_optional: false,
+                                    is_readonly,
+                                    visibility,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    props
+}
+
+// --- C# Functions (top-level) ---
+
+fn extract_cs_functions(
+    _tree: &Tree,
+    _source: &[u8],
+    _path: &Path,
+) -> Result<Vec<FunctionDef>, DomainScanError> {
+    // C# has no traditional top-level functions (top-level statements are in Program)
+    Ok(Vec::new())
+}
+
+// --- C# Imports ---
+
+fn extract_cs_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
+    let query = get_cs_query(&CS_IMPORTS_Q, CS_IMPORTS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut imports = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(def_node) = find_capture(&m, query, "import.def") else {
+            continue;
+        };
+
+        let full_text = node_text(def_node, source);
+        let span = node_span(def_node);
+
+        // Parse "using <namespace>;" or "using static <namespace>;" or "using Alias = <namespace>;"
+        let trimmed = full_text
+            .trim()
+            .trim_start_matches("using")
+            .trim()
+            .trim_start_matches("static")
+            .trim()
+            .trim_end_matches(';')
+            .trim();
+
+        // Handle alias: "using Alias = Namespace.Type"
+        let (source_path, alias) = if let Some((a, ns)) = trimmed.split_once('=') {
+            (ns.trim().to_string(), Some(a.trim().to_string()))
+        } else {
+            (trimmed.to_string(), None)
+        };
+
+        let is_wildcard = !source_path.contains('.');
+        let symbols = if let Some(alias_name) = alias {
+            vec![ImportedSymbol {
+                name: source_path.clone(),
+                alias: Some(alias_name),
+                is_default: false,
+                is_namespace: false,
+            }]
+        } else if let Some(pos) = source_path.rfind('.') {
+            vec![ImportedSymbol {
+                name: source_path[pos + 1..].to_string(),
+                alias: None,
+                is_default: false,
+                is_namespace: true,
+            }]
+        } else {
+            Vec::new()
+        };
+
+        imports.push(ImportDef {
+            source: source_path,
+            symbols,
+            is_wildcard,
+            span,
+        });
+    }
+
+    Ok(imports)
+}
+
+// --- C# Services ---
+
+fn extract_cs_services(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<ServiceDef>, DomainScanError> {
+    let query = get_cs_query(&CS_SERVICES_Q, CS_SERVICES_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut services = Vec::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "service.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "service.def") else {
+            continue;
+        };
+
+        let decorators = extract_cs_attributes(def_node, source);
+        let kind = classify_cs_service_kind(&decorators);
+        let Some(kind) = kind else { continue; };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        let body_node = find_capture(&m, query, "service.body");
+        let methods = body_node
+            .map(|b| extract_cs_class_methods(b, source, path))
+            .unwrap_or_default();
+
+        let routes = extract_cs_routes(&methods);
+
+        services.push(ServiceDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind,
+            methods,
+            dependencies: Vec::new(),
+            decorators,
+            routes,
+        });
+    }
+
+    Ok(services)
+}
+
+fn classify_cs_service_kind(attributes: &[String]) -> Option<ServiceKind> {
+    for attr in attributes {
+        let base = attr.split('(').next().unwrap_or_default();
+        match base {
+            "ApiController" | "Controller" => return Some(ServiceKind::HttpController),
+            "Service" => return Some(ServiceKind::Microservice),
+            "Repository" => return Some(ServiceKind::Repository),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn extract_cs_routes(methods: &[MethodDef]) -> Vec<RouteDef> {
+    let mut routes = Vec::new();
+    for method in methods {
+        for dec in &method.decorators {
+            let attr_name = dec.split('(').next().unwrap_or_default();
+            let http_method = match attr_name {
+                "HttpGet" => Some(HttpMethod::Get),
+                "HttpPost" => Some(HttpMethod::Post),
+                "HttpPut" => Some(HttpMethod::Put),
+                "HttpPatch" => Some(HttpMethod::Patch),
+                "HttpDelete" => Some(HttpMethod::Delete),
+                _ => None,
+            };
+            if let Some(http_method) = http_method {
+                let path = extract_decorator_string_arg(dec);
+                routes.push(RouteDef {
+                    method: http_method,
+                    path,
+                    handler: method.name.clone(),
+                });
+            }
+        }
+    }
+    routes
+}
+
+// --- C# Schemas ---
+
+fn extract_cs_schemas(
+    tree: &Tree,
+    source: &[u8],
+    path: &Path,
+) -> Result<Vec<SchemaDef>, DomainScanError> {
+    let query = get_cs_query(&CS_SCHEMAS_Q, CS_SCHEMAS_SCM)?;
+    let mut cursor = QueryCursor::new();
+    let mut schemas = Vec::new();
+    let mut seen = HashSet::new();
+
+    for m in cursor.matches(query, tree.root_node(), source) {
+        let Some(name_node) = find_capture(&m, query, "schema.name") else {
+            continue;
+        };
+        let Some(def_node) = find_capture(&m, query, "schema.def") else {
+            continue;
+        };
+
+        let name = node_text(name_node, source);
+        let span = node_span(def_node);
+
+        // Deduplicate
+        let key = (name.clone(), span.start_line);
+        if seen.contains(&key) {
+            continue;
+        }
+
+        let is_record = def_node.kind() == "record_declaration";
+        let attributes = extract_cs_attributes(def_node, source);
+        let has_table_attribute = attributes.iter().any(|a| {
+            let base = a.split('(').next().unwrap_or_default();
+            base == "Table" || base == "Entity"
+        });
+
+        if !is_record && !has_table_attribute {
+            continue;
+        }
+
+        let (kind, framework) = if is_record {
+            (SchemaKind::DataTransfer, "csharp-record".to_string())
+        } else {
+            (SchemaKind::OrmModel, "ef-core".to_string())
+        };
+
+        let fields = if is_record {
+            extract_cs_record_fields(def_node, source)
+        } else {
+            let body = find_capture(&m, query, "schema.body");
+            body.map(|b| extract_cs_schema_class_fields(b, source))
+                .unwrap_or_default()
+        };
+
+        seen.insert(key);
+        schemas.push(SchemaDef {
+            name,
+            file: path.to_path_buf(),
+            span,
+            kind,
+            fields,
+            source_framework: framework,
+            table_name: None,
+            derives: Vec::new(),
+            visibility: cs_visibility(def_node, source),
+        });
+    }
+
+    Ok(schemas)
+}
+
+fn extract_cs_record_fields(node: Node<'_>, source: &[u8]) -> Vec<SchemaField> {
+    let mut fields = Vec::new();
+    let mut cursor = node.walk();
+
+    // Record parameters are in parameter_list child
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "parameter_list" {
+            let mut pc = child.walk();
+            for param in child.named_children(&mut pc) {
+                if param.kind() == "parameter" {
+                    let name = param
+                        .child_by_field_name("name")
+                        .map(|n| node_text(n, source))
+                        .unwrap_or_default();
+                    let type_annotation = param
+                        .child_by_field_name("type")
+                        .map(|t| node_text(t, source));
+
+                    fields.push(SchemaField {
+                        name,
+                        type_annotation,
+                        is_optional: false,
+                        is_primary_key: false,
+                        constraints: Vec::new(),
+                    });
+                }
+            }
+        }
+    }
+
+    fields
+}
+
+fn extract_cs_schema_class_fields(body: Node<'_>, source: &[u8]) -> Vec<SchemaField> {
+    let mut fields = Vec::new();
+    let mut cursor = body.walk();
+
+    for child in body.named_children(&mut cursor) {
+        if child.kind() == "property_declaration" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| node_text(n, source))
+                .unwrap_or_default();
+            let type_annotation = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
+            let attributes = extract_cs_attributes(child, source);
+            let is_primary_key = attributes.iter().any(|a| {
+                let base = a.split('(').next().unwrap_or_default();
+                base == "Key"
+            });
+
+            fields.push(SchemaField {
+                name,
+                type_annotation,
+                is_optional: false,
+                is_primary_key,
+                constraints: Vec::new(),
+            });
+        }
+    }
+
+    fields
+}
+
+// --- C# Helpers ---
+
+fn cs_visibility(node: Node<'_>, source: &[u8]) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "modifier" {
+            let text = node_text(child, source);
+            match text.as_str() {
+                "public" => return Visibility::Public,
+                "private" => return Visibility::Private,
+                "protected" => return Visibility::Protected,
+                "internal" => return Visibility::Internal,
+                _ => {}
+            }
+        }
+    }
+    // C# default: internal for top-level types
+    Visibility::Internal
+}
+
+fn cs_member_visibility(node: Node<'_>, source: &[u8]) -> Visibility {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "modifier" {
+            let text = node_text(child, source);
+            match text.as_str() {
+                "public" => return Visibility::Public,
+                "private" => return Visibility::Private,
+                "protected" => return Visibility::Protected,
+                "internal" => return Visibility::Internal,
+                _ => {}
+            }
+        }
+    }
+    // C# default: private for class members
+    Visibility::Private
+}
+
+fn cs_has_modifier(node: Node<'_>, source: &[u8], modifier_name: &str) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "modifier" {
+            let text = node_text(child, source);
+            if text == modifier_name {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn cs_has_accessor(node: Node<'_>, accessor_name: &str) -> bool {
+    let Some(accessors) = node.child_by_field_name("accessors") else {
+        return false;
+    };
+    let mut cursor = accessors.walk();
+    for child in accessors.named_children(&mut cursor) {
+        if child.kind() == "accessor_declaration" {
+            let mut ac = child.walk();
+            for acc_child in child.children(&mut ac) {
+                if acc_child.kind() == accessor_name {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn extract_cs_generics(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut generics = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "type_parameter_list" {
+            let mut tc = child.walk();
+            for tp in child.named_children(&mut tc) {
+                if tp.kind() == "type_parameter" {
+                    if let Some(name) = tp.child_by_field_name("name") {
+                        generics.push(node_text(name, source));
+                    }
+                }
+            }
+        }
+    }
+
+    generics
+}
+
+fn extract_cs_base_types(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut types = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "base_list" {
+            let mut bc = child.walk();
+            for base in child.named_children(&mut bc) {
+                // base_list children can be types or primary_constructor_base_type
+                if base.kind() != "argument_list" {
+                    types.push(node_text(base, source));
+                }
+            }
+        }
+    }
+
+    types
+}
+
+fn extract_cs_parameters(params: Node<'_>, source: &[u8]) -> Vec<Parameter> {
+    let mut parameters = Vec::new();
+    let mut cursor = params.walk();
+
+    for child in params.named_children(&mut cursor) {
+        if child.kind() == "parameter" {
+            let name = child
+                .child_by_field_name("name")
+                .map(|n| node_text(n, source))
+                .unwrap_or_default();
+            let type_annotation = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
+            // Check for default value (expression child)
+            let mut has_default = false;
+            let mut pc = child.walk();
+            for pchild in child.named_children(&mut pc) {
+                if pchild.kind() != "identifier"
+                    && pchild.kind() != "modifier"
+                    && pchild.kind() != "attribute_list"
+                    && !pchild.kind().ends_with("_type")
+                    && pchild.kind() != "predefined_type"
+                    && pchild.kind() != "nullable_type"
+                    && pchild.kind() != "generic_name"
+                    && pchild.kind() != "array_type"
+                    && pchild.kind() != "qualified_name"
+                {
+                    // It's likely an expression = default value
+                    has_default = true;
+                    break;
+                }
+            }
+
+            let is_rest = cs_has_modifier(child, source, "params");
+
+            parameters.push(Parameter {
+                name,
+                type_annotation,
+                is_optional: has_default,
+                has_default,
+                is_rest,
+            });
+        }
+    }
+
+    parameters
+}
+
+fn extract_cs_attributes(node: Node<'_>, source: &[u8]) -> Vec<String> {
+    let mut attributes = Vec::new();
+    let mut cursor = node.walk();
+
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "attribute_list" {
+            let mut ac = child.walk();
+            for attr in child.named_children(&mut ac) {
+                if attr.kind() == "attribute" {
+                    if let Some(name_node) = attr.child_by_field_name("name") {
+                        let name = node_text(name_node, source);
+                        // Include the full attribute text for route extraction
+                        let full = node_text(attr, source);
+                        if full.contains('(') {
+                            attributes.push(full);
+                        } else {
+                            attributes.push(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    attributes
 }
 
 // ---------------------------------------------------------------------------

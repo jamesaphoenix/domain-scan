@@ -34,6 +34,11 @@ pub fn scala_language() -> tree_sitter::Language {
     language_from_fn(tree_sitter_scala::LANGUAGE)
 }
 
+/// Get tree-sitter Language for C# (exposed for query compilation).
+pub fn csharp_language() -> tree_sitter::Language {
+    language_from_fn(tree_sitter_c_sharp::LANGUAGE)
+}
+
 thread_local! {
     static PARSER: RefCell<Parser> = RefCell::new(Parser::new());
 }
@@ -72,6 +77,7 @@ fn get_tree_sitter_language(language: Language) -> Result<tree_sitter::Language,
         Language::Java => Ok(tree_sitter_java::language()),
         Language::Kotlin => Ok(language_from_fn(tree_sitter_kotlin_ng::LANGUAGE)),
         Language::Scala => Ok(language_from_fn(tree_sitter_scala::LANGUAGE)),
+        Language::CSharp => Ok(language_from_fn(tree_sitter_c_sharp::LANGUAGE)),
         other => Err(DomainScanError::UnsupportedLanguage(other)),
     }
 }
@@ -110,13 +116,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_unsupported_language() {
-        let result = parse_source(b"class Foo {}", Language::CSharp);
-        assert!(result.is_err());
-        let err = result.err();
-        assert!(
-            matches!(err, Some(DomainScanError::UnsupportedLanguage(Language::CSharp)))
-        );
+    fn test_parse_csharp() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"public class Foo { public void Bar() {} }";
+        let tree = parse_source(source, Language::CSharp)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
     }
 
     #[test]
