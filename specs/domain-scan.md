@@ -2617,7 +2617,7 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - [x] `validate.rs`: 10 validation rules (naming, completeness, god-objects, impls)
 - [x] Cross-file tests: interface in file A, implementation in file B
 - [x] Implementation completeness checking
-- [ ] Full pipeline integration test: walk -> parse -> index -> query -> output
+- [x] Full pipeline integration test: walk -> parse -> index -> query -> output
 - [ ] `--no-cache` and `-o, --out <FILE>` plumbing
 
 **Acceptance criteria:**
