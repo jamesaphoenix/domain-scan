@@ -2629,20 +2629,20 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - `domain-scan match --manifest test.json` maps entities to subsystems with >0 matched
 
 ### Phase 6a: CLI Core
-- [ ] `domain-scan-cli/src/main.rs`: clap subcommands with global flags (`--root`, `--config`, `--output`, `--languages`, `--build-status`, `--no-cache`, `-o`, `-v`, `-q`)
-- [ ] `scan` subcommand (with `--build-status` override)
-- [ ] `interfaces` subcommand with filters (`--name`, `--languages`, `--build-status`)
-- [ ] `services` subcommand with filters (`--kind`, `--name`, `--show-routes`, `--show-deps`)
-- [ ] `methods` subcommand with filters (`--owner`, `--async`, `--visibility`, `--name`)
-- [ ] `schemas` subcommand with filters (`--framework`, `--kind`, `--name`, `--show-fields`)
-- [ ] `impls` subcommand (`--all`, `--show-methods`)
-- [ ] `search` subcommand (`--kind`, `--regex`)
-- [ ] `stats` subcommand
-- [ ] `validate` subcommand (`--rules`, `--manifest`, `--strict`)
-- [ ] `match` subcommand (`--manifest`, `--unmatched-only`, `--prompt-unmatched --agents N`, `--write-back`, `--dry-run`, `--fail-on-unmatched`)
-- [ ] `cache` subcommand (stats, clear, prune)
-- [ ] `prompt` subcommand (`--agents`, `--focus`, `--include-scan`)
-- [ ] Table, JSON, compact output formatters
+- [x] `domain-scan-cli/src/main.rs`: clap subcommands with global flags (`--root`, `--config`, `--output`, `--languages`, `--build-status`, `--no-cache`, `-o`, `-v`, `-q`)
+- [x] `scan` subcommand (with `--build-status` override)
+- [x] `interfaces` subcommand with filters (`--name`, `--languages`, `--build-status`)
+- [x] `services` subcommand with filters (`--kind`, `--name`, `--show-routes`, `--show-deps`)
+- [x] `methods` subcommand with filters (`--owner`, `--async`, `--visibility`, `--name`)
+- [x] `schemas` subcommand with filters (`--framework`, `--kind`, `--name`, `--show-fields`)
+- [x] `impls` subcommand (`--all`, `--show-methods`)
+- [x] `search` subcommand (`--kind`, `--regex`)
+- [x] `stats` subcommand
+- [x] `validate` subcommand (`--rules`, `--manifest`, `--strict`)
+- [x] `match` subcommand (`--manifest`, `--unmatched-only`, `--prompt-unmatched --agents N`, `--write-back`, `--dry-run`, `--fail-on-unmatched`)
+- [x] `cache` subcommand (stats, clear, prune)
+- [x] `prompt` subcommand (`--agents`, `--focus`, `--include-scan`)
+- [x] Table, JSON, compact output formatters
 - [ ] Golden-file snapshot tests (insta) for all output formats
 - [ ] CLI integration tests with assert_cmd
 
