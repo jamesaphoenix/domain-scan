@@ -100,6 +100,16 @@ function TubeMapInner() {
     [state],
   );
 
+  const handleGeneratePrompt = useCallback(
+    async (entityNames: string[]): Promise<string> => {
+      return invoke<string>("generate_prompt", {
+        entityIds: entityNames,
+        agents: 3,
+      });
+    },
+    [],
+  );
+
   const { nodes: layoutNodes, edges: layoutEdges, tubeLines, stationPositions } = useTubeLayout({
     tubeMapData: state.tubeMapData,
     searchQuery,
@@ -313,6 +323,7 @@ function TubeMapInner() {
             state.navigateBreadcrumb(state.breadcrumbs.length - 2)
           }
           onOpenFile={handleOpenFile}
+          onGeneratePrompt={handleGeneratePrompt}
           getSubsystemDetail={state.getSubsystemDetail}
           getSubsystemEntities={state.getSubsystemEntities}
         />

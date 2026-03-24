@@ -6,6 +6,7 @@ interface SubsystemDrillInProps {
   domains: Record<string, DomainDef>;
   onBack: () => void;
   onOpenFile: (filePath: string, line: number) => void;
+  onGeneratePrompt: (entityNames: string[]) => Promise<string>;
   getSubsystemDetail: (id: string) => Promise<SubsystemDetail>;
   getSubsystemEntities: (id: string) => Promise<EntitySummary[]>;
 }
@@ -35,6 +36,7 @@ export function SubsystemDrillIn({
   domains,
   onBack,
   onOpenFile,
+  onGeneratePrompt,
   getSubsystemDetail,
   getSubsystemEntities,
 }: SubsystemDrillInProps) {
@@ -42,6 +44,8 @@ export function SubsystemDrillIn({
   const [entities, setEntities] = useState<EntitySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [promptOutput, setPromptOutput] = useState<string | null>(null);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +84,20 @@ export function SubsystemDrillIn({
     },
     [onOpenFile],
   );
+
+  const handleGeneratePrompt = useCallback(async () => {
+    if (entities.length === 0) return;
+    setGeneratingPrompt(true);
+    try {
+      const entityNames = entities.map((e) => e.name);
+      const result = await onGeneratePrompt(entityNames);
+      setPromptOutput(result);
+    } catch (e) {
+      setPromptOutput(`Error: ${e}`);
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  }, [entities, onGeneratePrompt]);
 
   if (loading) {
     return (
@@ -154,6 +172,16 @@ export function SubsystemDrillIn({
           >
             {detail.status}
           </span>
+          {entities.length > 0 && (
+            <button
+              onClick={handleGeneratePrompt}
+              disabled={generatingPrompt}
+              className="ml-auto px-3 py-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50
+                         text-white text-xs rounded transition-colors"
+            >
+              {generatingPrompt ? "Generating..." : "Generate Prompt"}
+            </button>
+          )}
         </div>
         <div className="text-xs text-slate-500">
           <button
@@ -182,8 +210,36 @@ export function SubsystemDrillIn({
         </div>
       </div>
 
+      {/* Prompt output overlay */}
+      {promptOutput && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-800/50 border-b border-slate-700 flex-shrink-0">
+            <span className="text-xs text-slate-400">
+              Generated Prompt — {entities.length} entities from {detail.name}
+            </span>
+            <div className="flex gap-2">
+              <button
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                onClick={() => navigator.clipboard.writeText(promptOutput)}
+              >
+                Copy
+              </button>
+              <button
+                className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                onClick={() => setPromptOutput(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <pre className="flex-1 overflow-auto p-4 text-xs text-slate-300 font-mono whitespace-pre-wrap">
+            {promptOutput}
+          </pre>
+        </div>
+      )}
+
       {/* Entity grid */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {!promptOutput && <div className="flex-1 overflow-y-auto p-4">
         {entities.length === 0 ? (
           <div className="text-center text-slate-500 text-sm py-8">
             No matched entities found for this subsystem
@@ -274,7 +330,7 @@ export function SubsystemDrillIn({
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
