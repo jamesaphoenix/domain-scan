@@ -2685,12 +2685,12 @@ Parent subsystems intentionally have empty entity arrays. Only children carry in
 - Built files get "verify and catalog" instructions, Unbuilt files get "analyze and infer" instructions
 
 ### Phase 8: Tauri Desktop App - Backend
-- [ ] `domain-scan-tauri` crate setup (Tauri 2) with `tauri-plugin-shell` and `tauri-plugin-dialog`
-- [ ] `AppState` struct with `Mutex<Option<ScanIndex>>` and `Mutex<Option<PathBuf>>`
-- [ ] `CommandError` enum with thiserror + serde::Serialize
-- [ ] All IPC commands from Section 8.8 (scan_directory, get_current_scan, filter_entities, get_entity_detail, get_entity_source, search_entities, generate_prompt, export_entities, get_build_status, open_in_editor, check_editors_available)
-- [ ] `tauri.conf.json` with CSP, window config (1440x900, min 1200x700)
-- [ ] React scaffold with Vite + TypeScript + Tailwind
+- [x] `domain-scan-tauri` crate setup (Tauri 2) with `tauri-plugin-shell` and `tauri-plugin-dialog`
+- [x] `AppState` struct with `Mutex<Option<ScanIndex>>` and `Mutex<Option<PathBuf>>`
+- [x] `CommandError` enum with thiserror + serde::Serialize
+- [x] All IPC commands from Section 8.8 (scan_directory, get_current_scan, filter_entities, get_entity_detail, get_entity_source, search_entities, generate_prompt, export_entities, get_build_status, open_in_editor, check_editors_available)
+- [x] `tauri.conf.json` with CSP, window config (1440x900, min 1200x700)
+- [x] React scaffold with Vite + TypeScript + Tailwind
 
 **Acceptance criteria:**
 - `cargo tauri dev` launches the app window

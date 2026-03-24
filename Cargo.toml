@@ -3,6 +3,7 @@ members = [
     "crates/domain-scan-core",
     "crates/domain-scan-cli",
     "crates/domain-scan-mcp",
+    "crates/domain-scan-tauri",
 ]
 resolver = "2"
 

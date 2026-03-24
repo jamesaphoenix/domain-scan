@@ -1,0 +1,32 @@
+{
+  "productName": "domain-scan",
+  "identifier": "com.domain-scan.app",
+  "build": {
+    "beforeDevCommand": { "script": "npm run dev", "cwd": "ui" },
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "ui" },
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "ui/dist"
+  },
+  "app": {
+    "security": {
+      "csp": "default-src 'self' tauri: asset: ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset:; connect-src ipc: http://ipc.localhost tauri:; font-src 'self' data:;"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "domain-scan",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1200,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all"
+  },
+  "plugins": {}
+}

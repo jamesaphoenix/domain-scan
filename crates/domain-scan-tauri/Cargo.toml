@@ -1,0 +1,21 @@
+[package]
+name = "domain-scan-tauri"
+version.workspace = true
+edition.workspace = true
+default-run = "domain-scan-tauri"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+domain-scan-core = { path = "../domain-scan-core" }
+
+[[bin]]
+name = "domain-scan-tauri"
+path = "src/main.rs"
