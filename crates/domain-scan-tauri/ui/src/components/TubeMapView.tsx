@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -9,10 +9,19 @@ import {
   useNodesState,
   useEdgesState,
   useReactFlow,
+  type Viewport,
 } from "@xyflow/react";
+import { invoke } from "@tauri-apps/api/core";
 import { SubsystemNode } from "./SubsystemNode";
 import { DependencyEdge } from "./DependencyEdge";
 import { ManifestLoader } from "./ManifestLoader";
+import { TubeMapSearchBar } from "./TubeMapSearchBar";
+import { Legend } from "./Legend";
+import { Breadcrumbs } from "./Breadcrumbs";
+import { TubeMapStatusBar } from "./TubeMapStatusBar";
+import { SubsystemDrillIn } from "./SubsystemDrillIn";
+import { CoverageOverlay } from "./CoverageOverlay";
+import { ShortcutHelp } from "./ShortcutHelp";
 import { useTubeMapState } from "../hooks/useTubeMapState";
 import { useTubeLayout } from "../hooks/useTubeLayout";
 
@@ -24,8 +33,17 @@ function TubeMapInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [domainFilter, setDomainFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [zoom, setZoom] = useState(1);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const reactFlowInstance = useReactFlow();
+
+  // Determine if we're in drill-in view (breadcrumbs.length > 1 means drilled in)
+  const isDrilledIn = state.breadcrumbs.length > 1;
+  const drilledInSubsystemId = isDrilledIn
+    ? state.breadcrumbs[state.breadcrumbs.length - 1].id
+    : null;
 
   const handleDrillIn = useCallback(
     (nodeId: string) => {
@@ -39,9 +57,35 @@ function TubeMapInner() {
     [state],
   );
 
-  const handleOpenFile = useCallback((_filePath: string) => {
-    // Will be wired to open_in_editor in Phase D
-  }, []);
+  const handleOpenFile = useCallback(
+    async (filePath: string, line?: number) => {
+      try {
+        await invoke("open_in_editor", {
+          editor: "cursor",
+          file: filePath,
+          line: line ?? 1,
+        });
+      } catch {
+        try {
+          await invoke("open_in_editor", {
+            editor: "code",
+            file: filePath,
+            line: line ?? 1,
+          });
+        } catch {
+          // Silently fail if no editor available
+        }
+      }
+    },
+    [],
+  );
+
+  const handleOpenFileForNode = useCallback(
+    (filePath: string) => {
+      handleOpenFile(filePath, 1);
+    },
+    [handleOpenFile],
+  );
 
   const handleFocusDependency = useCallback(
     (subsystemId: string) => {
@@ -58,7 +102,7 @@ function TubeMapInner() {
     activeChainIds: state.activeChainIds,
     activeEdgeKeys: state.activeEdgeKeys,
     onDrillIn: handleDrillIn,
-    onOpenFile: handleOpenFile,
+    onOpenFile: handleOpenFileForNode,
     onFocusDependency: handleFocusDependency,
   });
 
@@ -80,6 +124,113 @@ function TubeMapInner() {
     return () => clearTimeout(timer);
   }, [reactFlowInstance, layoutNodes]);
 
+  // Track zoom level
+  const onViewportChange = useCallback((viewport: Viewport) => {
+    setZoom(viewport.zoom);
+  }, []);
+
+  // Domain keys for number shortcuts (ordered by manifest domains)
+  const domainKeys = useMemo(() => {
+    if (!state.tubeMapData) return [];
+    return Object.keys(state.tubeMapData.domains);
+  }, [state.tubeMapData]);
+
+  // Keyboard shortcuts for tube map
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInputFocused =
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable;
+
+      // Escape has special cascading behavior
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (isInputFocused) {
+          target.blur();
+          return;
+        }
+        if (showShortcuts) {
+          setShowShortcuts(false);
+          return;
+        }
+        if (searchQuery) {
+          setSearchQuery("");
+          return;
+        }
+        if (state.focusedSubsystemId) {
+          state.setFocusedSubsystemId(null);
+          return;
+        }
+        if (domainFilter !== "all" || statusFilter !== "all") {
+          setDomainFilter("all");
+          setStatusFilter("all");
+          return;
+        }
+        if (isDrilledIn) {
+          state.navigateBreadcrumb(state.breadcrumbs.length - 2);
+          return;
+        }
+        return;
+      }
+
+      // Skip other shortcuts when typing in inputs
+      if (isInputFocused) return;
+
+      switch (e.key) {
+        case "f":
+          e.preventDefault();
+          reactFlowInstance.fitView({ padding: 0.15, maxZoom: 1 });
+          break;
+        case "/":
+          e.preventDefault();
+          searchInputRef.current?.focus();
+          break;
+        case "0":
+          e.preventDefault();
+          setDomainFilter("all");
+          setStatusFilter("all");
+          state.setFocusedSubsystemId(null);
+          setSearchQuery("");
+          break;
+        case "?":
+          e.preventDefault();
+          setShowShortcuts((prev) => !prev);
+          break;
+        case "1":
+        case "2":
+        case "3":
+        case "4":
+        case "5":
+        case "6":
+        case "7":
+        case "8":
+        case "9": {
+          e.preventDefault();
+          const idx = parseInt(e.key) - 1;
+          if (idx < domainKeys.length) {
+            const domain = domainKeys[idx];
+            setDomainFilter((prev) => (prev === domain ? "all" : domain));
+          }
+          break;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    showShortcuts,
+    searchQuery,
+    domainFilter,
+    statusFilter,
+    state,
+    isDrilledIn,
+    reactFlowInstance,
+    domainKeys,
+  ]);
+
   // If no manifest loaded, show loader
   if (!state.tubeMapData) {
     return (
@@ -91,60 +242,37 @@ function TubeMapInner() {
     );
   }
 
+  const { tubeMapData } = state;
+  const totalEntities = tubeMapData.subsystems.reduce(
+    (sum, s) => sum + s.matched_entity_count,
+    0,
+  );
+
   return (
     <div className="flex-1 flex flex-col">
-      {/* Tube map header bar */}
+      {/* Header: search, filters, trace */}
       <div className="flex items-center justify-between px-4 py-1.5 border-b border-slate-800/50 bg-slate-900/40 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-400">
-            {state.tubeMapData.meta.name}
-          </span>
+          <span className="text-xs text-slate-400">{tubeMapData.meta.name}</span>
           <span className="text-slate-700">|</span>
-          <input
-            type="text"
-            placeholder="Search subsystems..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-slate-800/60 border border-slate-700/50 rounded px-2 py-1 text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-slate-500 w-48"
+          <TubeMapSearchBar
+            ref={searchInputRef}
+            query={searchQuery}
+            onQueryChange={setSearchQuery}
+            domainFilter={domainFilter}
+            onDomainFilterChange={setDomainFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            domains={tubeMapData.domains}
+            subsystems={tubeMapData.subsystems}
+            focusedSubsystemId={state.focusedSubsystemId}
+            onFocusedSubsystemChange={state.setFocusedSubsystemId}
+            dependencyDirection={state.dependencyDirection}
+            onDependencyDirectionChange={state.setDependencyDirection}
           />
-          <select
-            value={domainFilter}
-            onChange={(e) => setDomainFilter(e.target.value)}
-            className="bg-slate-800/60 border border-slate-700/50 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-slate-500"
-          >
-            <option value="all">All domains</option>
-            {Object.entries(state.tubeMapData.domains).map(([id, def]) => (
-              <option key={id} value={id}>
-                {def.label}
-              </option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-800/60 border border-slate-700/50 rounded px-2 py-1 text-xs text-slate-300 focus:outline-none focus:border-slate-500"
-          >
-            <option value="all">All statuses</option>
-            <option value="built">Built</option>
-            <option value="rebuild">Rebuild</option>
-            <option value="new">New</option>
-            <option value="boilerplate">Boilerplate</option>
-          </select>
         </div>
         <div className="flex items-center gap-3 text-xs text-slate-400">
-          <span>
-            {state.tubeMapData.subsystems.length} subsystems
-          </span>
-          {state.tubeMapData.coverage_percent > 0 && (
-            <span className="text-emerald-400">
-              {state.tubeMapData.coverage_percent.toFixed(1)}% coverage
-            </span>
-          )}
-          {state.tubeMapData.unmatched_count > 0 && (
-            <span className="text-amber-400">
-              {state.tubeMapData.unmatched_count} unmatched
-            </span>
-          )}
+          <span>{tubeMapData.subsystems.length} subsystems</span>
           <button
             onClick={state.loadManifest}
             className="text-blue-400 hover:text-blue-300 transition-colors"
@@ -154,49 +282,106 @@ function TubeMapInner() {
         </div>
       </div>
 
-      {/* React Flow canvas */}
-      <div className="flex-1">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
-          minZoom={0.1}
-          maxZoom={2}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background
-            variant={BackgroundVariant.Dots}
-            gap={20}
-            size={1}
-            color="#1e293b"
+      {/* Legend + Breadcrumbs */}
+      <div className="flex items-center justify-between px-4 py-1 border-b border-slate-800/30 bg-slate-900/20 flex-shrink-0">
+        <Legend
+          domains={tubeMapData.domains}
+          subsystems={tubeMapData.subsystems}
+          activeDomain={domainFilter}
+          onDomainClick={setDomainFilter}
+        />
+        {state.breadcrumbs.length > 1 && (
+          <Breadcrumbs
+            items={state.breadcrumbs}
+            onNavigate={state.navigateBreadcrumb}
           />
-          <Controls showInteractive={false} />
-          <MiniMap
-            nodeColor={(node) => {
-              const nodeData = node.data as { domainColor?: string };
-              return nodeData.domainColor ?? "#6b7280";
-            }}
-            nodeStrokeColor={(node) => {
-              const nodeData = node.data as { domainColor?: string };
-              return nodeData.domainColor ?? "#6b7280";
-            }}
-            nodeStrokeWidth={2}
-            maskColor="rgba(15, 23, 42, 0.7)"
-            style={{
-              background: "#0f172a",
-              border: "1px solid #334155",
-              borderRadius: "8px",
-            }}
-            pannable
-            zoomable
-          />
-        </ReactFlow>
+        )}
       </div>
+
+      {/* Main content: tube map canvas OR drill-in */}
+      {isDrilledIn && drilledInSubsystemId ? (
+        <SubsystemDrillIn
+          subsystemId={drilledInSubsystemId}
+          domains={tubeMapData.domains}
+          onBack={() =>
+            state.navigateBreadcrumb(state.breadcrumbs.length - 2)
+          }
+          onOpenFile={handleOpenFile}
+          getSubsystemDetail={state.getSubsystemDetail}
+          getSubsystemEntities={state.getSubsystemEntities}
+        />
+      ) : (
+        <div className="flex-1 relative">
+          {/* Coverage overlay */}
+          <CoverageOverlay
+            coveragePercent={tubeMapData.coverage_percent}
+            unmatchedCount={tubeMapData.unmatched_count}
+            totalEntities={totalEntities + tubeMapData.unmatched_count}
+            matchedEntities={totalEntities}
+          />
+
+          {/* React Flow canvas */}
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
+            minZoom={0.1}
+            maxZoom={2}
+            proOptions={{ hideAttribution: true }}
+            onViewportChange={onViewportChange}
+          >
+            <Background
+              variant={BackgroundVariant.Dots}
+              gap={20}
+              size={1}
+              color="#1e293b"
+            />
+            <Controls showInteractive={false} />
+            <MiniMap
+              nodeColor={(node) => {
+                const nodeData = node.data as { domainColor?: string };
+                return nodeData.domainColor ?? "#6b7280";
+              }}
+              nodeStrokeColor={(node) => {
+                const nodeData = node.data as { domainColor?: string };
+                return nodeData.domainColor ?? "#6b7280";
+              }}
+              nodeStrokeWidth={2}
+              maskColor="rgba(15, 23, 42, 0.7)"
+              style={{
+                background: "#0f172a",
+                border: "1px solid #334155",
+                borderRadius: "8px",
+              }}
+              pannable
+              zoomable
+            />
+          </ReactFlow>
+        </div>
+      )}
+
+      {/* Status bar */}
+      <TubeMapStatusBar
+        zoom={zoom}
+        visibleNodes={nodes.length}
+        totalNodes={tubeMapData.subsystems.length}
+        domainFilter={domainFilter}
+        statusFilter={statusFilter}
+        domains={tubeMapData.domains}
+        coveragePercent={tubeMapData.coverage_percent}
+        unmatchedCount={tubeMapData.unmatched_count}
+        onToggleShortcuts={() => setShowShortcuts((prev) => !prev)}
+      />
+
+      {/* Shortcut help overlay */}
+      {showShortcuts && (
+        <ShortcutHelp onClose={() => setShowShortcuts(false)} />
+      )}
     </div>
   );
 }

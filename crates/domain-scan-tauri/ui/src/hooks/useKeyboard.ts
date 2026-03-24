@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from "react";
+import type { Tab } from "../components/TabBar";
 
 export interface KeyboardActions {
   onMoveUp: () => void;
@@ -11,13 +12,20 @@ export interface KeyboardActions {
 }
 
 /**
- * Keyboard navigation hook with input-focus guards.
- * When an input/textarea is focused, navigation keys are ignored
- * so the user can type freely. Escape always blurs inputs.
+ * Keyboard navigation hook with input-focus guards and tab awareness.
+ * Entity-tab shortcuts (j/k/h/l/p/e) only fire when activeTab === "entities".
+ * `/` (search) fires on both tabs (tube map handles its own via TubeMapView).
+ * Escape always blurs inputs.
  */
-export function useKeyboard(actions: KeyboardActions): void {
+export function useKeyboard(
+  actions: KeyboardActions,
+  activeTab: Tab = "entities",
+): void {
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
+
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const target = e.target as HTMLElement;
@@ -35,6 +43,9 @@ export function useKeyboard(actions: KeyboardActions): void {
 
     // Skip navigation keys when typing in inputs
     if (isInputFocused) return;
+
+    // Only fire entities-tab shortcuts when on entities tab
+    if (activeTabRef.current !== "entities") return;
 
     switch (e.key) {
       case "j":

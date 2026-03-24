@@ -456,21 +456,21 @@ If no manifest is loaded, the tube map tab shows a centered "Load Manifest" CTA 
 
 ### Phase D: Interaction — Search, Filter, Trace, Drill-In
 
-- [ ] Port `SearchBar.tsx` (adapt for dynamic domains)
-- [ ] Port `Legend.tsx` (dynamic domain colors)
-- [ ] Port `Breadcrumbs.tsx` (reuse as-is)
-- [ ] Create `TubeMapStatusBar.tsx` (zoom %, visible/total nodes, coverage %)
-- [ ] Implement domain filter (click legend line → filter to that domain)
-- [ ] Implement status filter (built/rebuild/new/boilerplate toggles)
-- [ ] Implement text search (filter stations by name/description/interfaces)
-- [ ] Implement compact re-layout on filter change
-- [ ] Implement dependency trace (BFS walk, dimming, edge filtering)
-- [ ] Implement direction toggle (upstream/downstream/both)
-- [ ] Create `SubsystemDrillIn.tsx` (click station → show entities in card grid)
-- [ ] Wire breadcrumb navigation (tube map ↔ drill-in)
-- [ ] Create `CoverageOverlay.tsx` (match coverage %, unmatched count)
-- [ ] Wire keyboard shortcuts for tube map tab
-- [ ] Create `ShortcutHelp.tsx` overlay
+- [x] Port `SearchBar.tsx` (adapt for dynamic domains)
+- [x] Port `Legend.tsx` (dynamic domain colors)
+- [x] Port `Breadcrumbs.tsx` (reuse as-is)
+- [x] Create `TubeMapStatusBar.tsx` (zoom %, visible/total nodes, coverage %)
+- [x] Implement domain filter (click legend line → filter to that domain)
+- [x] Implement status filter (built/rebuild/new/boilerplate toggles)
+- [x] Implement text search (filter stations by name/description/interfaces)
+- [x] Implement compact re-layout on filter change
+- [x] Implement dependency trace (BFS walk, dimming, edge filtering)
+- [x] Implement direction toggle (upstream/downstream/both)
+- [x] Create `SubsystemDrillIn.tsx` (click station → show entities in card grid)
+- [x] Wire breadcrumb navigation (tube map ↔ drill-in)
+- [x] Create `CoverageOverlay.tsx` (match coverage %, unmatched count)
+- [x] Wire keyboard shortcuts for tube map tab
+- [x] Create `ShortcutHelp.tsx` overlay
 
 **Acceptance criteria:**
 - Clicking a domain in the legend filters to that domain only

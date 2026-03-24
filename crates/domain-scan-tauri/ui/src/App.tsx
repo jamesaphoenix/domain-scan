@@ -157,30 +157,33 @@ function App() {
     [scan],
   );
 
-  // Keyboard navigation
-  useKeyboard({
-    onMoveUp: tree.moveUp,
-    onMoveDown: tree.moveDown,
-    onExpandOrSelect: () => {
-      const node = tree.nodes[tree.selectedIndex];
-      if (node) {
-        tree.toggleExpand(tree.selectedIndex);
-      }
+  // Keyboard navigation (only fires on entities tab)
+  useKeyboard(
+    {
+      onMoveUp: tree.moveUp,
+      onMoveDown: tree.moveDown,
+      onExpandOrSelect: () => {
+        const node = tree.nodes[tree.selectedIndex];
+        if (node) {
+          tree.toggleExpand(tree.selectedIndex);
+        }
+      },
+      onCollapse: tree.collapseSelected,
+      onSearch: () => {
+        searchInputRef.current?.focus();
+      },
+      onPrompt: () => {
+        const entity = tree.selectedEntity;
+        if (entity) {
+          handleGeneratePrompt([entity.name]);
+        }
+      },
+      onExport: () => {
+        handleExport("json");
+      },
     },
-    onCollapse: tree.collapseSelected,
-    onSearch: () => {
-      searchInputRef.current?.focus();
-    },
-    onPrompt: () => {
-      const entity = tree.selectedEntity;
-      if (entity) {
-        handleGeneratePrompt([entity.name]);
-      }
-    },
-    onExport: () => {
-      handleExport("json");
-    },
-  });
+    activeTab,
+  );
 
   // Available languages from scan stats
   const availableLanguages: Language[] = scan.stats
