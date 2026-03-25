@@ -963,10 +963,10 @@ Move the Export action from the per-entity details panel to a global "Export All
 The Tube Map "Load Manifest" screen includes a copyable agent prompt that teaches AI agents how to create a `system.json` manifest from scratch using domain-scan CLI commands.
 
 - [x] Replace static `cat > system.json` template with structured agent instructions
-- [ ] Agent prompt includes: scan commands, schema reference, validation commands
-- [ ] Agent prompt references `domain-scan match --write-back` for iterative refinement
-- [ ] Copy button copies the full prompt (not just a preview)
-- [ ] Add "What is a manifest?" expandable section explaining the purpose
+- [x] Agent prompt includes: scan commands, schema reference, validation commands
+- [x] Agent prompt references `domain-scan match --write-back` for iterative refinement
+- [x] Copy button copies the full prompt (not just a preview)
+- [x] Add "What is a manifest?" expandable section explaining the purpose
 
 **Acceptance criteria:**
 - Copying the prompt and pasting it into Claude Code / Codex produces a valid system.json
