@@ -255,6 +255,51 @@ fn test_bootstrap_on_own_codebase() {
     assert!(reparsed.is_ok(), "Self-bootstrap should produce valid manifest");
 }
 
+/// Test: write-back on a full SystemManifest preserves meta, domains, connections (A.10)
+#[test]
+fn test_write_back_preserves_system_manifest() {
+    let root = cross_file_fixture();
+    let idx = scan_directory(&root, vec![Language::TypeScript]);
+
+    // Bootstrap a full SystemManifest
+    let mut sys_manifest = manifest_builder::bootstrap_manifest(&idx, &BootstrapOptions::default());
+
+    // Record originals before write-back
+    let original_meta = sys_manifest.meta.clone();
+    let original_domains = sys_manifest.domains.clone();
+    let original_connections = sys_manifest.connections.clone();
+
+    // Match entities
+    let simple = sys_manifest.as_manifest();
+    let match_result = manifest::match_entities(&idx, &simple);
+
+    // Write-back into the SystemManifest
+    manifest::write_back_system(&mut sys_manifest, &match_result, &idx);
+
+    // Serialize (as dry-run preview would)
+    let serialized =
+        manifest::serialize_system_manifest(&sys_manifest).expect("serialize SystemManifest");
+
+    // Verify all four sections present in the JSON
+    let value: serde_json::Value =
+        serde_json::from_str(&serialized).expect("parse serialized JSON");
+    let obj = value.as_object().expect("should be JSON object");
+    assert!(obj.contains_key("meta"), "Must contain 'meta' after write-back");
+    assert!(obj.contains_key("domains"), "Must contain 'domains' after write-back");
+    assert!(obj.contains_key("subsystems"), "Must contain 'subsystems' after write-back");
+    assert!(obj.contains_key("connections"), "Must contain 'connections' after write-back");
+
+    // Re-parse and verify meta/domains/connections survived
+    let reparsed: manifest::SystemManifest =
+        serde_json::from_str(&serialized).expect("re-parse SystemManifest");
+    assert_eq!(reparsed.meta, original_meta, "meta must survive write-back round-trip");
+    assert_eq!(reparsed.domains, original_domains, "domains must survive write-back round-trip");
+    assert_eq!(
+        reparsed.connections, original_connections,
+        "connections must survive write-back round-trip"
+    );
+}
+
 /// Test: schema init → output is valid JSON Schema (verifies the command name is recognized)
 #[test]
 fn test_schema_output_exists() {

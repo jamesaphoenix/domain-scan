@@ -150,7 +150,7 @@ where
 // Flattened subsystem for matching
 // ---------------------------------------------------------------------------
 
-/// A flattened subsystem with its depth in the hierarchy.
+/// A flattened subsystem for matching.
 #[derive(Debug, Clone)]
 struct FlatSubsystem {
     id: String,
@@ -160,19 +160,18 @@ struct FlatSubsystem {
     operations: Vec<String>,
     tables: Vec<String>,
     events: Vec<String>,
-    depth: usize,
 }
 
 /// Flatten the manifest tree depth-first.
 fn flatten_manifest(manifest: &Manifest) -> Vec<FlatSubsystem> {
     let mut result = Vec::new();
     for subsystem in &manifest.subsystems {
-        flatten_recursive(subsystem, 0, &mut result);
+        flatten_recursive(subsystem, &mut result);
     }
     result
 }
 
-fn flatten_recursive(subsystem: &ManifestSubsystem, depth: usize, out: &mut Vec<FlatSubsystem>) {
+fn flatten_recursive(subsystem: &ManifestSubsystem, out: &mut Vec<FlatSubsystem>) {
     out.push(FlatSubsystem {
         id: subsystem.id.clone(),
         name: subsystem.name.clone(),
@@ -181,10 +180,9 @@ fn flatten_recursive(subsystem: &ManifestSubsystem, depth: usize, out: &mut Vec<
         operations: subsystem.operations.clone(),
         tables: subsystem.tables.clone(),
         events: subsystem.events.clone(),
-        depth,
     });
     for child in &subsystem.children {
-        flatten_recursive(child, depth + 1, out);
+        flatten_recursive(child, out);
     }
 }
 
@@ -224,18 +222,19 @@ pub fn parse_system_manifest_file(path: &Path) -> Result<SystemManifest, DomainS
 /// Algorithm (from spec 10a.4):
 /// 1. Flatten manifest tree depth-first
 /// 2. For each entity, collect all subsystems whose filePath is a prefix
-/// 3. Select the deepest match (child at depth 2 wins over parent at depth 1)
+/// 3. Select the most specific match (path component count, not tree depth)
 /// 4. If no filePath match, fall back to name matching
 /// 5. If still unmatched, place in unmatched bucket
 pub fn match_entities(index: &ScanIndex, manifest: &Manifest) -> MatchResult {
     let flat = flatten_manifest(manifest);
+    let scan_root = &index.root;
     let summaries = index.get_entity_summaries(&Default::default());
     let total_entities = summaries.len();
     let mut matched = Vec::new();
     let mut unmatched = Vec::new();
 
     for summary in summaries {
-        if let Some((sub_id, sub_name, strategy)) = find_match(&summary, &flat) {
+        if let Some((sub_id, sub_name, strategy)) = find_match(&summary, &flat, scan_root) {
             matched.push(MatchedEntity {
                 entity: summary,
                 subsystem_id: sub_id,
@@ -268,16 +267,23 @@ pub fn match_entities(index: &ScanIndex, manifest: &Manifest) -> MatchResult {
 fn find_match(
     entity: &EntitySummary,
     flat: &[FlatSubsystem],
+    scan_root: &Path,
 ) -> Option<(String, String, MatchStrategy)> {
-    // Strategy 1: File path prefix match (deepest wins)
+    // Strategy 1: File path prefix match (most specific path wins)
     let mut best_match: Option<(&FlatSubsystem, usize)> = None;
     for sub in flat {
-        if entity.file.starts_with(&sub.file_path) {
-            let is_deeper = best_match
+        let resolved = if sub.file_path.is_relative() {
+            scan_root.join(&sub.file_path)
+        } else {
+            sub.file_path.clone()
+        };
+        if entity.file.starts_with(&resolved) {
+            let specificity = resolved.components().count();
+            let is_more_specific = best_match
                 .as_ref()
-                .is_none_or(|(_, depth)| sub.depth > *depth);
-            if is_deeper {
-                best_match = Some((sub, sub.depth));
+                .is_none_or(|(_, s)| specificity > *s);
+            if is_more_specific {
+                best_match = Some((sub, specificity));
             }
         }
     }
@@ -527,6 +533,23 @@ pub fn serialize_manifest(manifest: &Manifest) -> Result<String, DomainScanError
     serde_json::to_string_pretty(manifest).map_err(DomainScanError::Serialization)
 }
 
+/// Serialize a full SystemManifest back to pretty-printed JSON.
+/// Preserves meta, domains, connections alongside subsystems.
+pub fn serialize_system_manifest(manifest: &SystemManifest) -> Result<String, DomainScanError> {
+    serde_json::to_string_pretty(manifest).map_err(DomainScanError::Serialization)
+}
+
+/// Write-back into a full SystemManifest. Preserves meta, domains, connections.
+pub fn write_back_system(
+    manifest: &mut SystemManifest,
+    match_result: &MatchResult,
+    index: &ScanIndex,
+) {
+    for m in &match_result.matched {
+        write_back_to_subsystem(&mut manifest.subsystems, m, index);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -618,9 +641,9 @@ mod tests {
         let manifest = sample_manifest();
         let flat = flatten_manifest(&manifest);
         assert_eq!(flat.len(), 3); // auth, auth-jwt, billing
-        assert_eq!(flat[0].depth, 0);
-        assert_eq!(flat[1].depth, 1); // auth-jwt is a child
-        assert_eq!(flat[2].depth, 0);
+        assert_eq!(flat[0].id, "auth");
+        assert_eq!(flat[1].id, "auth-jwt");
+        assert_eq!(flat[2].id, "billing");
     }
 
     #[test]
@@ -983,5 +1006,287 @@ mod tests {
         let deserialized: Connection = serde_json::from_str(&json)
             .unwrap_or_else(|e| panic!("Failed to deserialize: {e}"));
         assert_eq!(deserialized.connection_type, ConnectionType::Triggers);
+    }
+
+    // -----------------------------------------------------------------------
+    // A.7: SystemManifest write-back round-trip preserves meta/domains/connections
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_system_manifest_write_back_roundtrip() {
+        let original = parse_system_manifest(sample_system_manifest_json())
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let mut sys_manifest = original.clone();
+
+        // Create an entity that matches the "auth" subsystem
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("NewAuthInterface", "/project/src/auth/login.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let manifest_for_match = sys_manifest.as_manifest();
+        let result = match_entities(&index, &manifest_for_match);
+
+        // Write back into the SystemManifest
+        write_back_system(&mut sys_manifest, &result, &index);
+
+        // Serialize and re-parse
+        let serialized = serialize_system_manifest(&sys_manifest)
+            .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
+        let reparsed = parse_system_manifest(&serialized)
+            .unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
+
+        // meta, domains, connections must survive the round-trip
+        assert_eq!(reparsed.meta, original.meta);
+        assert_eq!(reparsed.domains, original.domains);
+        assert_eq!(reparsed.connections, original.connections);
+
+        // The new interface should be present
+        assert!(reparsed.subsystems[0]
+            .interfaces
+            .contains(&"NewAuthInterface".to_string()));
+        // Original interfaces still present
+        assert!(reparsed.subsystems[0]
+            .interfaces
+            .contains(&"AuthPrincipal".to_string()));
+    }
+
+    #[test]
+    fn test_system_manifest_write_back_dry_run_preview_includes_all_sections() {
+        let sys_manifest = parse_system_manifest(sample_system_manifest_json())
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        // Serialize the full manifest (as dry-run preview would)
+        let serialized = serialize_system_manifest(&sys_manifest)
+            .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
+
+        // Parse as generic JSON to verify structure
+        let value: serde_json::Value = serde_json::from_str(&serialized)
+            .unwrap_or_else(|e| panic!("Failed to parse JSON: {e}"));
+        let obj = value.as_object().unwrap_or_else(|| panic!("Expected JSON object"));
+
+        assert!(obj.contains_key("meta"), "Preview must contain 'meta'");
+        assert!(obj.contains_key("domains"), "Preview must contain 'domains'");
+        assert!(obj.contains_key("subsystems"), "Preview must contain 'subsystems'");
+        assert!(obj.contains_key("connections"), "Preview must contain 'connections'");
+    }
+
+    #[test]
+    fn test_fallback_manifest_only_subsystems() {
+        // A manifest with only subsystems (no meta/domains/connections)
+        let manifest = sample_manifest();
+        let serialized = serialize_manifest(&manifest)
+            .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
+        let reparsed = parse_manifest(&serialized)
+            .unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
+        assert_eq!(manifest, reparsed);
+    }
+
+    // -----------------------------------------------------------------------
+    // A.8: Relative filePaths match against absolute entity paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_relative_filepath_matching() {
+        let json = r#"{
+            "subsystems": [
+                {
+                    "id": "auth",
+                    "name": "Auth",
+                    "domain": "core",
+                    "status": "new",
+                    "filePath": "packages/auth/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                }
+            ]
+        }"#;
+        let manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let mut file = IrFile::new(
+            PathBuf::from("/abs/project/packages/auth/handler.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("AuthHandler", "/abs/project/packages/auth/handler.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/abs/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1, "Relative filePath should match absolute entity path");
+        assert_eq!(result.matched[0].subsystem_id, "auth");
+        assert_eq!(result.matched[0].match_strategy, MatchStrategy::FilePath);
+        assert!(result.coverage_percent > 0.0);
+    }
+
+    #[test]
+    fn test_absolute_filepath_still_works() {
+        // Absolute paths should continue to work as before
+        let manifest = sample_manifest(); // uses absolute /project/src/auth/
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("LoginService", "/project/src/auth/login.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1);
+        assert_eq!(result.matched[0].subsystem_id, "auth");
+    }
+
+    #[test]
+    fn test_mixed_relative_absolute_paths() {
+        let json = r#"{
+            "subsystems": [
+                {
+                    "id": "auth",
+                    "name": "Auth",
+                    "domain": "core",
+                    "status": "new",
+                    "filePath": "packages/auth/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                },
+                {
+                    "id": "billing",
+                    "name": "Billing",
+                    "domain": "core",
+                    "status": "new",
+                    "filePath": "/abs/project/packages/billing/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                }
+            ]
+        }"#;
+        let manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let mut file1 = IrFile::new(
+            PathBuf::from("/abs/project/packages/auth/handler.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file1.interfaces = vec![make_iface("AuthHandler", "/abs/project/packages/auth/handler.ts")];
+
+        let mut file2 = IrFile::new(
+            PathBuf::from("/abs/project/packages/billing/invoice.ts"),
+            Language::TypeScript,
+            "hash2".to_string(),
+            BuildStatus::Built,
+        );
+        file2.interfaces = vec![make_iface("InvoiceService", "/abs/project/packages/billing/invoice.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/abs/project"), vec![file1, file2], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 2, "Both relative and absolute paths should match");
+        let auth_match = result.matched.iter().find(|m| m.subsystem_id == "auth");
+        let billing_match = result.matched.iter().find(|m| m.subsystem_id == "billing");
+        assert!(auth_match.is_some(), "Relative path 'packages/auth/' should match");
+        assert!(billing_match.is_some(), "Absolute path should match");
+    }
+
+    // -----------------------------------------------------------------------
+    // A.9: Sibling subsystems resolve by path specificity, not array order
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_path_specificity_sibling_subsystems() {
+        let json = r#"{
+            "subsystems": [
+                {
+                    "id": "platform-core",
+                    "name": "Platform Core",
+                    "domain": "platform",
+                    "status": "new",
+                    "filePath": "/project/packages/platform/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                },
+                {
+                    "id": "test-utils",
+                    "name": "Test Utils",
+                    "domain": "platform",
+                    "status": "new",
+                    "filePath": "/project/packages/platform/test-utils/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                }
+            ]
+        }"#;
+        let manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        // Entity under test-utils/ should match test-utils, NOT platform-core
+        let mut file = IrFile::new(
+            PathBuf::from("/project/packages/platform/test-utils/helpers.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("TestHelper", "/project/packages/platform/test-utils/helpers.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1);
+        assert_eq!(
+            result.matched[0].subsystem_id, "test-utils",
+            "Entity under test-utils/ should match test-utils (more specific), not platform-core"
+        );
+    }
+
+    #[test]
+    fn test_path_specificity_parent_child_hierarchy() {
+        // Existing behavior: child subsystem (auth-jwt) should win over parent (auth)
+        let manifest = sample_manifest();
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/auth/jwt/token.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("TokenService", "/project/src/auth/jwt/token.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1);
+        assert_eq!(
+            result.matched[0].subsystem_id, "auth-jwt",
+            "Child subsystem auth-jwt should win over parent auth"
+        );
     }
 }
