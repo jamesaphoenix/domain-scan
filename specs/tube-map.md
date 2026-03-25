@@ -511,7 +511,7 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 - [x] Fix clippy `unnecessary_map_or` in `resolver.rs:642` — replace `.map_or(false, |v| ...)` with `.is_some_and(|v| ...)`
 - [x] Fix `unused_comparisons` in `index.rs:1010` — remove `assert!(index.stats.total_files >= 0)` (usize is always >= 0)
 - [x] Verify: `cargo clippy --all-targets -- -D warnings` passes with zero errors
-- [ ] Verify: CI passes on GitHub Actions after push
+- [x] Verify: CI passes on GitHub Actions after push
 
 #### F.1 E2E Test Infrastructure
 

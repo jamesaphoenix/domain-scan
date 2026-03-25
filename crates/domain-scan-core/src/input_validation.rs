@@ -44,6 +44,44 @@ pub mod error_code {
 // Path validation
 // ---------------------------------------------------------------------------
 
+/// Walk up the path to find the deepest existing ancestor, canonicalize it,
+/// then re-append the remaining suffix. This detects symlink escapes even
+/// when the final target path doesn't exist on disk.
+fn canonicalize_best_effort(path: &Path) -> Result<PathBuf, DomainScanError> {
+    if path.exists() {
+        return path.canonicalize().map_err(|e| {
+            DomainScanError::InvalidPath(format!("Cannot canonicalize path: {e}"))
+        });
+    }
+
+    let mut current = path.to_path_buf();
+    let mut suffix_parts: Vec<std::ffi::OsString> = Vec::new();
+
+    while let Some(name) = current.file_name().map(|n| n.to_owned()) {
+        suffix_parts.push(name);
+        match current.parent() {
+            Some(parent) if parent != current => {
+                current = parent.to_path_buf();
+            }
+            _ => break,
+        }
+
+        if current.exists() {
+            let canonical_prefix = current.canonicalize().map_err(|e| {
+                DomainScanError::InvalidPath(format!("Cannot canonicalize path: {e}"))
+            })?;
+            let mut result = canonical_prefix;
+            for part in suffix_parts.into_iter().rev() {
+                result.push(part);
+            }
+            return Ok(result);
+        }
+    }
+
+    // Nothing on the path exists — return as-is
+    Ok(path.to_path_buf())
+}
+
 /// Validate a path input. Rejects:
 /// - Paths containing `..` segments (traversal)
 /// - Null bytes
@@ -86,14 +124,10 @@ pub fn validate_path(input: &str, base_dir: &Path) -> Result<PathBuf, DomainScan
         base_dir.join(path)
     };
 
-    // Canonicalize if the path exists (resolves symlinks)
-    let canonical = if resolved.exists() {
-        resolved.canonicalize().map_err(|e| {
-            DomainScanError::InvalidPath(format!("Cannot canonicalize path: {e}"))
-        })?
-    } else {
-        resolved
-    };
+    // Canonicalize by resolving the deepest existing ancestor.
+    // This catches symlink escapes even when the final target doesn't exist
+    // (e.g., symlink → /home/user, but /home/user/.ssh/id_rsa doesn't exist).
+    let canonical = canonicalize_best_effort(&resolved)?;
 
     // Ensure the resolved path doesn't escape the base directory
     let canonical_base = if base_dir.exists() {
