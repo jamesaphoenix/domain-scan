@@ -873,7 +873,7 @@ mod tests {
             manifest
                 .subsystems
                 .iter()
-                .all(|sub| sub.file_path == PathBuf::from(".")),
+                .all(|sub| sub.file_path == Path::new(".")),
             "Root-level bootstrap subsystems should target '.', got: {:?}",
             manifest
                 .subsystems

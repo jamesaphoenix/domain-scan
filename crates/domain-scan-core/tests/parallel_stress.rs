@@ -124,7 +124,7 @@ fn test_no_deadlock_cached_parallel_scans() {
 #[test]
 fn test_no_deadlock_concurrent_pipelines() {
     let handles: Vec<_> = (0..4)
-        .map(|_| std::thread::spawn(|| run_full_pipeline()))
+        .map(|_| std::thread::spawn(run_full_pipeline))
         .collect();
 
     let mut total = 0;
