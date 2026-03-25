@@ -71,6 +71,68 @@ The agent edits `system.json` directly — no special patch API needed:
 4. Check coverage: `domain-scan match --manifest system.json --output json --fields coverage_percent`
 5. Repeat until coverage is satisfactory
 
+## Nested subsystems (children)
+
+Use the `children` array when a single package has distinct sub-modules that deserve separate tracking. For example, `packages/platform/` might contain `auth`, `billing`, and `notifications` as independent concerns.
+
+### When to use
+
+- A directory contains 3+ logically distinct modules (not just files)
+- Each child maps to a sub-directory with its own interfaces/schemas
+- The parent subsystem would be too coarse without splitting
+
+### Format
+
+Children use the same structure as top-level subsystems, nested inside the parent's `children` array:
+
+```json
+{
+  "id": "platform-core",
+  "name": "Platform Core",
+  "domain": "platform",
+  "status": "new",
+  "filePath": "packages/platform/",
+  "children": [
+    {
+      "id": "platform-auth",
+      "name": "Platform Auth",
+      "domain": "platform",
+      "status": "new",
+      "filePath": "packages/platform/src/auth/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "dependencies": ["platform-sessions"]
+    },
+    {
+      "id": "platform-billing",
+      "name": "Platform Billing",
+      "domain": "platform",
+      "status": "new",
+      "filePath": "packages/platform/src/billing/",
+      "interfaces": [],
+      "operations": [],
+      "tables": [],
+      "events": [],
+      "dependencies": ["platform-auth"]
+    }
+  ]
+}
+```
+
+### Matching behavior
+
+- Children inherit the parent's domain
+- Children override `filePath` with a more specific path
+- The matching engine resolves children by path specificity — a child's `filePath` is always more specific than the parent's, so entities match to the most precise subsystem
+
+### Rules
+
+- Children must have a more specific `filePath` than the parent
+- Do not nest deeper than one level (children of children) — flatten instead
+- Prefer 2-5 children per parent. If you need more, the parent is probably a domain, not a subsystem
+
 ## Common mistakes
 
 - Writing system.json from scratch instead of using `--bootstrap` — the heuristics save significant time and produce reasonable starting points.

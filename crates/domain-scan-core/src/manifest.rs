@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use globset::Glob;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -265,12 +266,44 @@ pub fn match_entities(index: &ScanIndex, manifest: &Manifest) -> MatchResult {
     }
 }
 
+/// Check whether a path string contains glob metacharacters (`*`, `?`, `[`, `{`).
+pub fn is_glob_pattern(path: &Path) -> bool {
+    let s = path.to_string_lossy();
+    s.contains('*') || s.contains('?') || s.contains('[') || s.contains('{')
+}
+
+/// Validate that a glob pattern compiles successfully.
+/// Returns `Err(DomainScanError::InvalidInput)` for malformed patterns.
+pub fn validate_glob_pattern(pattern: &str) -> Result<(), DomainScanError> {
+    Glob::new(pattern).map_err(|e| {
+        DomainScanError::InvalidInput(format!("Invalid glob pattern '{pattern}': {e}"))
+    })?;
+    Ok(())
+}
+
+/// Validate all glob patterns in a manifest's subsystem `filePath` fields.
+/// Returns the first invalid glob as a `DomainScanError`.
+pub fn validate_manifest_globs(manifest: &Manifest) -> Result<(), DomainScanError> {
+    for sub in &manifest.subsystems {
+        if is_glob_pattern(&sub.file_path) {
+            validate_glob_pattern(&sub.file_path.to_string_lossy())?;
+        }
+        for child in &sub.children {
+            if is_glob_pattern(&child.file_path) {
+                validate_glob_pattern(&child.file_path.to_string_lossy())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 fn find_match(
     entity: &EntitySummary,
     flat: &[FlatSubsystem],
     scan_root: &Path,
 ) -> Option<(String, String, MatchStrategy)> {
     // Strategy 1: File path prefix match (most specific path wins)
+    // Supports both prefix matching and glob patterns in filePath.
     let mut best_match: Option<(&FlatSubsystem, usize)> = None;
     for sub in flat {
         let resolved = if sub.file_path.is_relative() {
@@ -278,7 +311,18 @@ fn find_match(
         } else {
             sub.file_path.clone()
         };
-        if entity.file.starts_with(&resolved) {
+
+        let matches = if is_glob_pattern(&resolved) {
+            // Glob matching: compile the pattern and test against the entity path
+            Glob::new(&resolved.to_string_lossy())
+                .ok()
+                .map(|g| g.compile_matcher())
+                .is_some_and(|m| m.is_match(&entity.file))
+        } else {
+            entity.file.starts_with(&resolved)
+        };
+
+        if matches {
             let specificity = resolved.components().count();
             let is_more_specific = best_match
                 .as_ref()
@@ -1450,6 +1494,256 @@ mod tests {
             manifest.subsystems[0].status,
             ManifestStatus::Built,
             "Write-back must not downgrade status from 'built'"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // D.5: Glob filePath matches individual files
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_glob_filepath_matches_individual_files() {
+        let json = r#"{
+            "subsystems": [{
+                "id": "scheduling",
+                "name": "Scheduling",
+                "domain": "services",
+                "status": "new",
+                "filePath": "/project/src/services/scheduling*",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let mut file1 = IrFile::new(
+            PathBuf::from("/project/src/services/scheduling.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file1.interfaces = vec![make_iface("Scheduler", "/project/src/services/scheduling.ts")];
+
+        let mut file2 = IrFile::new(
+            PathBuf::from("/project/src/services/schedulingUtils.ts"),
+            Language::TypeScript,
+            "hash2".to_string(),
+            BuildStatus::Built,
+        );
+        file2.interfaces = vec![make_iface(
+            "SchedulerUtils",
+            "/project/src/services/schedulingUtils.ts",
+        )];
+
+        // An unrelated file that should NOT match
+        let mut file3 = IrFile::new(
+            PathBuf::from("/project/src/services/billing.ts"),
+            Language::TypeScript,
+            "hash3".to_string(),
+            BuildStatus::Built,
+        );
+        file3.interfaces = vec![make_iface("BillingService", "/project/src/services/billing.ts")];
+
+        let index = crate::index::build_index(
+            PathBuf::from("/project"),
+            vec![file1, file2, file3],
+            0,
+            0,
+            0,
+        );
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(
+            result.matched.len(),
+            2,
+            "Glob scheduling* should match scheduling.ts and schedulingUtils.ts"
+        );
+        assert_eq!(result.unmatched.len(), 1, "billing.ts should not match");
+        for m in &result.matched {
+            assert_eq!(m.subsystem_id, "scheduling");
+            assert_eq!(m.match_strategy, MatchStrategy::FilePath);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // D.6: Glob filePath matches wildcard patterns
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_glob_wildcard_matches_all_packages() {
+        let json = r#"{
+            "subsystems": [{
+                "id": "all-packages",
+                "name": "All Packages",
+                "domain": "mono",
+                "status": "new",
+                "filePath": "/project/packages/*/src/**",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let mut file_a = IrFile::new(
+            PathBuf::from("/project/packages/auth/src/handler.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file_a.interfaces = vec![make_iface(
+            "AuthHandler",
+            "/project/packages/auth/src/handler.ts",
+        )];
+
+        let mut file_b = IrFile::new(
+            PathBuf::from("/project/packages/billing/src/stripe.ts"),
+            Language::TypeScript,
+            "hash2".to_string(),
+            BuildStatus::Built,
+        );
+        file_b.interfaces = vec![make_iface(
+            "StripeClient",
+            "/project/packages/billing/src/stripe.ts",
+        )];
+
+        // File outside packages/ — should NOT match
+        let mut file_c = IrFile::new(
+            PathBuf::from("/project/apps/web/src/index.ts"),
+            Language::TypeScript,
+            "hash3".to_string(),
+            BuildStatus::Built,
+        );
+        file_c.interfaces = vec![make_iface("WebApp", "/project/apps/web/src/index.ts")];
+
+        let index = crate::index::build_index(
+            PathBuf::from("/project"),
+            vec![file_a, file_b, file_c],
+            0,
+            0,
+            0,
+        );
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(
+            result.matched.len(),
+            2,
+            "Glob packages/*/src/** should match both auth and billing"
+        );
+        assert_eq!(
+            result.unmatched.len(),
+            1,
+            "apps/web/src/index.ts should not match"
+        );
+    }
+
+    #[test]
+    fn test_glob_does_not_regress_non_glob_paths() {
+        // Non-glob paths must continue to use prefix matching
+        let manifest = sample_manifest(); // uses /project/src/auth/ (no globs)
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("LoginService", "/project/src/auth/login.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1);
+        assert_eq!(result.matched[0].subsystem_id, "auth");
+    }
+
+    // -----------------------------------------------------------------------
+    // D.7: Invalid glob produces structured error
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_is_glob_pattern_detection() {
+        assert!(is_glob_pattern(Path::new("src/services/scheduling*")));
+        assert!(is_glob_pattern(Path::new("packages/*/src/")));
+        assert!(is_glob_pattern(Path::new("src/[abc]/")));
+        assert!(is_glob_pattern(Path::new("src/{a,b}/")));
+        assert!(!is_glob_pattern(Path::new("src/services/")));
+        assert!(!is_glob_pattern(Path::new("/project/src/auth/")));
+    }
+
+    #[test]
+    fn test_validate_glob_pattern_valid() {
+        assert!(validate_glob_pattern("packages/*/src/**").is_ok());
+        assert!(validate_glob_pattern("src/services/scheduling*").is_ok());
+    }
+
+    #[test]
+    fn test_validate_glob_pattern_invalid() {
+        let result = validate_glob_pattern("[unclosed");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("Invalid glob pattern"),
+            "Error should mention 'Invalid glob pattern', got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_validate_manifest_globs_valid() {
+        let json = r#"{
+            "subsystems": [{
+                "id": "sched",
+                "name": "Scheduling",
+                "domain": "services",
+                "status": "new",
+                "filePath": "src/services/scheduling*",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        assert!(validate_manifest_globs(&manifest).is_ok());
+    }
+
+    #[test]
+    fn test_validate_manifest_globs_invalid() {
+        let json = r#"{
+            "subsystems": [{
+                "id": "bad",
+                "name": "Bad Glob",
+                "domain": "services",
+                "status": "new",
+                "filePath": "[unclosed",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let result = validate_manifest_globs(&manifest);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Invalid glob pattern"),
+            "Error should be structured DomainScanError, got: {err_msg}"
         );
     }
 }

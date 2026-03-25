@@ -224,7 +224,21 @@ The manifest has this structure:
       "operations": ["camelCaseMethods"],
       "tables": ["snake_case_schemas"],
       "events": [],
-      "dependencies": ["<other-subsystem-ids>"]
+      "dependencies": ["<other-subsystem-ids>"],
+      "children": [
+        {
+          "id": "<child-kebab-case-id>",
+          "name": "<Child Display Name>",
+          "domain": "<same-domain-id>",
+          "status": "new",
+          "filePath": "<more-specific-child-path>",
+          "interfaces": [],
+          "operations": [],
+          "tables": [],
+          "events": [],
+          "dependencies": []
+        }
+      ]
     }
   ],
   "connections": [

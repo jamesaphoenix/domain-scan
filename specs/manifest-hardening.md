@@ -437,10 +437,10 @@ let matches = if is_glob_pattern(&resolved) {
 ```
 
 **Acceptance criteria:**
-- [ ] `filePath: "packages/platform/src/services/scheduling*"` matches `scheduling.ts` and `schedulingUtils.ts`
-- [ ] `filePath: "packages/*/src/"` matches all packages
-- [ ] Non-glob paths work as before (no regression)
-- [ ] Invalid glob patterns produce a `DomainScanError`, not a panic
+- [x] `filePath: "packages/platform/src/services/scheduling*"` matches `scheduling.ts` and `schedulingUtils.ts`
+- [x] `filePath: "packages/*/src/"` matches all packages
+- [x] Non-glob paths work as before (no regression)
+- [x] Invalid glob patterns produce a `DomainScanError`, not a panic
 
 ### 5.2 Feature 2: Children/nested subsystem guidance for agents
 
@@ -458,9 +458,9 @@ let matches = if is_glob_pattern(&resolved) {
 3. Add `children` example to the ManifestLoader.tsx prompt schema.
 
 **Acceptance criteria:**
-- [ ] Skill file documents when and how to use `children`
-- [ ] Agent prompt schema example includes a `children` example
-- [ ] Existing children matching continues to work
+- [x] Skill file documents when and how to use `children`
+- [x] Agent prompt schema example includes a `children` example
+- [x] Existing children matching continues to work
 
 ---
 
@@ -509,13 +509,13 @@ Focus: `schema.rs`, `Cargo.toml`, skill files.
 
 Focus: `manifest.rs`, skill files.
 
-- [ ] D.1 Add `is_glob_pattern()` to `manifest.rs`
-- [ ] D.2 Add glob matching branch in `find_match()` using `globset::GlobMatcher`
-- [ ] D.3 Add nested subsystem section to `domain-scan-init.md`
-- [ ] D.4 Update ManifestLoader.tsx prompt schema example to include `children`
-- [ ] D.5 Test: glob filePath matches individual files
-- [ ] D.6 Test: glob filePath matches wildcard patterns
-- [ ] D.7 Test: invalid glob produces structured error
+- [x] D.1 Add `is_glob_pattern()` to `manifest.rs`
+- [x] D.2 Add glob matching branch in `find_match()` using `globset::GlobMatcher`
+- [x] D.3 Add nested subsystem section to `domain-scan-init.md`
+- [x] D.4 Update ManifestLoader.tsx prompt schema example to include `children`
+- [x] D.5 Test: glob filePath matches individual files
+- [x] D.6 Test: glob filePath matches wildcard patterns
+- [x] D.7 Test: invalid glob produces structured error
 
 ---
 
