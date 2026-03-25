@@ -932,16 +932,16 @@ Replace the plain `<pre>` source preview with a Monaco editor (same engine as VS
 
 ### Phase H.2: Monaco Editor E2E Tests
 
-- [ ] Test: select entity → Monaco editor renders with syntax highlighting (not plain text)
-- [ ] Test: select entity → editor scrolls to the entity's start line
-- [ ] Test: select different entity in same file → editor stays open, scrolls to new position
-- [ ] Test: select entity in different file → editor loads new file content
-- [ ] Test: Monaco shows correct language mode (TypeScript for .ts, Rust for .rs, etc.)
-- [ ] Test: editor is read-only (typing does not modify content)
-- [ ] Test: selecting entity shows source (center panel is not empty / "Select an entity")
-- [ ] Test: rapid entity switching (10 entities in 2 seconds) → no crash, editor updates correctly
-- [ ] Test: large file (1000+ lines) → editor renders without freezing
-- [ ] Test: minimap visible and reflects file structure
+- [x] Test: select entity → Monaco editor renders with syntax highlighting (not plain text)
+- [x] Test: select entity → editor scrolls to the entity's start line
+- [x] Test: select different entity in same file → editor stays open, scrolls to new position
+- [x] Test: select entity in different file → editor loads new file content
+- [x] Test: Monaco shows correct language mode (TypeScript for .ts, Rust for .rs, etc.)
+- [x] Test: editor is read-only (typing does not modify content)
+- [x] Test: selecting entity shows source (center panel is not empty / "Select an entity")
+- [x] Test: rapid entity switching (10 entities in 2 seconds) → no crash, editor updates correctly
+- [x] Test: large file (1000+ lines) → editor renders without freezing
+- [x] Test: minimap visible and reflects file structure
 
 ### Phase H.3: Export All — Top-Right Status Bar
 

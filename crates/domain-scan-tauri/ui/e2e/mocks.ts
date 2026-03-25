@@ -516,14 +516,24 @@ export async function setupTauriMocks(
         );
       }
 
-      // Get entity detail — return a stub
+      // Get entity detail — return a stub with file-aware span
       if (cmd === "get_entity_detail") {
         const name = args?.name as string;
+        const file = (args?.file as string) ?? "unknown.ts";
+        // Return different spans per entity for testing scroll-to-line
+        const spanMap: Record<string, { start_line: number; end_line: number }> = {
+          AuthProvider: { start_line: 2, end_line: 6 },
+          UserService: { start_line: 12, end_line: 16 },
+          ApiRouter: { start_line: 1, end_line: 5 },
+          getUser: { start_line: 8, end_line: 10 },
+          UserSchema: { start_line: 1, end_line: 8 },
+        };
+        const span = spanMap[name] ?? { start_line: 1, end_line: 10 };
         return {
           Interface: {
             name,
-            file: args?.file ?? "unknown.ts",
-            span: { start_line: 1, start_col: 0, end_line: 10, end_col: 0, byte_range: [0, 100] },
+            file,
+            span: { start_line: span.start_line, start_col: 0, end_line: span.end_line, end_col: 0, byte_range: [0, 100] },
             visibility: "public",
             generics: [],
             extends: [],
@@ -535,7 +545,54 @@ export async function setupTauriMocks(
         };
       }
 
-      // Get entity source
+      // Get full file source (for Monaco editor)
+      if (cmd === "get_file_source") {
+        const file = args?.file as string ?? "unknown.ts";
+        // Large file mock for stress testing (1500 lines)
+        if (file.includes("large-file")) {
+          return Array.from({ length: 1500 }, (_, i) =>
+            `// line ${i + 1}: generated content for stress testing`,
+          ).join("\n");
+        }
+        // Rust file mock
+        if (file.endsWith(".rs")) {
+          return [
+            "use std::collections::HashMap;",
+            "",
+            "pub trait AuthProvider {",
+            "    fn login(&self, username: &str, password: &str) -> Result<bool>;",
+            "    fn logout(&mut self);",
+            "    fn get_user(&self) -> Option<&User>;",
+            "}",
+            "",
+            "pub struct User {",
+            "    pub id: String,",
+            "    pub name: String,",
+            "}",
+          ].join("\n");
+        }
+        // Default TypeScript file mock
+        return [
+          "// mock source code for " + file,
+          "export interface MockEntity {",
+          "  id: string;",
+          "  name: string;",
+          "  email: string;",
+          "}",
+          "",
+          "export function getUser(): MockEntity | null {",
+          "  return null;",
+          "}",
+          "",
+          "export class UserService {",
+          "  async findById(id: string): Promise<MockEntity | null> {",
+          "    return null;",
+          "  }",
+          "}",
+        ].join("\n");
+      }
+
+      // Get entity source (legacy byte-range extraction)
       if (cmd === "get_entity_source") {
         return "// mock source code\nexport interface MockEntity {}";
       }
