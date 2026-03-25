@@ -590,12 +590,12 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.8 Data Integrity Checks
 
-- [ ] Test: `get_tube_map_data` entity counts match `filter_entities` counts for each subsystem
-- [ ] Test: `match_manifest` coverage % is consistent: `matched.len() / total_entities * 100`
-- [ ] Test: `get_subsystem_entities(id)` returns only entities whose files fall under subsystem filePath
-- [ ] Test: connections reference only valid subsystem IDs (no dangling `from`/`to`)
-- [ ] Test: after scan + match, switching to Entities tab still works (shared state not corrupted)
-- [ ] Test: generate prompt from tube map drill-in → valid prompt text, scoped to subsystem entities
+- [x] Test: `get_tube_map_data` entity counts match `filter_entities` counts for each subsystem
+- [x] Test: `match_manifest` coverage % is consistent: `matched.len() / total_entities * 100`
+- [x] Test: `get_subsystem_entities(id)` returns only entities whose files fall under subsystem filePath
+- [x] Test: connections reference only valid subsystem IDs (no dangling `from`/`to`)
+- [x] Test: after scan + match, switching to Entities tab still works (shared state not corrupted)
+- [x] Test: generate prompt from tube map drill-in → valid prompt text, scoped to subsystem entities
 
 #### F.9 Error Recovery
 
