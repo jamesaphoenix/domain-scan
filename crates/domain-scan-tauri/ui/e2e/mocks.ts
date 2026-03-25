@@ -7,7 +7,7 @@
  */
 
 import type { Page } from "@playwright/test";
-import type { ScanStats, EntitySummary, TubeMapData, TubeMapSubsystem } from "../src/types";
+import type { ScanStats, EntitySummary, TubeMapData, TubeMapSubsystem, SystemManifest } from "../src/types";
 
 // ---------------------------------------------------------------------------
 // Mock data factories
@@ -284,6 +284,60 @@ export const MOCK_ORPHAN_SUBSYSTEMS_TUBE_MAP: TubeMapData = {
   unmatched_count: 0,
 };
 
+/** SystemManifest returned by bootstrap_manifest: 2 domains, 3 subsystems, 2 connections */
+export const MOCK_BOOTSTRAP_MANIFEST: SystemManifest = {
+  meta: { name: "test-project", version: "1.0.0", description: "Auto-detected from scan" },
+  domains: {
+    core: { label: "Core", color: "#3b82f6" },
+    services: { label: "Services", color: "#22c55e" },
+  },
+  subsystems: [
+    {
+      id: "auth",
+      name: "Authentication",
+      domain: "core",
+      status: "built",
+      filePath: "src/auth/",
+      interfaces: ["AuthProvider"],
+      operations: ["login", "logout"],
+      tables: [],
+      events: [],
+      children: [],
+      dependencies: [],
+    },
+    {
+      id: "api",
+      name: "API Gateway",
+      domain: "core",
+      status: "built",
+      filePath: "src/api/",
+      interfaces: ["ApiRouter"],
+      operations: ["handleRequest"],
+      tables: [],
+      events: [],
+      children: [],
+      dependencies: ["auth"],
+    },
+    {
+      id: "user-service",
+      name: "User Service",
+      domain: "services",
+      status: "new",
+      filePath: "src/services/user/",
+      interfaces: ["UserService"],
+      operations: ["getUser", "createUser"],
+      tables: ["users"],
+      events: [],
+      children: [],
+      dependencies: ["auth"],
+    },
+  ],
+  connections: [
+    { from: "api", to: "auth", label: "validates identity", type: "depends_on" },
+    { from: "user-service", to: "auth", label: "authenticates users", type: "depends_on" },
+  ],
+};
+
 /** TubeMapData matching empty.json: valid manifest with 0 subsystems */
 export const MOCK_EMPTY_TUBE_MAP: TubeMapData = {
   meta: { name: "Empty App", version: "1.0", description: "Valid manifest with zero subsystems" },
@@ -301,6 +355,8 @@ export const MOCK_EMPTY_TUBE_MAP: TubeMapData = {
 export interface MockIPCOptions {
   /** Path the dialog:open mock returns (null = user cancelled). */
   dialogResult?: string | null;
+  /** Path the dialog:save mock returns (null = user cancelled). */
+  saveDialogResult?: string | null;
   /** Stats returned by scan_directory. Null = throw error. */
   scanStats?: ScanStats | null;
   /** Error message thrown by scan_directory (when scanStats is null). */
@@ -313,6 +369,12 @@ export interface MockIPCOptions {
   manifestError?: string;
   /** Match result returned by match_manifest. Null = throw (no scan loaded). */
   matchResult?: { matched: string[]; unmatched: string[]; coverage_percent: number } | null;
+  /** SystemManifest returned by bootstrap_manifest. Null = throw (no scan loaded). */
+  bootstrapResult?: SystemManifest | null;
+  /** Error thrown by bootstrap_manifest (if set, rejects). */
+  bootstrapError?: string;
+  /** Error thrown by save_manifest (if set, rejects). */
+  saveManifestError?: string;
 }
 
 /**
@@ -325,22 +387,30 @@ export async function setupTauriMocks(
   options: MockIPCOptions = {},
 ): Promise<void> {
   const dialogResult = options.dialogResult !== undefined ? options.dialogResult : "/mock/test-project";
+  const saveDialogResult = options.saveDialogResult !== undefined ? options.saveDialogResult : "/mock/output/system.json";
   const scanStats = options.scanStats !== undefined ? options.scanStats : MOCK_SCAN_STATS;
   const scanError = options.scanError !== undefined ? options.scanError : "Scan failed";
   const entities = options.entities !== undefined ? options.entities : MOCK_ENTITIES;
   const tubeMapData = options.tubeMapData !== undefined ? options.tubeMapData : null;
   const manifestError = options.manifestError ?? null;
   const matchResult = options.matchResult !== undefined ? options.matchResult : { matched: [], unmatched: [], coverage_percent: 0 };
+  const bootstrapResult = options.bootstrapResult !== undefined ? options.bootstrapResult : null;
+  const bootstrapError = options.bootstrapError ?? null;
+  const saveManifestError = options.saveManifestError ?? null;
 
   // Serialize data for injection into browser context
   const serialized = JSON.stringify({
     dialogResult,
+    saveDialogResult,
     scanStats,
     scanError,
     entities,
     tubeMapData,
     manifestError,
     matchResult,
+    bootstrapResult,
+    bootstrapError,
+    saveManifestError,
   });
 
   await page.addInitScript((data: string) => {
@@ -358,6 +428,10 @@ export async function setupTauriMocks(
       data: config.tubeMapData,
       manifestError: config.manifestError,
       matchResult: config.matchResult,
+      bootstrapResult: config.bootstrapResult,
+      bootstrapError: config.bootstrapError,
+      saveManifestError: config.saveManifestError,
+      savedManifests: [] as Array<{ manifest: unknown; path: string }>,
     };
 
     const internals = w.__TAURI_INTERNALS__ as Record<string, unknown>;
@@ -367,6 +441,58 @@ export async function setupTauriMocks(
       // Dialog plugin: open file/directory picker
       if (cmd === "plugin:dialog|open") {
         return config.dialogResult;
+      }
+
+      // Dialog plugin: save file picker
+      if (cmd === "plugin:dialog|save") {
+        return config.saveDialogResult;
+      }
+
+      // Bootstrap manifest (wizard auto-detect)
+      if (cmd === "bootstrap_manifest") {
+        if (w.__MOCK_TUBE_MAP__?.bootstrapError) {
+          throw new Error(w.__MOCK_TUBE_MAP__.bootstrapError);
+        }
+        if (w.__MOCK_TUBE_MAP__?.bootstrapResult) {
+          return w.__MOCK_TUBE_MAP__.bootstrapResult;
+        }
+        throw new Error("No scan index loaded");
+      }
+
+      // Save manifest (wizard save)
+      if (cmd === "save_manifest") {
+        if (w.__MOCK_TUBE_MAP__?.saveManifestError) {
+          throw new Error(w.__MOCK_TUBE_MAP__.saveManifestError);
+        }
+        const manifest = args?.manifestJson as Record<string, unknown> | undefined;
+        // Store the saved manifest for test assertions
+        w.__MOCK_TUBE_MAP__?.savedManifests?.push({
+          manifest,
+          path: args?.path,
+        });
+        // After save, update tube map data so get_tube_map_data returns the wizard output
+        if (manifest) {
+          const subs = (manifest.subsystems as Array<Record<string, unknown>>) ?? [];
+          w.__MOCK_TUBE_MAP__.data = {
+            meta: manifest.meta,
+            domains: manifest.domains,
+            subsystems: subs.map((s: Record<string, unknown>) => ({
+              id: s.id, name: s.name, domain: s.domain, status: s.status ?? "new",
+              description: "", file_path: s.filePath ?? "",
+              matched_entity_count: 0, interface_count: ((s.interfaces as string[]) ?? []).length,
+              operation_count: ((s.operations as string[]) ?? []).length,
+              table_count: ((s.tables as string[]) ?? []).length,
+              event_count: ((s.events as string[]) ?? []).length,
+              has_children: ((s.children as unknown[]) ?? []).length > 0,
+              child_count: ((s.children as unknown[]) ?? []).length,
+              dependency_count: ((s.dependencies as string[]) ?? []).length,
+            })),
+            connections: manifest.connections,
+            coverage_percent: 0,
+            unmatched_count: 0,
+          };
+        }
+        return null;
       }
 
       // Scan directory

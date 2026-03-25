@@ -619,14 +619,14 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.11 Manifest Builder — Tauri Wizard Integration Tests
 
-- [ ] Test: wizard step 1 (domains) renders directory census from scan data
-- [ ] Test: editing a domain name in wizard → reflected in generated manifest
-- [ ] Test: wizard step 2 (subsystems) shows entities grouped by domain
-- [ ] Test: moving an entity between subsystems in wizard → manifest updated correctly
-- [ ] Test: wizard step 3 (connections) shows inferred connections from imports
-- [ ] Test: wizard step 4 (review) → "Save Manifest" writes file and switches to tube map view
-- [ ] Test: wizard → save → tube map renders matching stations/edges from saved manifest
-- [ ] Test: re-opening wizard after saving → loads existing manifest, not blank slate
+- [x] Test: wizard step 1 (domains) renders directory census from scan data
+- [x] Test: editing a domain name in wizard → reflected in generated manifest
+- [x] Test: wizard step 2 (subsystems) shows entities grouped by domain
+- [x] Test: moving an entity between subsystems in wizard → manifest updated correctly
+- [x] Test: wizard step 3 (connections) shows inferred connections from imports
+- [x] Test: wizard step 4 (review) → "Save Manifest" writes file and switches to tube map view
+- [x] Test: wizard → save → tube map renders matching stations/edges from saved manifest
+- [x] Test: re-opening wizard after saving → loads existing manifest, not blank slate
 
 #### F.12 Skill Bootstrapping Tests
 
