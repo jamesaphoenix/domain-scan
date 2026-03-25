@@ -569,13 +569,13 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.6 E2E: Keyboard Shortcuts (Tube Map Tab)
 
-- [ ] Test: press `f` → fitView fires, all nodes visible
-- [ ] Test: press `/` → search input focused
-- [ ] Test: press `1`-`7` → corresponding domain filter toggles
-- [ ] Test: press `0` → all filters cleared
-- [ ] Test: press `?` → shortcut help overlay appears
-- [ ] Test: press `Escape` → overlay/search/trace/filter cleared in priority order
-- [ ] Test: keyboard shortcuts do NOT fire when typing in search input
+- [x] Test: press `f` → fitView fires, all nodes visible
+- [x] Test: press `/` → search input focused
+- [x] Test: press `1`-`7` → corresponding domain filter toggles
+- [x] Test: press `0` → all filters cleared
+- [x] Test: press `?` → shortcut help overlay appears
+- [x] Test: press `Escape` → overlay/search/trace/filter cleared in priority order
+- [x] Test: keyboard shortcuts do NOT fire when typing in search input
 
 #### F.7 Stress Tests & Edge Cases
 
