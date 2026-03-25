@@ -150,9 +150,7 @@ fn run_scan_pipeline(root: PathBuf) -> Result<ScanIndex, CommandError> {
     let mut cache_misses: usize = 0;
 
     for walked_file in &walked {
-        let build_status = config
-            .build_status_override
-            .unwrap_or(BuildStatus::Built);
+        let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
 
         let source_bytes = std::fs::read(&walked_file.path)?;
         let hash = domain_scan_core::content_hash(&source_bytes);
@@ -167,9 +165,8 @@ fn run_scan_pipeline(root: PathBuf) -> Result<ScanIndex, CommandError> {
 
         cache_misses += 1;
 
-        let (tree, source) =
-            parser::parse_file(&walked_file.path, walked_file.language)
-                .map_err(|e| CommandError::Scan(e.to_string()))?;
+        let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)
+            .map_err(|e| CommandError::Scan(e.to_string()))?;
         let ir = query_engine::extract(
             &tree,
             &source,
@@ -209,9 +206,7 @@ pub async fn scan_directory(
 ) -> Result<ScanStats, CommandError> {
     let root_path = PathBuf::from(&root);
     if !root_path.is_dir() {
-        return Err(CommandError::Scan(format!(
-            "Not a directory: {root}"
-        )));
+        return Err(CommandError::Scan(format!("Not a directory: {root}")));
     }
 
     let scan_index = run_scan_pipeline(root_path.clone())?;
@@ -223,43 +218,71 @@ pub async fn scan_directory(
         for (ki, iface) in ir_file.interfaces.iter().enumerate() {
             lookup.insert(
                 (iface.name.clone(), ir_file.path.clone()),
-                EntityLookupEntry { file_index: fi, kind: EntityKind::Interface, kind_index: ki },
+                EntityLookupEntry {
+                    file_index: fi,
+                    kind: EntityKind::Interface,
+                    kind_index: ki,
+                },
             );
         }
         for (ki, svc) in ir_file.services.iter().enumerate() {
             lookup.insert(
                 (svc.name.clone(), ir_file.path.clone()),
-                EntityLookupEntry { file_index: fi, kind: EntityKind::Service, kind_index: ki },
+                EntityLookupEntry {
+                    file_index: fi,
+                    kind: EntityKind::Service,
+                    kind_index: ki,
+                },
             );
         }
         for (ki, cls) in ir_file.classes.iter().enumerate() {
             lookup.insert(
                 (cls.name.clone(), ir_file.path.clone()),
-                EntityLookupEntry { file_index: fi, kind: EntityKind::Class, kind_index: ki },
+                EntityLookupEntry {
+                    file_index: fi,
+                    kind: EntityKind::Class,
+                    kind_index: ki,
+                },
             );
         }
         for (ki, func) in ir_file.functions.iter().enumerate() {
             lookup.insert(
                 (func.name.clone(), ir_file.path.clone()),
-                EntityLookupEntry { file_index: fi, kind: EntityKind::Function, kind_index: ki },
+                EntityLookupEntry {
+                    file_index: fi,
+                    kind: EntityKind::Function,
+                    kind_index: ki,
+                },
             );
         }
         for (ki, schema) in ir_file.schemas.iter().enumerate() {
             lookup.insert(
                 (schema.name.clone(), ir_file.path.clone()),
-                EntityLookupEntry { file_index: fi, kind: EntityKind::Schema, kind_index: ki },
+                EntityLookupEntry {
+                    file_index: fi,
+                    kind: EntityKind::Schema,
+                    kind_index: ki,
+                },
             );
         }
         for (ki, imp) in ir_file.implementations.iter().enumerate() {
             lookup.insert(
                 (imp.target.clone(), ir_file.path.clone()),
-                EntityLookupEntry { file_index: fi, kind: EntityKind::Impl, kind_index: ki },
+                EntityLookupEntry {
+                    file_index: fi,
+                    kind: EntityKind::Impl,
+                    kind_index: ki,
+                },
             );
         }
         for (ki, alias) in ir_file.type_aliases.iter().enumerate() {
             lookup.insert(
                 (alias.name.clone(), ir_file.path.clone()),
-                EntityLookupEntry { file_index: fi, kind: EntityKind::TypeAlias, kind_index: ki },
+                EntityLookupEntry {
+                    file_index: fi,
+                    kind: EntityKind::TypeAlias,
+                    kind_index: ki,
+                },
             );
         }
     }
@@ -294,9 +317,7 @@ pub async fn scan_directory(
 
 /// Check if a scan is loaded (for startup / empty state detection).
 #[tauri::command]
-pub fn get_current_scan(
-    state: State<'_, AppState>,
-) -> Result<Option<ScanStats>, CommandError> {
+pub fn get_current_scan(state: State<'_, AppState>) -> Result<Option<ScanStats>, CommandError> {
     let idx_lock = state
         .current_index
         .lock()
@@ -343,20 +364,26 @@ pub fn get_entity_detail(
     if let Some(entry) = lookup_lock.get(&(name.clone(), file_path)) {
         let ir_file = &idx.files[entry.file_index];
         return match entry.kind {
-            EntityKind::Interface => Ok(Entity::Interface(ir_file.interfaces[entry.kind_index].clone())),
+            EntityKind::Interface => Ok(Entity::Interface(
+                ir_file.interfaces[entry.kind_index].clone(),
+            )),
             EntityKind::Service => Ok(Entity::Service(ir_file.services[entry.kind_index].clone())),
             EntityKind::Class => Ok(Entity::Class(ir_file.classes[entry.kind_index].clone())),
-            EntityKind::Function => Ok(Entity::Function(ir_file.functions[entry.kind_index].clone())),
+            EntityKind::Function => Ok(Entity::Function(
+                ir_file.functions[entry.kind_index].clone(),
+            )),
             EntityKind::Schema => Ok(Entity::Schema(ir_file.schemas[entry.kind_index].clone())),
-            EntityKind::Impl => Ok(Entity::Impl(ir_file.implementations[entry.kind_index].clone())),
-            EntityKind::TypeAlias => Ok(Entity::TypeAlias(ir_file.type_aliases[entry.kind_index].clone())),
+            EntityKind::Impl => Ok(Entity::Impl(
+                ir_file.implementations[entry.kind_index].clone(),
+            )),
+            EntityKind::TypeAlias => Ok(Entity::TypeAlias(
+                ir_file.type_aliases[entry.kind_index].clone(),
+            )),
             _ => Err(CommandError::EntityNotFound(format!("{name} in {file}"))),
         };
     }
 
-    Err(CommandError::EntityNotFound(format!(
-        "{name} in {file}"
-    )))
+    Err(CommandError::EntityNotFound(format!("{name} in {file}")))
 }
 
 /// Get source code for a specific span.
@@ -381,10 +408,7 @@ pub fn get_entity_source(
 /// Get the full source content of a file.
 /// Uses an in-memory cache to avoid repeated disk reads on tab switches.
 #[tauri::command]
-pub fn get_file_source(
-    file: String,
-    state: State<'_, AppState>,
-) -> Result<String, CommandError> {
+pub fn get_file_source(file: String, state: State<'_, AppState>) -> Result<String, CommandError> {
     let path = PathBuf::from(&file);
 
     // Check cache first
@@ -500,8 +524,9 @@ pub fn export_entities(
             Ok(csv)
         }
         "markdown" => {
-            let mut md =
-                String::from("| Name | Kind | File | Line | Language | Build Status | Confidence |\n");
+            let mut md = String::from(
+                "| Name | Kind | File | Line | Language | Build Status | Confidence |\n",
+            );
             md.push_str("|------|------|------|------|----------|--------------|------------|\n");
             for s in &summaries {
                 use std::fmt::Write;
@@ -546,11 +571,7 @@ pub fn get_build_status(
 /// Open a file in the user's editor.
 /// Uses macOS `open -a` to launch by app name, avoiding PATH issues in bundled apps.
 #[tauri::command]
-pub fn open_in_editor(
-    editor: String,
-    file: String,
-    line: usize,
-) -> Result<(), CommandError> {
+pub fn open_in_editor(editor: String, file: String, line: usize) -> Result<(), CommandError> {
     // First, try the CLI command directly (works when CLI tools are in PATH)
     let cli_result = try_open_via_cli(&editor, &file, line);
     if cli_result.is_ok() {
@@ -576,7 +597,9 @@ pub fn open_in_editor(
 
     match editor.as_str() {
         "code" | "vscode" | "cursor" => {
-            cmd.arg("--args").arg("--goto").arg(format!("{file}:{line}"));
+            cmd.arg("--args")
+                .arg("--goto")
+                .arg(format!("{file}:{line}"));
         }
         "zed" => {
             cmd.arg(format!("{file}:{line}"));
@@ -593,7 +616,10 @@ pub fn open_in_editor(
 fn try_open_via_cli(editor: &str, file: &str, line: usize) -> Result<(), CommandError> {
     let (cmd, args): (&str, Vec<String>) = match editor {
         "code" | "vscode" => ("code", vec!["--goto".to_string(), format!("{file}:{line}")]),
-        "cursor" => ("cursor", vec!["--goto".to_string(), format!("{file}:{line}")]),
+        "cursor" => (
+            "cursor",
+            vec!["--goto".to_string(), format!("{file}:{line}")],
+        ),
         "zed" => ("zed", vec![format!("{file}:{line}")]),
         _ => return Err(CommandError::Io("unsupported".to_string())),
     };
@@ -651,9 +677,7 @@ pub fn load_manifest(
 /// Run matching: maps scanned entities to manifest subsystems.
 /// Requires both a scan index and a manifest to be loaded.
 #[tauri::command]
-pub fn match_manifest(
-    state: State<'_, AppState>,
-) -> Result<MatchResult, CommandError> {
+pub fn match_manifest(state: State<'_, AppState>) -> Result<MatchResult, CommandError> {
     let idx_lock = state
         .current_index
         .lock()
@@ -664,9 +688,9 @@ pub fn match_manifest(
         .current_manifest
         .lock()
         .map_err(|e| CommandError::Scan(e.to_string()))?;
-    let sys_manifest = manifest_lock
-        .as_ref()
-        .ok_or_else(|| CommandError::Scan("No manifest loaded. Call load_manifest first.".to_string()))?;
+    let sys_manifest = manifest_lock.as_ref().ok_or_else(|| {
+        CommandError::Scan("No manifest loaded. Call load_manifest first.".to_string())
+    })?;
 
     let simple_manifest = sys_manifest.as_manifest();
     let result = manifest::match_entities(idx, &simple_manifest);
@@ -685,9 +709,7 @@ pub fn match_manifest(
 
 /// Get composite tube map data: subsystems with match counts, domains, connections.
 #[tauri::command]
-pub fn get_tube_map_data(
-    state: State<'_, AppState>,
-) -> Result<TubeMapData, CommandError> {
+pub fn get_tube_map_data(state: State<'_, AppState>) -> Result<TubeMapData, CommandError> {
     let manifest_lock = state
         .current_manifest
         .lock()
@@ -728,9 +750,9 @@ pub fn get_subsystem_entities(
         .current_match_result
         .lock()
         .map_err(|e| CommandError::Scan(e.to_string()))?;
-    let match_result = match_lock
-        .as_ref()
-        .ok_or_else(|| CommandError::Scan("No match result. Call match_manifest first.".to_string()))?;
+    let match_result = match_lock.as_ref().ok_or_else(|| {
+        CommandError::Scan("No match result. Call match_manifest first.".to_string())
+    })?;
 
     let entities: Vec<EntitySummary> = match_result
         .matched
@@ -761,8 +783,9 @@ pub fn get_subsystem_detail(
         .lock()
         .map_err(|e| CommandError::Scan(e.to_string()))?;
 
-    let subsystem = find_subsystem(&sys_manifest.subsystems, &subsystem_id)
-        .ok_or_else(|| CommandError::EntityNotFound(format!("Subsystem not found: {subsystem_id}")))?;
+    let subsystem = find_subsystem(&sys_manifest.subsystems, &subsystem_id).ok_or_else(|| {
+        CommandError::EntityNotFound(format!("Subsystem not found: {subsystem_id}"))
+    })?;
 
     let matched_entities: Vec<EntitySummary> = match match_lock.as_ref() {
         Some(mr) => mr
@@ -774,7 +797,11 @@ pub fn get_subsystem_detail(
         None => Vec::new(),
     };
 
-    Ok(build_subsystem_detail(subsystem, &matched_entities, match_lock.as_ref()))
+    Ok(build_subsystem_detail(
+        subsystem,
+        &matched_entities,
+        match_lock.as_ref(),
+    ))
 }
 
 /// Bootstrap a manifest from scan data using heuristic inference.
@@ -840,16 +867,35 @@ fn collect_tube_map_subsystems(
 ) {
     for sub in subsystems {
         let matched_entity_count = match match_result {
-            Some(mr) => mr.matched.iter().filter(|m| m.subsystem_id == sub.id).count(),
+            Some(mr) => mr
+                .matched
+                .iter()
+                .filter(|m| m.subsystem_id == sub.id)
+                .count(),
             None => 0,
         };
 
         let (interface_count, operation_count, table_count, event_count) = match match_result {
             Some(mr) => {
-                let matched_for_sub: Vec<_> = mr.matched.iter().filter(|m| m.subsystem_id == sub.id).collect();
-                let iface = matched_for_sub.iter().filter(|m| m.entity.kind == EntityKind::Interface).count();
-                let ops = matched_for_sub.iter().filter(|m| m.entity.kind == EntityKind::Method || m.entity.kind == EntityKind::Function).count();
-                let tables = matched_for_sub.iter().filter(|m| m.entity.kind == EntityKind::Schema).count();
+                let matched_for_sub: Vec<_> = mr
+                    .matched
+                    .iter()
+                    .filter(|m| m.subsystem_id == sub.id)
+                    .collect();
+                let iface = matched_for_sub
+                    .iter()
+                    .filter(|m| m.entity.kind == EntityKind::Interface)
+                    .count();
+                let ops = matched_for_sub
+                    .iter()
+                    .filter(|m| {
+                        m.entity.kind == EntityKind::Method || m.entity.kind == EntityKind::Function
+                    })
+                    .count();
+                let tables = matched_for_sub
+                    .iter()
+                    .filter(|m| m.entity.kind == EntityKind::Schema)
+                    .count();
                 let events = 0usize; // No event entity kind yet
                 (iface, ops, tables, events)
             }
@@ -955,13 +1001,17 @@ pub struct PlatformReleaseInfo {
     pub matching_asset: Option<ReleaseAsset>,
     /// Cargo install fallback command
     pub cargo_install_cmd: String,
+    /// Absolute path to the currently scanned directory, if a scan is loaded.
+    pub scanned_root: Option<String>,
 }
 
 /// Detect current platform and fetch the latest domain-scan release from GitHub.
 #[tauri::command]
-pub async fn get_platform_release_info() -> Result<PlatformReleaseInfo, CommandError> {
-    let os = std::env::consts::OS.to_string();     // "macos", "linux", "windows"
-    let arch = std::env::consts::ARCH.to_string();  // "aarch64", "x86_64"
+pub async fn get_platform_release_info(
+    state: State<'_, AppState>,
+) -> Result<PlatformReleaseInfo, CommandError> {
+    let os = std::env::consts::OS.to_string(); // "macos", "linux", "windows"
+    let arch = std::env::consts::ARCH.to_string(); // "aarch64", "x86_64"
 
     // Normalise os name to match release asset naming convention
     let os_label = match os.as_str() {
@@ -984,7 +1034,11 @@ pub async fn get_platform_release_info() -> Result<PlatformReleaseInfo, CommandE
                     let name = a.get("name")?.as_str()?.to_string();
                     let download_url = a.get("browser_download_url")?.as_str()?.to_string();
                     let size = a.get("size")?.as_u64().unwrap_or(0);
-                    Some(ReleaseAsset { name, download_url, size })
+                    Some(ReleaseAsset {
+                        name,
+                        download_url,
+                        size,
+                    })
                 })
                 .collect();
             (Some(tag), assets)
@@ -993,10 +1047,20 @@ pub async fn get_platform_release_info() -> Result<PlatformReleaseInfo, CommandE
     };
 
     // Find matching asset for this platform
-    let matching_asset = assets.iter().find(|a| {
-        let lower = a.name.to_lowercase();
-        lower.contains(os_label) && lower.contains(&arch)
-    }).cloned();
+    let matching_asset = assets
+        .iter()
+        .find(|a| {
+            let lower = a.name.to_lowercase();
+            lower.contains(os_label) && lower.contains(&arch)
+        })
+        .cloned();
+
+    // Read the scanned root path (if a scan has been performed)
+    let scanned_root = state
+        .current_root
+        .lock()
+        .ok()
+        .and_then(|r| r.as_ref().map(|p| p.display().to_string()));
 
     Ok(PlatformReleaseInfo {
         os: os_label.to_string(),
@@ -1005,16 +1069,18 @@ pub async fn get_platform_release_info() -> Result<PlatformReleaseInfo, CommandE
         assets,
         matching_asset,
         cargo_install_cmd,
+        scanned_root,
     })
 }
 
 /// Fetch the latest release JSON from GitHub. Returns (tag_name, assets[]) or None.
 async fn fetch_latest_release() -> Option<(String, Vec<serde_json::Value>)> {
-    let mut resp = ureq::get("https://api.github.com/repos/jamesaphoenix/domain-scan/releases/latest")
-        .header("Accept", "application/vnd.github+json")
-        .header("User-Agent", "domain-scan-tauri")
-        .call()
-        .ok()?;
+    let mut resp =
+        ureq::get("https://api.github.com/repos/jamesaphoenix/domain-scan/releases/latest")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "domain-scan-tauri")
+            .call()
+            .ok()?;
 
     let body: serde_json::Value = resp.body_mut().read_json().ok()?;
 

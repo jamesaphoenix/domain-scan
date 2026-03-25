@@ -17,14 +17,20 @@ pub fn validate(index: &ScanIndex) -> ValidationResult {
     let rules: Vec<(&str, RuleFn)> = vec![
         ("interfaces-pascal-case", rule_interfaces_pascal_case),
         ("methods-naming-convention", rule_methods_naming_convention),
-        ("no-duplicate-interface-names", rule_no_duplicate_interface_names),
+        (
+            "no-duplicate-interface-names",
+            rule_no_duplicate_interface_names,
+        ),
         ("no-duplicate-method-names", rule_no_duplicate_method_names),
         ("interfaces-have-methods", rule_interfaces_have_methods),
         ("services-have-methods", rule_services_have_methods),
         ("schema-fields-have-types", rule_schema_fields_have_types),
         ("no-god-interfaces", rule_no_god_interfaces),
         ("no-god-services", rule_no_god_services),
-        ("interfaces-have-implementors", rule_interfaces_have_implementors),
+        (
+            "interfaces-have-implementors",
+            rule_interfaces_have_implementors,
+        ),
     ];
 
     let rules_checked = rules.len();
@@ -33,9 +39,17 @@ pub fn validate(index: &ScanIndex) -> ValidationResult {
         violations.extend(rule_fn(index));
     }
 
-    let fail_count = violations.iter().filter(|v| v.severity == ViolationSeverity::Fail).count();
-    let warn_count = violations.iter().filter(|v| v.severity == ViolationSeverity::Warn).count();
-    let pass_count = rules_checked.saturating_sub(if fail_count > 0 { 1 } else { 0 }).saturating_sub(if warn_count > 0 { 1 } else { 0 });
+    let fail_count = violations
+        .iter()
+        .filter(|v| v.severity == ViolationSeverity::Fail)
+        .count();
+    let warn_count = violations
+        .iter()
+        .filter(|v| v.severity == ViolationSeverity::Warn)
+        .count();
+    let pass_count = rules_checked
+        .saturating_sub(if fail_count > 0 { 1 } else { 0 })
+        .saturating_sub(if warn_count > 0 { 1 } else { 0 });
 
     ValidationResult {
         violations,
@@ -49,16 +63,46 @@ pub fn validate(index: &ScanIndex) -> ValidationResult {
 /// Run only the specified rules (by name).
 pub fn validate_rules(index: &ScanIndex, rule_names: &[&str]) -> ValidationResult {
     let all_rules: HashMap<&str, fn(&ScanIndex) -> Vec<Violation>> = HashMap::from([
-        ("interfaces-pascal-case", rule_interfaces_pascal_case as fn(&ScanIndex) -> Vec<Violation>),
-        ("methods-naming-convention", rule_methods_naming_convention as fn(&ScanIndex) -> Vec<Violation>),
-        ("no-duplicate-interface-names", rule_no_duplicate_interface_names as fn(&ScanIndex) -> Vec<Violation>),
-        ("no-duplicate-method-names", rule_no_duplicate_method_names as fn(&ScanIndex) -> Vec<Violation>),
-        ("interfaces-have-methods", rule_interfaces_have_methods as fn(&ScanIndex) -> Vec<Violation>),
-        ("services-have-methods", rule_services_have_methods as fn(&ScanIndex) -> Vec<Violation>),
-        ("schema-fields-have-types", rule_schema_fields_have_types as fn(&ScanIndex) -> Vec<Violation>),
-        ("no-god-interfaces", rule_no_god_interfaces as fn(&ScanIndex) -> Vec<Violation>),
-        ("no-god-services", rule_no_god_services as fn(&ScanIndex) -> Vec<Violation>),
-        ("interfaces-have-implementors", rule_interfaces_have_implementors as fn(&ScanIndex) -> Vec<Violation>),
+        (
+            "interfaces-pascal-case",
+            rule_interfaces_pascal_case as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "methods-naming-convention",
+            rule_methods_naming_convention as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "no-duplicate-interface-names",
+            rule_no_duplicate_interface_names as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "no-duplicate-method-names",
+            rule_no_duplicate_method_names as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "interfaces-have-methods",
+            rule_interfaces_have_methods as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "services-have-methods",
+            rule_services_have_methods as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "schema-fields-have-types",
+            rule_schema_fields_have_types as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "no-god-interfaces",
+            rule_no_god_interfaces as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "no-god-services",
+            rule_no_god_services as fn(&ScanIndex) -> Vec<Violation>,
+        ),
+        (
+            "interfaces-have-implementors",
+            rule_interfaces_have_implementors as fn(&ScanIndex) -> Vec<Violation>,
+        ),
     ]);
 
     let mut violations = Vec::new();
@@ -71,9 +115,17 @@ pub fn validate_rules(index: &ScanIndex, rule_names: &[&str]) -> ValidationResul
         }
     }
 
-    let fail_count = violations.iter().filter(|v| v.severity == ViolationSeverity::Fail).count();
-    let warn_count = violations.iter().filter(|v| v.severity == ViolationSeverity::Warn).count();
-    let pass_count = rules_checked.saturating_sub(if fail_count > 0 { 1 } else { 0 }).saturating_sub(if warn_count > 0 { 1 } else { 0 });
+    let fail_count = violations
+        .iter()
+        .filter(|v| v.severity == ViolationSeverity::Fail)
+        .count();
+    let warn_count = violations
+        .iter()
+        .filter(|v| v.severity == ViolationSeverity::Warn)
+        .count();
+    let pass_count = rules_checked
+        .saturating_sub(if fail_count > 0 { 1 } else { 0 })
+        .saturating_sub(if warn_count > 0 { 1 } else { 0 });
 
     ValidationResult {
         violations,
@@ -157,7 +209,9 @@ fn rule_methods_naming_convention(index: &ScanIndex) -> Vec<Violation> {
 /// Rust/Go/Python/Ruby/PHP use snake_case; TS/Java/Kotlin/C#/Swift/Scala use camelCase.
 fn method_name_checker(lang: Language) -> fn(&str) -> bool {
     match lang {
-        Language::Rust | Language::Go | Language::Python | Language::Ruby | Language::PHP => is_snake_case_or_special,
+        Language::Rust | Language::Go | Language::Python | Language::Ruby | Language::PHP => {
+            is_snake_case_or_special
+        }
         _ => is_camel_case_or_special,
     }
 }
@@ -227,10 +281,7 @@ fn rule_interfaces_have_methods(index: &ScanIndex) -> Vec<Violation> {
                 violations.push(Violation {
                     rule: "interfaces-have-methods".to_string(),
                     severity: ViolationSeverity::Warn,
-                    message: format!(
-                        "Interface '{}' has no methods or properties",
-                        iface.name
-                    ),
+                    message: format!("Interface '{}' has no methods or properties", iface.name),
                     entity_name: Some(iface.name.clone()),
                     file: Some(file.path.clone()),
                     line: Some(iface.span.start_line),
@@ -253,10 +304,7 @@ fn rule_services_have_methods(index: &ScanIndex) -> Vec<Violation> {
                 violations.push(Violation {
                     rule: "services-have-methods".to_string(),
                     severity: ViolationSeverity::Warn,
-                    message: format!(
-                        "Service '{}' has no methods or routes",
-                        svc.name
-                    ),
+                    message: format!("Service '{}' has no methods or routes", svc.name),
                     entity_name: Some(svc.name.clone()),
                     file: Some(file.path.clone()),
                     line: Some(svc.span.start_line),
@@ -369,17 +417,15 @@ fn rule_interfaces_have_implementors(index: &ScanIndex) -> Vec<Violation> {
             let implementors = index.get_implementors(&iface.name);
             if implementors.is_empty() {
                 // Also check classes that implement this interface
-                let has_class_impl = index.files.iter().any(|f| {
-                    f.classes.iter().any(|c| c.implements.contains(&iface.name))
-                });
+                let has_class_impl = index
+                    .files
+                    .iter()
+                    .any(|f| f.classes.iter().any(|c| c.implements.contains(&iface.name)));
                 if !has_class_impl {
                     violations.push(Violation {
                         rule: "interfaces-have-implementors".to_string(),
                         severity: ViolationSeverity::Fail,
-                        message: format!(
-                            "Public interface '{}' has no implementors",
-                            iface.name
-                        ),
+                        message: format!("Public interface '{}' has no implementors", iface.name),
                         entity_name: Some(iface.name.clone()),
                         file: Some(file.path.clone()),
                         line: Some(iface.span.start_line),
@@ -482,22 +528,38 @@ mod tests {
     #[test]
     fn test_rule_pascal_case_pass() {
         let mut file = make_ir_file("/project/src/types.ts", Language::TypeScript);
-        file.interfaces = vec![make_interface("UserService", "/project/src/types.ts", vec![make_method_sig("getUser")])];
+        file.interfaces = vec![make_interface(
+            "UserService",
+            "/project/src/types.ts",
+            vec![make_method_sig("getUser")],
+        )];
 
         let index = build_test_index(vec![file]);
         let result = validate(&index);
-        let pascal_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "interfaces-pascal-case").collect();
+        let pascal_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "interfaces-pascal-case")
+            .collect();
         assert!(pascal_violations.is_empty());
     }
 
     #[test]
     fn test_rule_pascal_case_fail() {
         let mut file = make_ir_file("/project/src/types.ts", Language::TypeScript);
-        file.interfaces = vec![make_interface("userService", "/project/src/types.ts", vec![make_method_sig("getUser")])];
+        file.interfaces = vec![make_interface(
+            "userService",
+            "/project/src/types.ts",
+            vec![make_method_sig("getUser")],
+        )];
 
         let index = build_test_index(vec![file]);
         let result = validate(&index);
-        let pascal_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "interfaces-pascal-case").collect();
+        let pascal_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "interfaces-pascal-case")
+            .collect();
         assert_eq!(pascal_violations.len(), 1);
     }
 
@@ -511,7 +573,11 @@ mod tests {
 
         let index = build_test_index(vec![file]);
         let result = validate(&index);
-        let dup_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "no-duplicate-interface-names").collect();
+        let dup_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "no-duplicate-interface-names")
+            .collect();
         assert_eq!(dup_violations.len(), 1);
         assert_eq!(dup_violations[0].severity, ViolationSeverity::Fail);
     }
@@ -519,31 +585,53 @@ mod tests {
     #[test]
     fn test_rule_no_god_interfaces() {
         let mut file = make_ir_file("/project/src/types.ts", Language::TypeScript);
-        let methods: Vec<MethodSignature> = (0..12).map(|i| make_method_sig(&format!("method{i}"))).collect();
-        file.interfaces = vec![make_interface("GodInterface", "/project/src/types.ts", methods)];
+        let methods: Vec<MethodSignature> = (0..12)
+            .map(|i| make_method_sig(&format!("method{i}")))
+            .collect();
+        file.interfaces = vec![make_interface(
+            "GodInterface",
+            "/project/src/types.ts",
+            methods,
+        )];
 
         let index = build_test_index(vec![file]);
         let result = validate(&index);
-        let god_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "no-god-interfaces").collect();
+        let god_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "no-god-interfaces")
+            .collect();
         assert_eq!(god_violations.len(), 1);
     }
 
     #[test]
     fn test_rule_interfaces_have_implementors() {
         let mut file = make_ir_file("/project/src/types.ts", Language::TypeScript);
-        file.interfaces = vec![make_interface("Orphan", "/project/src/types.ts", vec![make_method_sig("doStuff")])];
+        file.interfaces = vec![make_interface(
+            "Orphan",
+            "/project/src/types.ts",
+            vec![make_method_sig("doStuff")],
+        )];
         // No classes implement it
 
         let index = build_test_index(vec![file]);
         let result = validate(&index);
-        let impl_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "interfaces-have-implementors").collect();
+        let impl_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "interfaces-have-implementors")
+            .collect();
         assert_eq!(impl_violations.len(), 1);
     }
 
     #[test]
     fn test_rule_interfaces_have_implementors_pass() {
         let mut file_a = make_ir_file("/project/src/types.ts", Language::TypeScript);
-        file_a.interfaces = vec![make_interface("Repository", "/project/src/types.ts", vec![make_method_sig("find")])];
+        file_a.interfaces = vec![make_interface(
+            "Repository",
+            "/project/src/types.ts",
+            vec![make_method_sig("find")],
+        )];
 
         let mut file_b = make_ir_file("/project/src/repo.ts", Language::TypeScript);
         file_b.classes = vec![ClassDef {
@@ -562,7 +650,11 @@ mod tests {
 
         let index = build_test_index(vec![file_a, file_b]);
         let result = validate(&index);
-        let impl_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "interfaces-have-implementors").collect();
+        let impl_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "interfaces-have-implementors")
+            .collect();
         assert!(impl_violations.is_empty());
     }
 
@@ -573,7 +665,11 @@ mod tests {
 
         let index = build_test_index(vec![file]);
         let result = validate(&index);
-        let empty_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "interfaces-have-methods").collect();
+        let empty_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "interfaces-have-methods")
+            .collect();
         assert_eq!(empty_violations.len(), 1);
     }
 
@@ -609,14 +705,22 @@ mod tests {
 
         let index = build_test_index(vec![file]);
         let result = validate(&index);
-        let type_violations: Vec<_> = result.violations.iter().filter(|v| v.rule == "schema-fields-have-types").collect();
+        let type_violations: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.rule == "schema-fields-have-types")
+            .collect();
         assert_eq!(type_violations.len(), 1);
     }
 
     #[test]
     fn test_validate_clean_codebase() {
         let mut file_a = make_ir_file("/project/src/types.ts", Language::TypeScript);
-        file_a.interfaces = vec![make_interface("UserService", "/project/src/types.ts", vec![make_method_sig("getUser")])];
+        file_a.interfaces = vec![make_interface(
+            "UserService",
+            "/project/src/types.ts",
+            vec![make_method_sig("getUser")],
+        )];
 
         let mut file_b = make_ir_file("/project/src/impl.ts", Language::TypeScript);
         file_b.classes = vec![ClassDef {
@@ -650,7 +754,11 @@ mod tests {
         let result = validate(&index);
         assert_eq!(result.rules_checked, 10);
         // Only expect possible naming convention warnings, no failures
-        let fails: Vec<_> = result.violations.iter().filter(|v| v.severity == ViolationSeverity::Fail).collect();
+        let fails: Vec<_> = result
+            .violations
+            .iter()
+            .filter(|v| v.severity == ViolationSeverity::Fail)
+            .collect();
         assert!(fails.is_empty(), "Unexpected failures: {fails:?}");
     }
 

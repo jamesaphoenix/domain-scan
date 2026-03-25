@@ -249,7 +249,10 @@ fn build_concern_assignments(
             title: CONCERN_AGENTS[i].0.to_string(),
             scope: CONCERN_AGENTS[i].1.to_string(),
             directory_focus: dirs,
-            instructions: CONCERN_INSTRUCTIONS[i].iter().map(|s| (*s).to_string()).collect(),
+            instructions: CONCERN_INSTRUCTIONS[i]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
             built_files: built,
             non_built_files: non_built,
         });
@@ -259,11 +262,7 @@ fn build_concern_assignments(
 }
 
 /// Hybrid partitioning: concern + directory splitting (500-2000 files).
-fn build_hybrid_assignments(
-    files: &[&IrFile],
-    agents: usize,
-    root: &Path,
-) -> Vec<AgentAssignment> {
+fn build_hybrid_assignments(files: &[&IrFile], agents: usize, root: &Path) -> Vec<AgentAssignment> {
     // Group files by top-level directory first
     let dir_groups = group_by_top_level_dir(files, root);
     let dir_keys: Vec<&String> = dir_groups.keys().collect();
@@ -305,7 +304,10 @@ fn build_hybrid_assignments(
                     .join(", ")
             ),
             directory_focus: dirs,
-            instructions: CONCERN_INSTRUCTIONS[i].iter().map(|s| (*s).to_string()).collect(),
+            instructions: CONCERN_INSTRUCTIONS[i]
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
             built_files: built,
             non_built_files: non_built,
         });
@@ -359,11 +361,7 @@ fn build_directory_assignments(
         let dirs = &dir_names_per_agent[i];
         assignment.scope = format!("All entities in: {}", dirs.join(", "));
         assignment.directory_focus = dirs.join(", ");
-        assignment.title = format!(
-            "Directory Group {} ({})",
-            i + 1,
-            dirs.join(", ")
-        );
+        assignment.title = format!("Directory Group {} ({})", i + 1, dirs.join(", "));
     }
 
     assignments
@@ -383,13 +381,33 @@ fn filter_files_by_focus<'a>(files: &'a [IrFile], pattern: &str) -> Vec<&'a IrFi
 
 fn file_has_matching_entity(file: &IrFile, pattern: &str) -> bool {
     let pat = pattern.to_lowercase();
-    file.interfaces.iter().any(|i| i.name.to_lowercase().contains(&pat))
-        || file.services.iter().any(|s| s.name.to_lowercase().contains(&pat))
-        || file.classes.iter().any(|c| c.name.to_lowercase().contains(&pat))
-        || file.functions.iter().any(|f| f.name.to_lowercase().contains(&pat))
-        || file.schemas.iter().any(|s| s.name.to_lowercase().contains(&pat))
-        || file.implementations.iter().any(|i| i.target.to_lowercase().contains(&pat))
-        || file.type_aliases.iter().any(|t| t.name.to_lowercase().contains(&pat))
+    file.interfaces
+        .iter()
+        .any(|i| i.name.to_lowercase().contains(&pat))
+        || file
+            .services
+            .iter()
+            .any(|s| s.name.to_lowercase().contains(&pat))
+        || file
+            .classes
+            .iter()
+            .any(|c| c.name.to_lowercase().contains(&pat))
+        || file
+            .functions
+            .iter()
+            .any(|f| f.name.to_lowercase().contains(&pat))
+        || file
+            .schemas
+            .iter()
+            .any(|s| s.name.to_lowercase().contains(&pat))
+        || file
+            .implementations
+            .iter()
+            .any(|i| i.target.to_lowercase().contains(&pat))
+        || file
+            .type_aliases
+            .iter()
+            .any(|t| t.name.to_lowercase().contains(&pat))
 }
 
 /// Split files into (built paths, non-built paths).
@@ -540,11 +558,7 @@ fn write_assignments(out: &mut String, assignments: &[AgentAssignment]) {
     let _ = writeln!(out);
 
     for assignment in assignments {
-        let _ = writeln!(
-            out,
-            "### Agent {}: {}",
-            assignment.id, assignment.title
-        );
+        let _ = writeln!(out, "### Agent {}: {}", assignment.id, assignment.title);
         let _ = writeln!(out, "**Scope:** {}", assignment.scope);
         if !assignment.directory_focus.is_empty() {
             let _ = writeln!(out, "**Directory focus:** {}", assignment.directory_focus);
@@ -557,7 +571,10 @@ fn write_assignments(out: &mut String, assignments: &[AgentAssignment]) {
         // Build-status-aware file lists
         if !assignment.built_files.is_empty() {
             let _ = writeln!(out);
-            let _ = writeln!(out, "**Files to scan (built — structural output is authoritative):**");
+            let _ = writeln!(
+                out,
+                "**Files to scan (built — structural output is authoritative):**"
+            );
             let _ = writeln!(out);
             let _ = writeln!(
                 out,
@@ -573,7 +590,10 @@ fn write_assignments(out: &mut String, assignments: &[AgentAssignment]) {
 
         if !assignment.non_built_files.is_empty() {
             let _ = writeln!(out);
-            let _ = writeln!(out, "**Files to scan (unbuilt/error/rebuild — best-effort extraction):**");
+            let _ = writeln!(
+                out,
+                "**Files to scan (unbuilt/error/rebuild — best-effort extraction):**"
+            );
             let _ = writeln!(out);
             let _ = writeln!(
                 out,
@@ -624,10 +644,7 @@ fn write_synthesis_section(out: &mut String) {
     let _ = writeln!(out, "```json");
     let _ = writeln!(out, "{{");
     let _ = writeln!(out, "  \"agent_id\": 1,");
-    let _ = writeln!(
-        out,
-        "  \"scope\": \"Interface & Type Boundary Audit\","
-    );
+    let _ = writeln!(out, "  \"scope\": \"Interface & Type Boundary Audit\",");
     let _ = writeln!(out, "  \"findings\": [...],");
     let _ = writeln!(out, "  \"flags\": [...],");
     let _ = writeln!(out, "  \"file_count\": 42,");
@@ -663,12 +680,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_ir_file(path: &str, lang: Language, status: BuildStatus) -> IrFile {
-        IrFile::new(
-            PathBuf::from(path),
-            lang,
-            format!("hash_{path}"),
-            status,
-        )
+        IrFile::new(PathBuf::from(path), lang, format!("hash_{path}"), status)
     }
 
     fn make_interface(name: &str, file: &str) -> crate::ir::InterfaceDef {
@@ -770,7 +782,8 @@ mod tests {
     #[test]
     fn test_filter_files_by_focus() {
         let mut f1 = make_ir_file("src/auth.ts", Language::TypeScript, BuildStatus::Built);
-        f1.interfaces.push(make_interface("AuthService", "src/auth.ts"));
+        f1.interfaces
+            .push(make_interface("AuthService", "src/auth.ts"));
 
         let f2 = make_ir_file("src/utils.ts", Language::TypeScript, BuildStatus::Built);
 
@@ -795,8 +808,13 @@ mod tests {
 
     #[test]
     fn test_generate_prompt_with_files() {
-        let mut f1 = make_ir_file("/project/src/types.ts", Language::TypeScript, BuildStatus::Built);
-        f1.interfaces.push(make_interface("UserRepo", "/project/src/types.ts"));
+        let mut f1 = make_ir_file(
+            "/project/src/types.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f1.interfaces
+            .push(make_interface("UserRepo", "/project/src/types.ts"));
 
         let index = make_test_index(vec![f1]);
         let config = PromptConfig::default();
@@ -808,10 +826,19 @@ mod tests {
 
     #[test]
     fn test_generate_prompt_with_focus() {
-        let mut f1 = make_ir_file("/project/src/auth.ts", Language::TypeScript, BuildStatus::Built);
-        f1.interfaces.push(make_interface("AuthService", "/project/src/auth.ts"));
+        let mut f1 = make_ir_file(
+            "/project/src/auth.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f1.interfaces
+            .push(make_interface("AuthService", "/project/src/auth.ts"));
 
-        let f2 = make_ir_file("/project/src/utils.ts", Language::TypeScript, BuildStatus::Built);
+        let f2 = make_ir_file(
+            "/project/src/utils.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
 
         let index = make_test_index(vec![f1, f2]);
         let config = PromptConfig {
@@ -827,8 +854,13 @@ mod tests {
 
     #[test]
     fn test_generate_prompt_with_non_built_files() {
-        let mut f1 = make_ir_file("/project/src/auth.ts", Language::TypeScript, BuildStatus::Unbuilt);
-        f1.interfaces.push(make_interface("AuthService", "/project/src/auth.ts"));
+        let mut f1 = make_ir_file(
+            "/project/src/auth.ts",
+            Language::TypeScript,
+            BuildStatus::Unbuilt,
+        );
+        f1.interfaces
+            .push(make_interface("AuthService", "/project/src/auth.ts"));
 
         let index = make_test_index(vec![f1]);
         let config = PromptConfig::default();
@@ -889,15 +921,31 @@ mod tests {
 
     #[test]
     fn snapshot_prompt_small_codebase() {
-        let mut f1 = make_ir_file("/project/src/types.ts", Language::TypeScript, BuildStatus::Built);
-        f1.interfaces.push(make_interface("UserRepository", "/project/src/types.ts"));
-        f1.interfaces.push(make_interface("PostRepository", "/project/src/types.ts"));
+        let mut f1 = make_ir_file(
+            "/project/src/types.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f1.interfaces
+            .push(make_interface("UserRepository", "/project/src/types.ts"));
+        f1.interfaces
+            .push(make_interface("PostRepository", "/project/src/types.ts"));
 
-        let mut f2 = make_ir_file("/project/src/services.ts", Language::TypeScript, BuildStatus::Built);
-        f2.services.push(make_service("UserController", "/project/src/services.ts"));
+        let mut f2 = make_ir_file(
+            "/project/src/services.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f2.services
+            .push(make_service("UserController", "/project/src/services.ts"));
 
-        let mut f3 = make_ir_file("/project/src/legacy.ts", Language::TypeScript, BuildStatus::Unbuilt);
-        f3.interfaces.push(make_interface("LegacyAuth", "/project/src/legacy.ts"));
+        let mut f3 = make_ir_file(
+            "/project/src/legacy.ts",
+            Language::TypeScript,
+            BuildStatus::Unbuilt,
+        );
+        f3.interfaces
+            .push(make_interface("LegacyAuth", "/project/src/legacy.ts"));
 
         let index = make_snapshot_index(vec![f1, f2, f3]);
         let config = PromptConfig {
@@ -912,12 +960,27 @@ mod tests {
 
     #[test]
     fn snapshot_prompt_with_focus() {
-        let mut f1 = make_ir_file("/project/src/auth/handler.ts", Language::TypeScript, BuildStatus::Built);
-        f1.interfaces.push(make_interface("AuthHandler", "/project/src/auth/handler.ts"));
-        f1.services.push(make_service("AuthController", "/project/src/auth/handler.ts"));
+        let mut f1 = make_ir_file(
+            "/project/src/auth/handler.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f1.interfaces.push(make_interface(
+            "AuthHandler",
+            "/project/src/auth/handler.ts",
+        ));
+        f1.services.push(make_service(
+            "AuthController",
+            "/project/src/auth/handler.ts",
+        ));
 
-        let mut f2 = make_ir_file("/project/src/users/service.ts", Language::TypeScript, BuildStatus::Built);
-        f2.services.push(make_service("UserService", "/project/src/users/service.ts"));
+        let mut f2 = make_ir_file(
+            "/project/src/users/service.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f2.services
+            .push(make_service("UserService", "/project/src/users/service.ts"));
 
         let index = make_snapshot_index(vec![f1, f2]);
         let config = PromptConfig {
@@ -932,17 +995,41 @@ mod tests {
 
     #[test]
     fn snapshot_prompt_mixed_build_status() {
-        let mut f1 = make_ir_file("/project/src/built.ts", Language::TypeScript, BuildStatus::Built);
-        f1.interfaces.push(make_interface("BuiltInterface", "/project/src/built.ts"));
+        let mut f1 = make_ir_file(
+            "/project/src/built.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f1.interfaces
+            .push(make_interface("BuiltInterface", "/project/src/built.ts"));
 
-        let mut f2 = make_ir_file("/project/src/unbuilt.ts", Language::TypeScript, BuildStatus::Unbuilt);
-        f2.interfaces.push(make_interface("UnbuiltInterface", "/project/src/unbuilt.ts"));
+        let mut f2 = make_ir_file(
+            "/project/src/unbuilt.ts",
+            Language::TypeScript,
+            BuildStatus::Unbuilt,
+        );
+        f2.interfaces.push(make_interface(
+            "UnbuiltInterface",
+            "/project/src/unbuilt.ts",
+        ));
 
-        let mut f3 = make_ir_file("/project/src/error.ts", Language::TypeScript, BuildStatus::Error);
-        f3.interfaces.push(make_interface("ErrorInterface", "/project/src/error.ts"));
+        let mut f3 = make_ir_file(
+            "/project/src/error.ts",
+            Language::TypeScript,
+            BuildStatus::Error,
+        );
+        f3.interfaces
+            .push(make_interface("ErrorInterface", "/project/src/error.ts"));
 
-        let mut f4 = make_ir_file("/project/src/rebuild.ts", Language::TypeScript, BuildStatus::Rebuild);
-        f4.interfaces.push(make_interface("RebuildInterface", "/project/src/rebuild.ts"));
+        let mut f4 = make_ir_file(
+            "/project/src/rebuild.ts",
+            Language::TypeScript,
+            BuildStatus::Rebuild,
+        );
+        f4.interfaces.push(make_interface(
+            "RebuildInterface",
+            "/project/src/rebuild.ts",
+        ));
 
         let index = make_snapshot_index(vec![f1, f2, f3, f4]);
         let config = PromptConfig {
@@ -957,8 +1044,13 @@ mod tests {
 
     #[test]
     fn snapshot_prompt_three_agents() {
-        let mut f1 = make_ir_file("/project/src/types.ts", Language::TypeScript, BuildStatus::Built);
-        f1.interfaces.push(make_interface("Repo", "/project/src/types.ts"));
+        let mut f1 = make_ir_file(
+            "/project/src/types.ts",
+            Language::TypeScript,
+            BuildStatus::Built,
+        );
+        f1.interfaces
+            .push(make_interface("Repo", "/project/src/types.ts"));
 
         let index = make_snapshot_index(vec![f1]);
         let config = PromptConfig {

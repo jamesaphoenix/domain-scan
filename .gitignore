@@ -8,3 +8,7 @@ crates/domain-scan-tauri/ui/dist/
 .domain-scan-cache/
 playwright-report/
 test-results/
+/tmp/domain-scan-e2e-test/skills/claude-code/
+/tmp/domain-scan-e2e-test/skills/codex/
+/tmp/domain-scan-e2e-UwtUWT/skills-claude/
+/tmp/domain-scan-e2e-UwtUWT/skills-codex/

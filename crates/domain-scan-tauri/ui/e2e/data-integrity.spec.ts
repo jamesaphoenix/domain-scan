@@ -384,6 +384,7 @@ test.describe("F.8: Data Integrity Checks", () => {
     await waitForAppReady(page);
 
     // Step 1: Perform a scan on the Entities tab
+    await switchTab(page, "Entities/Types");
     await clickOpenDirectory(page);
     await expect(
       page.getByText(`${MOCK_SCAN_STATS.total_files} files`),

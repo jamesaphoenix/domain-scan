@@ -23,7 +23,7 @@ pub fn walk_directory(config: &ScanConfig) -> Result<Vec<WalkedFile>, DomainScan
     let mut files = Vec::new();
 
     let walker = WalkBuilder::new(&config.root)
-        .hidden(true)     // skip hidden files/dirs
+        .hidden(true) // skip hidden files/dirs
         .git_ignore(true) // respect .gitignore
         .git_global(true) // respect global gitignore
         .git_exclude(true)

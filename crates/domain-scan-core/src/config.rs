@@ -368,9 +368,7 @@ sort_by = "name"
 
         let second_svc = c.and_then(|c| c.services.custom.get(1));
         assert!(second_svc.is_some_and(|s| s.name == "EventProcessor"));
-        assert!(
-            second_svc.is_some_and(|s| s.trait_name.as_deref() == Some("EventProcessor"))
-        );
+        assert!(second_svc.is_some_and(|s| s.trait_name.as_deref() == Some("EventProcessor")));
     }
 
     #[test]

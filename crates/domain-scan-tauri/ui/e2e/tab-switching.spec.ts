@@ -16,20 +16,17 @@ import {
 } from "./helpers";
 
 test.describe("F.3: Tab Switching", () => {
-  test("app starts on Entities tab by default", async ({ page }) => {
+  test("app starts on Tube Map tab by default", async ({ page }) => {
     await setupTauriMocks(page);
     await page.goto("/");
     await waitForAppReady(page);
 
-    // Entities/Types tab should be active (has active styling)
-    await assertActiveTab(page, "Entities/Types");
+    // Tube Map tab should be active (has active styling)
+    await assertActiveTab(page, "Subsystem Tube Map");
 
-    // The three-panel entities layout should be visible (entity tree panel)
+    // Entity tree panel should NOT be visible
     const treePanel = page.locator(".w-72").first();
-    await expect(treePanel).toBeVisible();
-
-    // Tube map content should NOT be visible
-    await expect(page.locator(".react-flow")).not.toBeVisible();
+    await expect(treePanel).not.toBeVisible();
   });
 
   test("click Tube Map tab → tube map placeholder renders (no manifest loaded)", async ({
@@ -64,6 +61,9 @@ test.describe("F.3: Tab Switching", () => {
 
     await page.goto("/");
     await waitForAppReady(page);
+
+    // Switch to Entities tab first (app starts on Tube Map by default)
+    await switchTab(page, "Entities/Types");
 
     // Trigger a scan so the entity tree has content
     await clickOpenDirectory(page);
@@ -105,6 +105,9 @@ test.describe("F.3: Tab Switching", () => {
 
     await page.goto("/");
     await waitForAppReady(page);
+
+    // Switch to Entities tab first (app starts on Tube Map by default)
+    await switchTab(page, "Entities/Types");
 
     // Trigger a scan first so both tabs have content to render
     await clickOpenDirectory(page);

@@ -149,16 +149,12 @@ fn test_cli_startup_target() {
 
     let start = Instant::now();
 
-    let walked = walker::walk_directory(&config)
-        .unwrap_or_else(|e| panic!("walk failed: {e}"));
+    let walked = walker::walk_directory(&config).unwrap_or_else(|e| panic!("walk failed: {e}"));
 
     let mut ir_files = Vec::new();
     for walked_file in &walked {
-        let (tree, source) =
-            parser::parse_file(&walked_file.path, walked_file.language)
-                .unwrap_or_else(|e| {
-                    panic!("parse failed for {}: {e}", walked_file.path.display())
-                });
+        let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)
+            .unwrap_or_else(|e| panic!("parse failed for {}: {e}", walked_file.path.display()));
 
         let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
 
@@ -169,9 +165,7 @@ fn test_cli_startup_target() {
             walked_file.language,
             build_status,
         )
-        .unwrap_or_else(|e| {
-            panic!("extract failed for {}: {e}", walked_file.path.display())
-        });
+        .unwrap_or_else(|e| panic!("extract failed for {}: {e}", walked_file.path.display()));
 
         ir_files.push(ir);
     }

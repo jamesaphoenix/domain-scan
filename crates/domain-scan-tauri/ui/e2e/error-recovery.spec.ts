@@ -64,6 +64,10 @@ test.describe("F.9: Error Recovery", () => {
     await page.goto("/");
     await waitForAppReady(page);
 
+    // Switch to Entities tab to avoid duplicate "Open Directory" buttons
+    // (the scan gate on Tube Map also shows "Open Directory" when no scan is loaded)
+    await switchTab(page, "Entities/Types");
+
     // Click "Open Directory" — scan will fail with a structured error
     await clickOpenDirectory(page);
 
@@ -170,6 +174,9 @@ test.describe("F.9: Error Recovery", () => {
 
     await page.goto("/");
     await waitForAppReady(page);
+
+    // Switch to Entities tab (app starts on Tube Map by default)
+    await switchTab(page, "Entities/Types");
 
     // Scan should complete successfully despite corrupt cache
     await clickOpenDirectory(page);

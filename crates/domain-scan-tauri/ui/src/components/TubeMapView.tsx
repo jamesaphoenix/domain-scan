@@ -13,6 +13,7 @@ import {
   type Viewport,
 } from "@xyflow/react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { SubsystemNode } from "./SubsystemNode";
 import { DependencyEdge } from "./DependencyEdge";
 import { ManifestLoader } from "./ManifestLoader";
@@ -28,12 +29,93 @@ import { TubeLineStripes } from "./TubeLineStripes";
 import { useTubeMapState } from "../hooks/useTubeMapState";
 import { useTubeLayout } from "../hooks/useTubeLayout";
 import { useToast } from "../hooks/useToast";
-import type { TubeMapData } from "../types";
+import type { ScanStats, TubeMapData } from "../types";
 
 const nodeTypes = { subsystem: SubsystemNode };
 const edgeTypes = { dependency: DependencyEdge };
 
-function TubeMapInner() {
+function ScanGate({ children }: { children: React.ReactNode }) {
+  const [scanLoaded, setScanLoaded] = useState<boolean | null>(null); // null = loading
+  const [scanning, setScanning] = useState(false);
+  const { addToast } = useToast();
+
+  useEffect(() => {
+    invoke<ScanStats | null>("get_current_scan")
+      .then((stats) => setScanLoaded(stats !== null))
+      .catch(() => setScanLoaded(false));
+  }, []);
+
+  const handleOpenDirectory = useCallback(async () => {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (!selected) return;
+    setScanning(true);
+    try {
+      await invoke("scan_directory", { root: selected as string });
+      setScanLoaded(true);
+      addToast("Scan complete", "success");
+    } catch {
+      addToast("Scan failed", "error");
+    } finally {
+      setScanning(false);
+    }
+  }, [addToast]);
+
+  // Still checking
+  if (scanLoaded === null) return null;
+
+  // No scan loaded — show gate
+  if (!scanLoaded) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-slate-700/50 flex items-center justify-center">
+            <svg
+              width="32"
+              height="32"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-slate-400"
+            >
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-slate-200 mb-2">
+            Open a project first
+          </h2>
+          <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+            Scan a codebase so the agent prompt includes the correct project
+            path. The prompt needs to know where to run commands and write
+            system.json.
+          </p>
+          <button
+            onClick={handleOpenDirectory}
+            disabled={scanning}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg
+                       bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50
+                       text-white text-sm font-medium
+                       transition-colors duration-150"
+          >
+            {scanning ? "Scanning..." : "Open Directory"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+interface TubeMapViewProps {
+  onSelectedPathContextChange?: (
+    scope: { subsystemId: string; name: string; prefix: string } | null,
+  ) => void;
+}
+
+function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
   const state = useTubeMapState();
   const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -57,6 +139,25 @@ function TubeMapInner() {
   const drilledInSubsystemId = isDrilledIn
     ? state.breadcrumbs[state.breadcrumbs.length - 1].id
     : null;
+
+  useEffect(() => {
+    if (!onSelectedPathContextChange) return;
+    if (!drilledInSubsystemId || !tubeMapData) {
+      onSelectedPathContextChange(null);
+      return;
+    }
+
+    const subsystem = tubeMapData.subsystems.find(
+      (candidate) => candidate.id === drilledInSubsystemId,
+    );
+    if (!subsystem) return;
+
+    onSelectedPathContextChange({
+      subsystemId: subsystem.id,
+      name: subsystem.name,
+      prefix: subsystem.file_path,
+    });
+  }, [drilledInSubsystemId, onSelectedPathContextChange, tubeMapData]);
 
   const handleDrillIn = useCallback(
     (nodeId: string) => {
@@ -472,10 +573,12 @@ function TubeMapInner() {
   );
 }
 
-export function TubeMapView() {
+export function TubeMapView(props: TubeMapViewProps) {
   return (
-    <ReactFlowProvider>
-      <TubeMapInner />
-    </ReactFlowProvider>
+    <ScanGate>
+      <ReactFlowProvider>
+        <TubeMapInner {...props} />
+      </ReactFlowProvider>
+    </ScanGate>
   );
 }

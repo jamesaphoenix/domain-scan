@@ -10,7 +10,7 @@
 import { test, expect } from "@playwright/test";
 import { setupTauriMocks, MOCK_SCAN_STATS } from "./mocks";
 import type { EntitySummary } from "../src/types";
-import { waitForAppReady, clickOpenDirectory } from "./helpers";
+import { waitForAppReady, clickOpenDirectory, switchTab } from "./helpers";
 
 // ---------------------------------------------------------------------------
 // Mock entities for Monaco tests
@@ -98,6 +98,7 @@ const LARGE_FILE_ENTITIES: EntitySummary[] = [
 
 /** Scan and wait for entities to appear in the tree */
 async function scanAndWaitForEntities(page: import("@playwright/test").Page) {
+  await switchTab(page, "Entities/Types");
   await clickOpenDirectory(page);
   await expect(
     page.getByText(`${MOCK_SCAN_STATS.total_files} files`),

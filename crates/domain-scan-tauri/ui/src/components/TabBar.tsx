@@ -6,8 +6,8 @@ interface TabBarProps {
 }
 
 const tabs: { id: Tab; label: string }[] = [
-  { id: "entities", label: "Entities/Types" },
   { id: "tube-map", label: "Subsystem Tube Map" },
+  { id: "entities", label: "Entities/Types" },
 ];
 
 export function TabBar({ activeTab, onTabChange }: TabBarProps) {

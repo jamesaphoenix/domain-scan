@@ -3,7 +3,7 @@
 //! AI agents hallucinate paths like `../../.ssh/id_rsa` or `/etc/passwd`.
 //! All must be rejected with `INVALID_PATH` structured errors.
 
-use domain_scan_core::input_validation::{validate_path, validate_output_path};
+use domain_scan_core::input_validation::{validate_output_path, validate_path};
 use domain_scan_core::DomainScanError;
 use tempfile::TempDir;
 

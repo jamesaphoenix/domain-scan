@@ -6,12 +6,12 @@
 //! concurrent scan race conditions.
 
 mod adversarial {
-    mod path_traversal;
+    mod concurrent_scans;
     mod control_chars;
     mod embedded_query_params;
     mod json_bombs;
+    mod path_traversal;
     mod regex_dos;
-    mod unicode_edge_cases;
     mod symlink_escapes;
-    mod concurrent_scans;
+    mod unicode_edge_cases;
 }

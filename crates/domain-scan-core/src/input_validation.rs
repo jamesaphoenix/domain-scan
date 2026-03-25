@@ -49,9 +49,9 @@ pub mod error_code {
 /// when the final target path doesn't exist on disk.
 fn canonicalize_best_effort(path: &Path) -> Result<PathBuf, DomainScanError> {
     if path.exists() {
-        return path.canonicalize().map_err(|e| {
-            DomainScanError::InvalidPath(format!("Cannot canonicalize path: {e}"))
-        });
+        return path
+            .canonicalize()
+            .map_err(|e| DomainScanError::InvalidPath(format!("Cannot canonicalize path: {e}")));
     }
 
     let mut current = path.to_path_buf();
@@ -292,9 +292,8 @@ pub fn validate_regex(pattern: &str) -> Result<regex::Regex, DomainScanError> {
         )));
     }
 
-    regex::Regex::new(pattern).map_err(|e| {
-        DomainScanError::InvalidRegex(format!("Invalid regex: {e}"))
-    })
+    regex::Regex::new(pattern)
+        .map_err(|e| DomainScanError::InvalidRegex(format!("Invalid regex: {e}")))
 }
 
 // ---------------------------------------------------------------------------
@@ -314,9 +313,8 @@ pub fn validate_json_input(input: &str) -> Result<serde_json::Value, DomainScanE
         )));
     }
 
-    let value: serde_json::Value = serde_json::from_str(input).map_err(|e| {
-        DomainScanError::InvalidJson(format!("JSON parse error: {e}"))
-    })?;
+    let value: serde_json::Value = serde_json::from_str(input)
+        .map_err(|e| DomainScanError::InvalidJson(format!("JSON parse error: {e}")))?;
 
     let depth = json_depth(&value);
     if depth > MAX_JSON_DEPTH {
@@ -337,12 +335,8 @@ pub fn parse_json_input(input: &str) -> Result<serde_json::Value, DomainScanErro
 /// Recursively measure the nesting depth of a JSON value.
 fn json_depth(value: &serde_json::Value) -> usize {
     match value {
-        serde_json::Value::Array(arr) => {
-            1 + arr.iter().map(json_depth).max().unwrap_or(0)
-        }
-        serde_json::Value::Object(map) => {
-            1 + map.values().map(json_depth).max().unwrap_or(0)
-        }
+        serde_json::Value::Array(arr) => 1 + arr.iter().map(json_depth).max().unwrap_or(0),
+        serde_json::Value::Object(map) => 1 + map.values().map(json_depth).max().unwrap_or(0),
         _ => 0,
     }
 }

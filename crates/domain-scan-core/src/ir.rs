@@ -521,6 +521,8 @@ pub struct FilterParams {
     pub kind: Option<Vec<EntityKind>>,
     pub build_status: Option<BuildStatus>,
     pub visibility: Option<Visibility>,
+    /// Absolute or relative file path prefix.
+    pub path_prefix: Option<PathBuf>,
 }
 
 /// Scan configuration (parsed from .domain-scan.toml or CLI flags).

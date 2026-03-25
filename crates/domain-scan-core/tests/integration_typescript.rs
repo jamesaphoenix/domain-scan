@@ -287,7 +287,11 @@ fn test_class_method_visibility() {
 fn test_functions_fixture_count() {
     let ir = extract_fixture("functions.ts");
     // add, fetchUser, privateHelper, multiply, fetchData, internalTransform, processEvent
-    assert!(ir.functions.len() >= 7, "Expected at least 7 functions, got {}", ir.functions.len());
+    assert!(
+        ir.functions.len() >= 7,
+        "Expected at least 7 functions, got {}",
+        ir.functions.len()
+    );
 }
 
 #[test]
@@ -355,7 +359,10 @@ fn test_function_expression() {
 #[test]
 fn test_types_fixture_count() {
     let ir = extract_fixture("types.ts");
-    assert!(ir.type_aliases.len() >= 5, "Expected at least 5 type aliases");
+    assert!(
+        ir.type_aliases.len() >= 5,
+        "Expected at least 5 type aliases"
+    );
 }
 
 #[test]
@@ -388,7 +395,11 @@ fn test_type_alias_generic() {
 #[test]
 fn test_imports_fixture_count() {
     let ir = extract_fixture("imports.ts");
-    assert!(ir.imports.len() >= 4, "Expected at least 4 imports, got {}", ir.imports.len());
+    assert!(
+        ir.imports.len() >= 4,
+        "Expected at least 4 imports, got {}",
+        ir.imports.len()
+    );
 }
 
 #[test]
@@ -400,7 +411,11 @@ fn test_named_import() {
         .find(|i| i.source == "./services/user")
         .expect("user import not found");
     assert!(!user_import.is_wildcard);
-    let symbol_names: Vec<&str> = user_import.symbols.iter().map(|s| s.name.as_str()).collect();
+    let symbol_names: Vec<&str> = user_import
+        .symbols
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
     assert!(symbol_names.contains(&"UserService"));
     assert!(symbol_names.contains(&"UserDto"));
 }
@@ -414,7 +429,10 @@ fn test_namespace_import() {
         .find(|i| i.source == "./utils")
         .expect("utils import not found");
     assert!(utils_import.is_wildcard);
-    assert!(utils_import.symbols.iter().any(|s| s.is_namespace && s.name == "utils"));
+    assert!(utils_import
+        .symbols
+        .iter()
+        .any(|s| s.is_namespace && s.name == "utils"));
 }
 
 #[test]
@@ -425,7 +443,10 @@ fn test_default_import() {
         .iter()
         .find(|i| i.source == "express")
         .expect("express import not found");
-    assert!(express_import.symbols.iter().any(|s| s.is_default && s.name == "express"));
+    assert!(express_import
+        .symbols
+        .iter()
+        .any(|s| s.is_default && s.name == "express"));
 }
 
 #[test]
@@ -471,7 +492,10 @@ fn test_default_export() {
         .iter()
         .filter(|e| e.kind == ExportKind::Default)
         .collect();
-    assert!(!default_exports.is_empty(), "Expected at least one default export");
+    assert!(
+        !default_exports.is_empty(),
+        "Expected at least one default export"
+    );
 }
 
 #[test]
@@ -497,7 +521,11 @@ fn test_methods_fixture() {
     let calc = &ir.classes[0];
     assert_eq!(calc.name, "Calculator");
     // constructor skipped, so: add, fetchRate, create, validate
-    assert_eq!(calc.methods.len(), 4, "Expected 4 methods (constructor skipped)");
+    assert_eq!(
+        calc.methods.len(),
+        4,
+        "Expected 4 methods (constructor skipped)"
+    );
 }
 
 #[test]
@@ -543,7 +571,11 @@ fn test_method_private() {
 #[test]
 fn test_services_fixture() {
     let ir = extract_fixture("services.ts");
-    assert!(ir.services.len() >= 2, "Expected at least 2 services, got {}", ir.services.len());
+    assert!(
+        ir.services.len() >= 2,
+        "Expected at least 2 services, got {}",
+        ir.services.len()
+    );
 }
 
 #[test]
@@ -577,7 +609,10 @@ fn test_service_routes() {
         .iter()
         .find(|s| s.name == "UserController")
         .expect("UserController not found");
-    assert!(!controller.routes.is_empty(), "Expected routes on controller");
+    assert!(
+        !controller.routes.is_empty(),
+        "Expected routes on controller"
+    );
 
     let get_routes: Vec<&RouteDef> = controller
         .routes
@@ -605,7 +640,11 @@ fn test_service_dependencies() {
 #[test]
 fn test_schemas_fixture_count() {
     let ir = extract_fixture("schemas.ts");
-    assert!(ir.schemas.len() >= 3, "Expected at least 3 schemas, got {}", ir.schemas.len());
+    assert!(
+        ir.schemas.len() >= 3,
+        "Expected at least 3 schemas, got {}",
+        ir.schemas.len()
+    );
 }
 
 #[test]

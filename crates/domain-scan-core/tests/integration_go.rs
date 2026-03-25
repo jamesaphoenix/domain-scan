@@ -73,11 +73,17 @@ fn test_go_interface_kind() {
 #[test]
 fn test_go_interface_visibility() {
     let ir = extract_fixture("interfaces.go");
-    let reader = ir.interfaces.iter().find(|i| i.name == "Reader")
+    let reader = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Reader")
         .expect("Reader not found");
     assert_eq!(reader.visibility, Visibility::Public);
 
-    let private = ir.interfaces.iter().find(|i| i.name == "privateInterface")
+    let private = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "privateInterface")
         .expect("privateInterface not found");
     assert_eq!(private.visibility, Visibility::Private);
 }
@@ -85,7 +91,10 @@ fn test_go_interface_visibility() {
 #[test]
 fn test_go_interface_methods() {
     let ir = extract_fixture("interfaces.go");
-    let user_svc = ir.interfaces.iter().find(|i| i.name == "UserService")
+    let user_svc = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "UserService")
         .expect("UserService not found");
     assert_eq!(user_svc.methods.len(), 3);
     let method_names: Vec<&str> = user_svc.methods.iter().map(|m| m.name.as_str()).collect();
@@ -97,7 +106,10 @@ fn test_go_interface_methods() {
 #[test]
 fn test_go_interface_extends() {
     let ir = extract_fixture("interfaces.go");
-    let rw = ir.interfaces.iter().find(|i| i.name == "ReadWriter")
+    let rw = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "ReadWriter")
         .expect("ReadWriter not found");
     assert!(rw.extends.contains(&"Reader".to_string()));
     assert!(rw.extends.contains(&"Writer".to_string()));
@@ -106,9 +118,15 @@ fn test_go_interface_extends() {
 #[test]
 fn test_go_interface_method_params() {
     let ir = extract_fixture("interfaces.go");
-    let reader = ir.interfaces.iter().find(|i| i.name == "Reader")
+    let reader = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Reader")
         .expect("Reader not found");
-    let read = reader.methods.iter().find(|m| m.name == "Read")
+    let read = reader
+        .methods
+        .iter()
+        .find(|m| m.name == "Read")
         .expect("Read method not found");
     assert_eq!(read.parameters.len(), 1);
     assert_eq!(read.parameters[0].name, "p");
@@ -136,10 +154,16 @@ fn test_go_struct_names() {
 #[test]
 fn test_go_struct_fields() {
     let ir = extract_fixture("structs.go");
-    let user = ir.classes.iter().find(|c| c.name == "User")
+    let user = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "User")
         .expect("User not found");
     assert_eq!(user.properties.len(), 4);
-    let id = user.properties.iter().find(|p| p.name == "ID")
+    let id = user
+        .properties
+        .iter()
+        .find(|p| p.name == "ID")
         .expect("ID field not found");
     assert_eq!(id.type_annotation.as_deref(), Some("string"));
     assert_eq!(id.visibility, Visibility::Public);
@@ -148,7 +172,10 @@ fn test_go_struct_fields() {
 #[test]
 fn test_go_struct_visibility() {
     let ir = extract_fixture("structs.go");
-    let internal = ir.classes.iter().find(|c| c.name == "internalState")
+    let internal = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "internalState")
         .expect("internalState not found");
     assert_eq!(internal.visibility, Visibility::Private);
 }
@@ -177,11 +204,17 @@ fn test_go_function_names() {
 #[test]
 fn test_go_function_visibility() {
     let ir = extract_fixture("functions.go");
-    let add = ir.functions.iter().find(|f| f.name == "Add")
+    let add = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "Add")
         .expect("Add not found");
     assert_eq!(add.visibility, Visibility::Public);
 
-    let process = ir.functions.iter().find(|f| f.name == "processItems")
+    let process = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "processItems")
         .expect("processItems not found");
     assert_eq!(process.visibility, Visibility::Private);
 }
@@ -189,7 +222,10 @@ fn test_go_function_visibility() {
 #[test]
 fn test_go_function_params() {
     let ir = extract_fixture("functions.go");
-    let add = ir.functions.iter().find(|f| f.name == "Add")
+    let add = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "Add")
         .expect("Add not found");
     assert_eq!(add.parameters.len(), 2);
     assert_eq!(add.parameters[0].name, "a");
@@ -199,7 +235,10 @@ fn test_go_function_params() {
 #[test]
 fn test_go_function_return_type() {
     let ir = extract_fixture("functions.go");
-    let add = ir.functions.iter().find(|f| f.name == "Add")
+    let add = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "Add")
         .expect("Add not found");
     assert!(add.return_type.is_some());
 }
@@ -212,13 +251,19 @@ fn test_go_function_return_type() {
 fn test_go_methods_grouped_by_receiver() {
     let ir = extract_fixture("methods.go");
     // Methods should be grouped into ImplDef by receiver type
-    assert!(ir.implementations.len() >= 2, "Expected at least 2 impl groups (UserRepo, Logger)");
+    assert!(
+        ir.implementations.len() >= 2,
+        "Expected at least 2 impl groups (UserRepo, Logger)"
+    );
 }
 
 #[test]
 fn test_go_method_receiver_type() {
     let ir = extract_fixture("methods.go");
-    let user_repo = ir.implementations.iter().find(|i| i.target == "UserRepo")
+    let user_repo = ir
+        .implementations
+        .iter()
+        .find(|i| i.target == "UserRepo")
         .expect("UserRepo impl not found");
     assert_eq!(user_repo.methods.len(), 3);
     let method_names: Vec<&str> = user_repo.methods.iter().map(|m| m.name.as_str()).collect();
@@ -230,7 +275,10 @@ fn test_go_method_receiver_type() {
 #[test]
 fn test_go_method_owner() {
     let ir = extract_fixture("methods.go");
-    let user_repo = ir.implementations.iter().find(|i| i.target == "UserRepo")
+    let user_repo = ir
+        .implementations
+        .iter()
+        .find(|i| i.target == "UserRepo")
         .expect("UserRepo impl not found");
     for method in &user_repo.methods {
         assert_eq!(method.owner.as_deref(), Some("UserRepo"));
@@ -244,7 +292,11 @@ fn test_go_method_owner() {
 #[test]
 fn test_go_imports_count() {
     let ir = extract_fixture("imports.go");
-    assert!(ir.imports.len() >= 5, "Expected at least 5 imports, got {}", ir.imports.len());
+    assert!(
+        ir.imports.len() >= 5,
+        "Expected at least 5 imports, got {}",
+        ir.imports.len()
+    );
 }
 
 #[test]
@@ -259,7 +311,10 @@ fn test_go_import_paths() {
 #[test]
 fn test_go_import_alias() {
     let ir = extract_fixture("imports.go");
-    let aliased = ir.imports.iter().find(|i| i.source == "github.com/example/pkg")
+    let aliased = ir
+        .imports
+        .iter()
+        .find(|i| i.source == "github.com/example/pkg")
         .expect("aliased import not found");
     assert_eq!(aliased.symbols[0].alias.as_deref(), Some("myalias"));
 }
@@ -285,10 +340,16 @@ fn test_go_schema_names() {
 #[test]
 fn test_go_schema_fields() {
     let ir = extract_fixture("schemas.go");
-    let user_dto = ir.schemas.iter().find(|s| s.name == "UserDTO")
+    let user_dto = ir
+        .schemas
+        .iter()
+        .find(|s| s.name == "UserDTO")
         .expect("UserDTO not found");
     assert_eq!(user_dto.fields.len(), 4);
-    let email = user_dto.fields.iter().find(|f| f.name == "Email")
+    let email = user_dto
+        .fields
+        .iter()
+        .find(|f| f.name == "Email")
         .expect("Email field not found");
     assert!(email.constraints.contains(&"omitempty".to_string()));
 }
@@ -297,7 +358,10 @@ fn test_go_schema_fields() {
 fn test_go_schema_non_tagged_excluded() {
     let ir = extract_fixture("schemas.go");
     let names: Vec<&str> = ir.schemas.iter().map(|s| s.name.as_str()).collect();
-    assert!(!names.contains(&"InternalConfig"), "InternalConfig should not be a schema (no tags)");
+    assert!(
+        !names.contains(&"InternalConfig"),
+        "InternalConfig should not be a schema (no tags)"
+    );
 }
 
 // =========================================================================

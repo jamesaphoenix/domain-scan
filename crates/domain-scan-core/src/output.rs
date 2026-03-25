@@ -12,7 +12,10 @@ pub enum OutputFormat {
 }
 
 /// Format a `ScanIndex` in the given output format.
-pub fn format_scan_index(index: &ScanIndex, format: OutputFormat) -> Result<String, DomainScanError> {
+pub fn format_scan_index(
+    index: &ScanIndex,
+    format: OutputFormat,
+) -> Result<String, DomainScanError> {
     match format {
         OutputFormat::Json => Ok(serde_json::to_string_pretty(index)?),
         OutputFormat::Table => Ok(format_table(index)),

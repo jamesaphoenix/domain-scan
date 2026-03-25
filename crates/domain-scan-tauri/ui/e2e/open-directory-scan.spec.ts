@@ -11,7 +11,7 @@ import {
   MOCK_SCAN_STATS,
   MOCK_ENTITIES,
 } from "./mocks";
-import { waitForAppReady, clickOpenDirectory, getStatusBarText } from "./helpers";
+import { waitForAppReady, clickOpenDirectory, getStatusBarText, switchTab } from "./helpers";
 
 test.describe("F.2: Open Directory & Scan Flow", () => {
   test("click Open Directory → dialog opens, scan runs, stats appear", async ({ page }) => {
@@ -78,7 +78,8 @@ test.describe("F.2: Open Directory & Scan Flow", () => {
     await page.goto("/");
     await waitForAppReady(page);
 
-    // Ensure we're on the Entities tab
+    // Switch to the Entities tab (app starts on Tube Map by default)
+    await switchTab(page, "Entities/Types");
     const entitiesTab = page.getByRole("button", { name: "Entities/Types" });
     await expect(entitiesTab).toBeVisible();
 
@@ -107,6 +108,10 @@ test.describe("F.2: Open Directory & Scan Flow", () => {
     await page.goto("/");
     await waitForAppReady(page);
 
+    // Switch to Entities tab to avoid duplicate "Open Directory" buttons
+    // (scan gate on Tube Map also shows "Open Directory" when no scan is loaded)
+    await switchTab(page, "Entities/Types");
+
     // Trigger scan
     await clickOpenDirectory(page);
 
@@ -130,6 +135,9 @@ test.describe("F.2: Open Directory & Scan Flow", () => {
 
     await page.goto("/");
     await waitForAppReady(page);
+
+    // Switch to Entities tab to avoid duplicate "Open Directory" buttons
+    await switchTab(page, "Entities/Types");
 
     // Trigger scan
     await clickOpenDirectory(page);

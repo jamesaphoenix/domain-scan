@@ -105,9 +105,9 @@ export function WizardStepSubsystems({
                     className="w-3 h-3 rounded-full"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-xs font-medium text-slate-300">
+                  <h4 className="text-xs font-medium text-slate-300">
                     {label}
-                  </span>
+                  </h4>
                   <span className="text-xs text-slate-500">
                     ({subs.length})
                   </span>

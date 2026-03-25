@@ -259,18 +259,21 @@ fn test_scala_wildcard_import() {
 fn test_scala_brace_import() {
     let ir = extract_fixture("imports.scala");
     // import java.util.{List, Map} should extract List and Map symbols
-    let brace_import = ir
-        .imports
-        .iter()
-        .find(|i| i.symbols.len() >= 2);
+    let brace_import = ir.imports.iter().find(|i| i.symbols.len() >= 2);
     assert!(
         brace_import.is_some(),
         "Should have a multi-symbol brace import"
     );
     if let Some(bi) = brace_import {
         let sym_names: Vec<&str> = bi.symbols.iter().map(|s| s.name.as_str()).collect();
-        assert!(sym_names.contains(&"List"), "Brace import should contain List");
-        assert!(sym_names.contains(&"Map"), "Brace import should contain Map");
+        assert!(
+            sym_names.contains(&"List"),
+            "Brace import should contain List"
+        );
+        assert!(
+            sym_names.contains(&"Map"),
+            "Brace import should contain Map"
+        );
     }
 }
 

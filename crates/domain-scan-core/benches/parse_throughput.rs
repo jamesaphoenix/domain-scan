@@ -36,7 +36,11 @@ fn fixture_files() -> Vec<(PathBuf, Language)> {
         if let Ok(entries) = std::fs::read_dir(&lang_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() && !path.extension().is_some_and(|e| e == "json" || e == "bincode") {
+                if path.is_file()
+                    && !path
+                        .extension()
+                        .is_some_and(|e| e == "json" || e == "bincode")
+                {
                     files.push((path, *language));
                 }
             }
@@ -48,8 +52,8 @@ fn fixture_files() -> Vec<(PathBuf, Language)> {
 
 /// Parse + extract a single file (sequential, no caching).
 fn parse_and_extract_one(path: &Path, language: Language) {
-    let (tree, source) = parser::parse_file(path, language)
-        .unwrap_or_else(|e| panic!("parse failed: {e}"));
+    let (tree, source) =
+        parser::parse_file(path, language).unwrap_or_else(|e| panic!("parse failed: {e}"));
     let _ir = query_engine::extract(&tree, &source, path, language, BuildStatus::Built)
         .unwrap_or_else(|e| panic!("extract failed: {e}"));
 }
@@ -64,28 +68,22 @@ fn bench_parse_throughput(c: &mut Criterion) {
     group.sample_size(20);
 
     // Sequential: parse all fixture files one at a time
-    group.bench_function(
-        BenchmarkId::new("sequential", file_count),
-        |b| {
-            b.iter(|| {
-                for (path, lang) in &files {
-                    parse_and_extract_one(black_box(path), *lang);
-                }
-            });
-        },
-    );
+    group.bench_function(BenchmarkId::new("sequential", file_count), |b| {
+        b.iter(|| {
+            for (path, lang) in &files {
+                parse_and_extract_one(black_box(path), *lang);
+            }
+        });
+    });
 
     // Parallel: parse all fixture files via rayon
-    group.bench_function(
-        BenchmarkId::new("parallel_rayon", file_count),
-        |b| {
-            b.iter(|| {
-                files.par_iter().for_each(|(path, lang)| {
-                    parse_and_extract_one(black_box(path), *lang);
-                });
+    group.bench_function(BenchmarkId::new("parallel_rayon", file_count), |b| {
+        b.iter(|| {
+            files.par_iter().for_each(|(path, lang)| {
+                parse_and_extract_one(black_box(path), *lang);
             });
-        },
-    );
+        });
+    });
 
     group.finish();
 }

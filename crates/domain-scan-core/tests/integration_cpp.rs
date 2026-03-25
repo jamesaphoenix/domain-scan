@@ -35,7 +35,11 @@ fn extract_fixture(filename: &str) -> IrFile {
 fn test_cpp_classes_count() {
     let ir = extract_fixture("classes.cpp");
     // UserService, BaseRepository, Point, Container
-    assert!(ir.classes.len() >= 4, "Expected at least 4 classes, got {}", ir.classes.len());
+    assert!(
+        ir.classes.len() >= 4,
+        "Expected at least 4 classes, got {}",
+        ir.classes.len()
+    );
 }
 
 #[test]
@@ -53,8 +57,11 @@ fn test_cpp_class_methods() {
     assert!(user_service.is_some(), "UserService class not found");
     let user_service = user_service.unwrap();
     // getName, setName, instanceCount (constructor and destructor excluded)
-    assert!(user_service.methods.len() >= 3,
-        "Expected at least 3 methods on UserService, got {}", user_service.methods.len());
+    assert!(
+        user_service.methods.len() >= 3,
+        "Expected at least 3 methods on UserService, got {}",
+        user_service.methods.len()
+    );
 }
 
 #[test]
@@ -63,7 +70,11 @@ fn test_cpp_class_properties() {
     let point = ir.classes.iter().find(|c| c.name == "Point");
     assert!(point.is_some(), "Point struct not found");
     let point = point.unwrap();
-    assert_eq!(point.properties.len(), 3, "Point should have 3 properties (x, y, z)");
+    assert_eq!(
+        point.properties.len(),
+        3,
+        "Point should have 3 properties (x, y, z)"
+    );
 }
 
 #[test]
@@ -71,7 +82,10 @@ fn test_cpp_class_is_abstract() {
     let ir = extract_fixture("classes.cpp");
     let base = ir.classes.iter().find(|c| c.name == "BaseRepository");
     assert!(base.is_some(), "BaseRepository not found");
-    assert!(base.unwrap().is_abstract, "BaseRepository should be abstract");
+    assert!(
+        base.unwrap().is_abstract,
+        "BaseRepository should be abstract"
+    );
 }
 
 #[test]
@@ -80,8 +94,14 @@ fn test_cpp_template_class_generics() {
     let container = ir.classes.iter().find(|c| c.name == "Container");
     assert!(container.is_some(), "Container class not found");
     let container = container.unwrap();
-    assert!(!container.generics.is_empty(), "Container should have template parameters");
-    assert!(container.generics.contains(&"T".to_string()), "Container should have generic T");
+    assert!(
+        !container.generics.is_empty(),
+        "Container should have template parameters"
+    );
+    assert!(
+        container.generics.contains(&"T".to_string()),
+        "Container should have generic T"
+    );
 }
 
 #[test]
@@ -91,7 +111,11 @@ fn test_cpp_struct_default_public_properties() {
     assert!(point.is_some(), "Point not found");
     let point = point.unwrap();
     for prop in &point.properties {
-        assert_eq!(prop.visibility, Visibility::Public, "Struct properties should default to public");
+        assert_eq!(
+            prop.visibility,
+            Visibility::Public,
+            "Struct properties should default to public"
+        );
     }
 }
 
@@ -100,7 +124,11 @@ fn test_cpp_method_ownership() {
     let ir = extract_fixture("classes.cpp");
     let user_service = ir.classes.iter().find(|c| c.name == "UserService").unwrap();
     for method in &user_service.methods {
-        assert_eq!(method.owner.as_deref(), Some("UserService"), "Methods should have owner set");
+        assert_eq!(
+            method.owner.as_deref(),
+            Some("UserService"),
+            "Methods should have owner set"
+        );
     }
 }
 
@@ -112,7 +140,11 @@ fn test_cpp_method_ownership() {
 fn test_cpp_functions_count() {
     let ir = extract_fixture("functions.cpp");
     // add, multiply, greet, helper
-    assert!(ir.functions.len() >= 4, "Expected at least 4 functions, got {}", ir.functions.len());
+    assert!(
+        ir.functions.len() >= 4,
+        "Expected at least 4 functions, got {}",
+        ir.functions.len()
+    );
 }
 
 #[test]
@@ -147,7 +179,11 @@ fn test_cpp_function_return_type() {
 #[test]
 fn test_cpp_imports_count() {
     let ir = extract_fixture("imports.cpp");
-    assert!(ir.imports.len() >= 6, "Expected at least 6 includes, got {}", ir.imports.len());
+    assert!(
+        ir.imports.len() >= 6,
+        "Expected at least 6 includes, got {}",
+        ir.imports.len()
+    );
 }
 
 #[test]
@@ -168,7 +204,12 @@ fn test_cpp_interfaces_count() {
     let ir = extract_fixture("interfaces.cpp");
     // IRepository, INotificationService (both have pure virtual methods)
     // ConcreteClass and BaseClass should NOT be interfaces
-    assert_eq!(ir.interfaces.len(), 2, "Expected 2 interfaces (abstract base classes), got {}", ir.interfaces.len());
+    assert_eq!(
+        ir.interfaces.len(),
+        2,
+        "Expected 2 interfaces (abstract base classes), got {}",
+        ir.interfaces.len()
+    );
 }
 
 #[test]
@@ -176,25 +217,38 @@ fn test_cpp_interface_names() {
     let ir = extract_fixture("interfaces.cpp");
     let names: Vec<&str> = ir.interfaces.iter().map(|i| i.name.as_str()).collect();
     assert!(names.contains(&"IRepository"), "Missing IRepository");
-    assert!(names.contains(&"INotificationService"), "Missing INotificationService");
+    assert!(
+        names.contains(&"INotificationService"),
+        "Missing INotificationService"
+    );
 }
 
 #[test]
 fn test_cpp_interface_kind() {
     let ir = extract_fixture("interfaces.cpp");
     for iface in &ir.interfaces {
-        assert_eq!(iface.language_kind, InterfaceKind::PureVirtual,
-            "C++ interfaces should be PureVirtual");
+        assert_eq!(
+            iface.language_kind,
+            InterfaceKind::PureVirtual,
+            "C++ interfaces should be PureVirtual"
+        );
     }
 }
 
 #[test]
 fn test_cpp_interface_methods() {
     let ir = extract_fixture("interfaces.cpp");
-    let repo = ir.interfaces.iter().find(|i| i.name == "IRepository").unwrap();
+    let repo = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "IRepository")
+        .unwrap();
     // save, remove, count (destructor excluded from method signatures)
-    assert!(repo.methods.len() >= 3,
-        "IRepository should have at least 3 method signatures, got {}", repo.methods.len());
+    assert!(
+        repo.methods.len() >= 3,
+        "IRepository should have at least 3 method signatures, got {}",
+        repo.methods.len()
+    );
 }
 
 // =========================================================================
@@ -205,7 +259,12 @@ fn test_cpp_interface_methods() {
 fn test_cpp_schemas_count() {
     let ir = extract_fixture("schemas.cpp");
     // UserDto, OrderDto (ActiveRecord has methods, excluded)
-    assert_eq!(ir.schemas.len(), 2, "Expected 2 schemas, got {}", ir.schemas.len());
+    assert_eq!(
+        ir.schemas.len(),
+        2,
+        "Expected 2 schemas, got {}",
+        ir.schemas.len()
+    );
 }
 
 #[test]

@@ -90,6 +90,7 @@ export interface FilterParams {
   kind?: EntityKind[];
   build_status?: BuildStatus;
   visibility?: string;
+  path_prefix?: string;
 }
 
 export interface ScanStats {

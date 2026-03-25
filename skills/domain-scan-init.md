@@ -1,7 +1,7 @@
 ---
 name: domain-scan-init
 version: 1.0.0
-description: How to build and refine system.json manifests — always start with --bootstrap, use sub-agents per domain, never auto-confirm built status.
+description: How to build and refine system.json manifests — bootstrap first, then patch boundaries, merge duplicates, and validate with validate+match.
 metadata:
   openclaw:
     requires:
@@ -12,7 +12,7 @@ metadata:
 
 ## When to use
 
-Use `domain-scan init` to create and validate system.json manifests that map a codebase's structural entities to logical subsystems and domains. This is the first step before viewing the Subsystem Tube Map.
+Use `domain-scan init` to create the first draft of a `system.json` manifest. Bootstrap gives the agent a starting partition; the real work is refining that draft with direct JSON edits plus `validate --manifest` and `match`.
 
 ## Key commands
 
@@ -23,11 +23,11 @@ domain-scan init --bootstrap -o system.json
 # Bootstrap with a custom project name
 domain-scan init --bootstrap --name "my-project" -o system.json
 
-# Validate an existing manifest (dry-run shows errors without writing)
-domain-scan init --apply-manifest system.json --dry-run --output json
+# Validate an existing manifest semantically
+domain-scan validate --manifest system.json --output json
 
-# Apply (load + validate) a manifest
-domain-scan init --apply-manifest system.json
+# Check coverage after edits
+domain-scan match --manifest system.json --output json --fields coverage_percent,unmatched
 
 # Get the JSON Schema for system.json
 domain-scan schema init
@@ -35,11 +35,11 @@ domain-scan schema init
 
 ## Workflow
 
-1. **Always start with `--bootstrap`** — never write system.json from scratch. The heuristics produce a reasonable starter manifest from directory structure and import analysis.
-2. **Review the bootstrap output** — check domains, subsystems, and connections. The bootstrap sets all subsystems to `status: "new"` by default.
+1. **Always start with `--bootstrap`** — do not ask the agent to invent the whole manifest cold if a starter draft can be generated first.
+2. **Treat bootstrap as a draft, not an answer** — reorder domains, merge duplicate subsystems, widen or narrow `filePath`, fix labels, and remove noisy connections.
 3. **Refine with sub-agents per domain** — each sub-agent focuses on one domain's subsystem boundaries, names, descriptions, and entity placement.
-4. **Validate after every edit** — run `domain-scan init --apply-manifest system.json --dry-run` to catch structural errors.
-5. **Check coverage** — run `domain-scan match --manifest system.json --output json --fields coverage_percent` to see how many entities are matched.
+4. **Validate after every edit** — run `domain-scan validate --manifest system.json --output json` to catch structural and semantic manifest errors.
+5. **Check coverage** — run `domain-scan match --manifest system.json --output json --fields coverage_percent,unmatched` to see what still needs cleanup.
 6. **Confirm with the user** before marking any subsystem as `built`.
 
 ## Rules
@@ -66,9 +66,9 @@ domain-scan schema init
 
 The agent edits `system.json` directly — no special patch API needed:
 1. Read `system.json`
-2. Edit the JSON (split, merge, rename, move entities between subsystems)
-3. Validate: `domain-scan init --apply-manifest system.json --dry-run`
-4. Check coverage: `domain-scan match --manifest system.json --output json --fields coverage_percent`
+2. Edit the JSON (split, merge, rename, reorder domains, de-dupe, move entities between subsystems)
+3. Validate: `domain-scan validate --manifest system.json --output json`
+4. Check coverage: `domain-scan match --manifest system.json --output json --fields coverage_percent,unmatched`
 5. Repeat until coverage is satisfactory
 
 ## Nested subsystems (children)
@@ -135,8 +135,8 @@ Children use the same structure as top-level subsystems, nested inside the paren
 
 ## Common mistakes
 
-- Writing system.json from scratch instead of using `--bootstrap` — the heuristics save significant time and produce reasonable starting points.
+- Stopping after bootstrap — the starter manifest is supposed to be improved, not accepted as-is.
 - Marking subsystems as `built` without user confirmation — this causes the tube map to treat source code as authoritative and skip LLM enrichment on entities that may need it.
 - Creating "utility" or "shared" domains — these are anti-patterns. Distribute utilities to the domains that use them.
-- Forgetting to validate after edits — structural errors (dangling references, orphan domains) will cause the tube map to render incorrectly.
+- Forgetting to validate after edits — structural and semantic errors (dangling references, orphan domains, bad dependencies) will cause the tube map to render incorrectly.
 - Using `depends_on` for everything — distinguish between hard dependencies, soft usage, and async triggers.

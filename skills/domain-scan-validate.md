@@ -1,7 +1,7 @@
 ---
 name: domain-scan-validate
 version: 1.0.0
-description: How to run validation — use --strict in CI, scope with --rules, interpret violation severities, use --fail-on-unmatched with match.
+description: How to run validation — use validate for entity rules, use validate --manifest for system.json semantics, and use match for coverage cleanup.
 metadata:
   openclaw:
     requires:
@@ -12,7 +12,9 @@ metadata:
 
 ## When to use
 
-Use `domain-scan validate` to run data quality checks on extracted structural entities — naming conventions, completeness, god-object detection, and implementation coverage.
+Use `domain-scan validate` in two modes:
+- without `--manifest`: entity-quality checks on extracted code structure
+- with `--manifest`: semantic `system.json` validation plus a coverage summary
 
 ## Key commands
 
@@ -37,8 +39,10 @@ domain-scan validate --languages typescript,rust --output json
 
 - Use `--strict` in CI pipelines. Without it, warnings (WARN severity) don't cause a non-zero exit code — only failures (FAIL) do.
 - Use `--rules` to scope checks when you only care about specific conventions. Running all 10 rules on a large codebase produces noisy output.
+- Do not combine `--rules` with `--manifest`. Manifest mode is for `system.json` integrity; rule mode is for scanned entities.
 - Check exit codes: `0` = all pass, `1` = at least one FAIL (or WARN with `--strict`).
 - Parse the `violations` array in JSON output for programmatic handling. Each violation has `rule`, `severity`, `message`, `entity_name`, `file`, and `line`.
+- In manifest mode, parse `validation_errors`, `violations`, and `coverage_percent`. This catches missing domains, dangling dependencies, and broken connection references before you trust the tube map.
 
 ## Available rules
 
@@ -60,4 +64,5 @@ domain-scan validate --languages typescript,rust --output json
 - Running `validate` without `--strict` in CI → warnings silently pass. Always use `--strict` in automated pipelines.
 - Ignoring the `severity` field → treating all violations equally. FAIL violations indicate real structural problems; WARN violations are style suggestions.
 - Running all rules on a partially-built codebase → `interfaces-have-implementors` will flag everything in `unbuilt` modules. Scope with `--rules` or `--build-status built`.
+- Using `validate --manifest` as a substitute for coverage review → it reports coverage, but you still need `domain-scan match --manifest system.json --unmatched-only` to fix what remains unmatched.
 - Not using `--output json` → parsing human-readable output is fragile. Always use structured JSON.

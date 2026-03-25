@@ -110,10 +110,7 @@ impl FieldMask {
 /// Validate that all field paths in the mask exist in the given JSON schema.
 ///
 /// Returns a list of invalid field names. If the list is empty, all fields are valid.
-pub fn validate_fields_against_schema(
-    mask: &FieldMask,
-    schema: &serde_json::Value,
-) -> Vec<String> {
+pub fn validate_fields_against_schema(mask: &FieldMask, schema: &serde_json::Value) -> Vec<String> {
     let mut invalid = Vec::new();
     let valid_fields = extract_valid_fields_from_schema(schema);
     validate_mask_fields_recursive(mask, schema, &[], &valid_fields, &mut invalid);
@@ -144,10 +141,7 @@ pub fn extract_valid_fields_from_schema(schema: &serde_json::Value) -> BTreeSet<
     // For schemars output, the main type is usually in definitions referenced by $ref
     if let Some(ref_path) = schema.get("$ref").and_then(|v| v.as_str()) {
         if let Some(def_name) = ref_path.strip_prefix("#/definitions/") {
-            if let Some(def) = schema
-                .get("definitions")
-                .and_then(|d| d.get(def_name))
-            {
+            if let Some(def) = schema.get("definitions").and_then(|d| d.get(def_name)) {
                 if let Some(props) = def.get("properties").and_then(|v| v.as_object()) {
                     for key in props.keys() {
                         fields.insert(key.clone());
@@ -161,10 +155,7 @@ pub fn extract_valid_fields_from_schema(schema: &serde_json::Value) -> BTreeSet<
     if let Some(items) = schema.get("items") {
         if let Some(ref_path) = items.get("$ref").and_then(|v| v.as_str()) {
             if let Some(def_name) = ref_path.strip_prefix("#/definitions/") {
-                if let Some(def) = schema
-                    .get("definitions")
-                    .and_then(|d| d.get(def_name))
-                {
+                if let Some(def) = schema.get("definitions").and_then(|d| d.get(def_name)) {
                     if let Some(props) = def.get("properties").and_then(|v| v.as_object()) {
                         for key in props.keys() {
                             fields.insert(key.clone());
@@ -290,7 +281,10 @@ mod tests {
         assert!(!obj.contains_key("version"));
 
         // files should only have "path" per element
-        let files = obj.get("files").and_then(|v| v.as_array()).unwrap_or_else(|| panic!("no files"));
+        let files = obj
+            .get("files")
+            .and_then(|v| v.as_array())
+            .unwrap_or_else(|| panic!("no files"));
         assert_eq!(files[0], serde_json::json!({"path": "a.ts"}));
         assert_eq!(files[1], serde_json::json!({"path": "b.rs"}));
     }
@@ -342,10 +336,13 @@ mod tests {
         ]);
         let result = apply_field_mask(&value, "name,kind");
         assert!(result.is_ok());
-        let parsed: serde_json::Value = serde_json::from_str(&result.unwrap_or_default())
-            .unwrap_or_default();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&result.unwrap_or_default()).unwrap_or_default();
         let arr = parsed.as_array().unwrap_or_else(|| panic!("not array"));
-        assert_eq!(arr[0], serde_json::json!({"kind": "interface", "name": "X"}));
+        assert_eq!(
+            arr[0],
+            serde_json::json!({"kind": "interface", "name": "X"})
+        );
     }
 
     #[test]
@@ -369,12 +366,15 @@ mod tests {
             "f": "hidden"
         });
         let output = mask.apply(&input);
-        assert_eq!(output, serde_json::json!({
-            "a": {
-                "b": {
-                    "c": "deep"
+        assert_eq!(
+            output,
+            serde_json::json!({
+                "a": {
+                    "b": {
+                        "c": "deep"
+                    }
                 }
-            }
-        }));
+            })
+        );
     }
 }

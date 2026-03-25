@@ -42,7 +42,10 @@ fn test_swift_interfaces_names() {
     let ir = extract_fixture("interfaces.swift");
     let names: Vec<&str> = ir.interfaces.iter().map(|i| i.name.as_str()).collect();
     assert!(names.contains(&"Drawable"), "Missing Drawable protocol");
-    assert!(names.contains(&"Serializable"), "Missing Serializable protocol");
+    assert!(
+        names.contains(&"Serializable"),
+        "Missing Serializable protocol"
+    );
     assert!(names.contains(&"Repository"), "Missing Repository protocol");
     assert!(names.contains(&"Comparable"), "Missing Comparable protocol");
 }
@@ -51,14 +54,23 @@ fn test_swift_interfaces_names() {
 fn test_swift_interfaces_kind() {
     let ir = extract_fixture("interfaces.swift");
     for iface in &ir.interfaces {
-        assert_eq!(iface.language_kind, InterfaceKind::Protocol, "{} should be Protocol", iface.name);
+        assert_eq!(
+            iface.language_kind,
+            InterfaceKind::Protocol,
+            "{} should be Protocol",
+            iface.name
+        );
     }
 }
 
 #[test]
 fn test_swift_interfaces_methods() {
     let ir = extract_fixture("interfaces.swift");
-    let drawable = ir.interfaces.iter().find(|i| i.name == "Drawable").expect("Drawable");
+    let drawable = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Drawable")
+        .expect("Drawable");
     assert_eq!(drawable.methods.len(), 1, "Drawable has 1 method (draw)");
     assert_eq!(drawable.methods[0].name, "draw");
 }
@@ -66,36 +78,78 @@ fn test_swift_interfaces_methods() {
 #[test]
 fn test_swift_interfaces_properties() {
     let ir = extract_fixture("interfaces.swift");
-    let drawable = ir.interfaces.iter().find(|i| i.name == "Drawable").expect("Drawable");
-    assert_eq!(drawable.properties.len(), 1, "Drawable has 1 property (color)");
+    let drawable = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Drawable")
+        .expect("Drawable");
+    assert_eq!(
+        drawable.properties.len(),
+        1,
+        "Drawable has 1 property (color)"
+    );
     assert_eq!(drawable.properties[0].name, "color");
-    assert!(!drawable.properties[0].is_readonly, "color has both get and set");
+    assert!(
+        !drawable.properties[0].is_readonly,
+        "color has both get and set"
+    );
 }
 
 #[test]
 fn test_swift_interfaces_inheritance() {
     let ir = extract_fixture("interfaces.swift");
-    let serializable = ir.interfaces.iter().find(|i| i.name == "Serializable").expect("Serializable");
-    assert!(serializable.extends.contains(&"Codable".to_string()), "Serializable extends Codable");
+    let serializable = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Serializable")
+        .expect("Serializable");
+    assert!(
+        serializable.extends.contains(&"Codable".to_string()),
+        "Serializable extends Codable"
+    );
 }
 
 #[test]
 fn test_swift_interfaces_visibility() {
     let ir = extract_fixture("interfaces.swift");
-    let serializable = ir.interfaces.iter().find(|i| i.name == "Serializable").expect("Serializable");
-    assert_eq!(serializable.visibility, Visibility::Public, "Serializable is public");
+    let serializable = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Serializable")
+        .expect("Serializable");
+    assert_eq!(
+        serializable.visibility,
+        Visibility::Public,
+        "Serializable is public"
+    );
 
-    let drawable = ir.interfaces.iter().find(|i| i.name == "Drawable").expect("Drawable");
-    assert_eq!(drawable.visibility, Visibility::Internal, "Drawable defaults to internal");
+    let drawable = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Drawable")
+        .expect("Drawable");
+    assert_eq!(
+        drawable.visibility,
+        Visibility::Internal,
+        "Drawable defaults to internal"
+    );
 }
 
 #[test]
 fn test_swift_protocol_multiple_methods() {
     let ir = extract_fixture("interfaces.swift");
-    let serializable = ir.interfaces.iter().find(|i| i.name == "Serializable").expect("Serializable");
+    let serializable = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Serializable")
+        .expect("Serializable");
     assert_eq!(serializable.methods.len(), 2, "Serializable has 2 methods");
 
-    let repo = ir.interfaces.iter().find(|i| i.name == "Repository").expect("Repository");
+    let repo = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Repository")
+        .expect("Repository");
     assert_eq!(repo.methods.len(), 3, "Repository has 3 methods");
 }
 
@@ -123,13 +177,24 @@ fn test_swift_classes_names() {
 #[test]
 fn test_swift_class_methods() {
     let ir = extract_fixture("classes.swift");
-    let user_mgr = ir.classes.iter().find(|c| c.name == "UserManager").expect("UserManager");
+    let user_mgr = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "UserManager")
+        .expect("UserManager");
     // init, addUser, createDefault, validate
-    assert!(user_mgr.methods.len() >= 4, "UserManager should have at least 4 methods, got {}", user_mgr.methods.len());
+    assert!(
+        user_mgr.methods.len() >= 4,
+        "UserManager should have at least 4 methods, got {}",
+        user_mgr.methods.len()
+    );
 
     let method_names: Vec<&str> = user_mgr.methods.iter().map(|m| m.name.as_str()).collect();
     assert!(method_names.contains(&"addUser"), "Missing addUser");
-    assert!(method_names.contains(&"createDefault"), "Missing createDefault");
+    assert!(
+        method_names.contains(&"createDefault"),
+        "Missing createDefault"
+    );
     assert!(method_names.contains(&"validate"), "Missing validate");
     assert!(method_names.contains(&"init"), "Missing init");
 }
@@ -137,45 +202,90 @@ fn test_swift_class_methods() {
 #[test]
 fn test_swift_class_properties() {
     let ir = extract_fixture("classes.swift");
-    let user_mgr = ir.classes.iter().find(|c| c.name == "UserManager").expect("UserManager");
+    let user_mgr = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "UserManager")
+        .expect("UserManager");
     assert_eq!(user_mgr.properties.len(), 2, "UserManager has 2 properties");
 
-    let users = user_mgr.properties.iter().find(|p| p.name == "users").expect("users property");
+    let users = user_mgr
+        .properties
+        .iter()
+        .find(|p| p.name == "users")
+        .expect("users property");
     assert!(!users.is_readonly, "users is var (mutable)");
 
-    let max_users = user_mgr.properties.iter().find(|p| p.name == "maxUsers").expect("maxUsers property");
+    let max_users = user_mgr
+        .properties
+        .iter()
+        .find(|p| p.name == "maxUsers")
+        .expect("maxUsers property");
     assert!(max_users.is_readonly, "maxUsers is let (readonly)");
 }
 
 #[test]
 fn test_swift_static_method() {
     let ir = extract_fixture("classes.swift");
-    let user_mgr = ir.classes.iter().find(|c| c.name == "UserManager").expect("UserManager");
-    let create = user_mgr.methods.iter().find(|m| m.name == "createDefault").expect("createDefault");
+    let user_mgr = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "UserManager")
+        .expect("UserManager");
+    let create = user_mgr
+        .methods
+        .iter()
+        .find(|m| m.name == "createDefault")
+        .expect("createDefault");
     assert!(create.is_static, "createDefault should be static");
 }
 
 #[test]
 fn test_swift_private_method() {
     let ir = extract_fixture("classes.swift");
-    let user_mgr = ir.classes.iter().find(|c| c.name == "UserManager").expect("UserManager");
-    let validate = user_mgr.methods.iter().find(|m| m.name == "validate").expect("validate");
-    assert_eq!(validate.visibility, Visibility::Private, "validate should be private");
+    let user_mgr = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "UserManager")
+        .expect("UserManager");
+    let validate = user_mgr
+        .methods
+        .iter()
+        .find(|m| m.name == "validate")
+        .expect("validate");
+    assert_eq!(
+        validate.visibility,
+        Visibility::Private,
+        "validate should be private"
+    );
 }
 
 #[test]
 fn test_swift_method_owner() {
     let ir = extract_fixture("classes.swift");
-    let user_mgr = ir.classes.iter().find(|c| c.name == "UserManager").expect("UserManager");
+    let user_mgr = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "UserManager")
+        .expect("UserManager");
     for method in &user_mgr.methods {
-        assert_eq!(method.owner.as_deref(), Some("UserManager"), "method {} owner should be UserManager", method.name);
+        assert_eq!(
+            method.owner.as_deref(),
+            Some("UserManager"),
+            "method {} owner should be UserManager",
+            method.name
+        );
     }
 }
 
 #[test]
 fn test_swift_struct_properties() {
     let ir = extract_fixture("classes.swift");
-    let point = ir.classes.iter().find(|c| c.name == "Point").expect("Point");
+    let point = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "Point")
+        .expect("Point");
     assert_eq!(point.properties.len(), 2, "Point has 2 properties");
 
     for prop in &point.properties {
@@ -186,18 +296,42 @@ fn test_swift_struct_properties() {
 #[test]
 fn test_swift_class_inheritance() {
     let ir = extract_fixture("classes.swift");
-    let admin = ir.classes.iter().find(|c| c.name == "AdminManager").expect("AdminManager");
-    assert_eq!(admin.extends.as_deref(), Some("UserManager"), "AdminManager extends UserManager");
+    let admin = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "AdminManager")
+        .expect("AdminManager");
+    assert_eq!(
+        admin.extends.as_deref(),
+        Some("UserManager"),
+        "AdminManager extends UserManager"
+    );
 }
 
 #[test]
 fn test_swift_class_visibility() {
     let ir = extract_fixture("classes.swift");
-    let admin = ir.classes.iter().find(|c| c.name == "AdminManager").expect("AdminManager");
-    assert_eq!(admin.visibility, Visibility::Public, "AdminManager is public");
+    let admin = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "AdminManager")
+        .expect("AdminManager");
+    assert_eq!(
+        admin.visibility,
+        Visibility::Public,
+        "AdminManager is public"
+    );
 
-    let user_mgr = ir.classes.iter().find(|c| c.name == "UserManager").expect("UserManager");
-    assert_eq!(user_mgr.visibility, Visibility::Internal, "UserManager defaults to internal");
+    let user_mgr = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "UserManager")
+        .expect("UserManager");
+    assert_eq!(
+        user_mgr.visibility,
+        Visibility::Internal,
+        "UserManager defaults to internal"
+    );
 }
 
 // =========================================================================
@@ -251,28 +385,63 @@ fn test_swift_services_names() {
 #[test]
 fn test_swift_services_kinds() {
     let ir = extract_fixture("services.swift");
-    let user_svc = ir.services.iter().find(|s| s.name == "UserService").expect("UserService");
-    assert_eq!(user_svc.kind, ServiceKind::Microservice, "UserService should be Microservice");
+    let user_svc = ir
+        .services
+        .iter()
+        .find(|s| s.name == "UserService")
+        .expect("UserService");
+    assert_eq!(
+        user_svc.kind,
+        ServiceKind::Microservice,
+        "UserService should be Microservice"
+    );
 
-    let controller = ir.services.iter().find(|s| s.name == "APIController").expect("APIController");
-    assert_eq!(controller.kind, ServiceKind::HttpController, "APIController should be HttpController");
+    let controller = ir
+        .services
+        .iter()
+        .find(|s| s.name == "APIController")
+        .expect("APIController");
+    assert_eq!(
+        controller.kind,
+        ServiceKind::HttpController,
+        "APIController should be HttpController"
+    );
 
-    let repo = ir.services.iter().find(|s| s.name == "UserRepository").expect("UserRepository");
-    assert_eq!(repo.kind, ServiceKind::Repository, "UserRepository should be Repository");
+    let repo = ir
+        .services
+        .iter()
+        .find(|s| s.name == "UserRepository")
+        .expect("UserRepository");
+    assert_eq!(
+        repo.kind,
+        ServiceKind::Repository,
+        "UserRepository should be Repository"
+    );
 }
 
 #[test]
 fn test_swift_services_methods() {
     let ir = extract_fixture("services.swift");
-    let user_svc = ir.services.iter().find(|s| s.name == "UserService").expect("UserService");
+    let user_svc = ir
+        .services
+        .iter()
+        .find(|s| s.name == "UserService")
+        .expect("UserService");
     assert_eq!(user_svc.methods.len(), 3, "UserService has 3 methods");
 }
 
 #[test]
 fn test_swift_services_attributes() {
     let ir = extract_fixture("services.swift");
-    let user_svc = ir.services.iter().find(|s| s.name == "UserService").expect("UserService");
-    assert!(user_svc.decorators.contains(&"MainActor".to_string()), "UserService should have @MainActor");
+    let user_svc = ir
+        .services
+        .iter()
+        .find(|s| s.name == "UserService")
+        .expect("UserService");
+    assert!(
+        user_svc.decorators.contains(&"MainActor".to_string()),
+        "UserService should have @MainActor"
+    );
 }
 
 // =========================================================================
@@ -291,25 +460,51 @@ fn test_swift_schemas_names() {
     let ir = extract_fixture("schemas.swift");
     let names: Vec<&str> = ir.schemas.iter().map(|s| s.name.as_str()).collect();
     assert!(names.contains(&"UserDTO"), "Missing UserDTO");
-    assert!(names.contains(&"ProductResponse"), "Missing ProductResponse");
+    assert!(
+        names.contains(&"ProductResponse"),
+        "Missing ProductResponse"
+    );
     assert!(names.contains(&"OrderModel"), "Missing OrderModel");
-    assert!(!names.contains(&"InternalConfig"), "InternalConfig should NOT be detected (not Codable)");
+    assert!(
+        !names.contains(&"InternalConfig"),
+        "InternalConfig should NOT be detected (not Codable)"
+    );
 }
 
 #[test]
 fn test_swift_schemas_kinds() {
     let ir = extract_fixture("schemas.swift");
-    let user_dto = ir.schemas.iter().find(|s| s.name == "UserDTO").expect("UserDTO");
-    assert_eq!(user_dto.kind, SchemaKind::DataTransfer, "UserDTO (struct) should be DataTransfer");
+    let user_dto = ir
+        .schemas
+        .iter()
+        .find(|s| s.name == "UserDTO")
+        .expect("UserDTO");
+    assert_eq!(
+        user_dto.kind,
+        SchemaKind::DataTransfer,
+        "UserDTO (struct) should be DataTransfer"
+    );
 
-    let order = ir.schemas.iter().find(|s| s.name == "OrderModel").expect("OrderModel");
-    assert_eq!(order.kind, SchemaKind::OrmModel, "OrderModel (class) should be OrmModel");
+    let order = ir
+        .schemas
+        .iter()
+        .find(|s| s.name == "OrderModel")
+        .expect("OrderModel");
+    assert_eq!(
+        order.kind,
+        SchemaKind::OrmModel,
+        "OrderModel (class) should be OrmModel"
+    );
 }
 
 #[test]
 fn test_swift_schemas_fields() {
     let ir = extract_fixture("schemas.swift");
-    let user_dto = ir.schemas.iter().find(|s| s.name == "UserDTO").expect("UserDTO");
+    let user_dto = ir
+        .schemas
+        .iter()
+        .find(|s| s.name == "UserDTO")
+        .expect("UserDTO");
     assert_eq!(user_dto.fields.len(), 4, "UserDTO has 4 fields");
 
     let field_names: Vec<&str> = user_dto.fields.iter().map(|f| f.name.as_str()).collect();
@@ -322,8 +517,16 @@ fn test_swift_schemas_fields() {
 #[test]
 fn test_swift_schemas_optional_fields() {
     let ir = extract_fixture("schemas.swift");
-    let product = ir.schemas.iter().find(|s| s.name == "ProductResponse").expect("ProductResponse");
-    let desc = product.fields.iter().find(|f| f.name == "description").expect("description field");
+    let product = ir
+        .schemas
+        .iter()
+        .find(|s| s.name == "ProductResponse")
+        .expect("ProductResponse");
+    let desc = product
+        .fields
+        .iter()
+        .find(|f| f.name == "description")
+        .expect("description field");
     assert!(desc.is_optional, "description should be optional (String?)");
 }
 
@@ -331,7 +534,10 @@ fn test_swift_schemas_optional_fields() {
 fn test_swift_schemas_framework() {
     let ir = extract_fixture("schemas.swift");
     for schema in &ir.schemas {
-        assert_eq!(schema.source_framework, "swift-codable", "framework should be swift-codable");
+        assert_eq!(
+            schema.source_framework, "swift-codable",
+            "framework should be swift-codable"
+        );
     }
 }
 
@@ -348,7 +554,11 @@ fn test_swift_extensions_count() {
 #[test]
 fn test_swift_extensions_targets() {
     let ir = extract_fixture("extensions.swift");
-    let targets: Vec<&str> = ir.implementations.iter().map(|i| i.target.as_str()).collect();
+    let targets: Vec<&str> = ir
+        .implementations
+        .iter()
+        .map(|i| i.target.as_str())
+        .collect();
     assert!(targets.contains(&"MyClass"), "Missing MyClass extension");
     assert!(targets.contains(&"String"), "Missing String extension");
 }
@@ -356,19 +566,31 @@ fn test_swift_extensions_targets() {
 #[test]
 fn test_swift_extension_protocol_conformance() {
     let ir = extract_fixture("extensions.swift");
-    let printable_ext = ir.implementations.iter()
+    let printable_ext = ir
+        .implementations
+        .iter()
         .find(|i| i.target == "MyClass" && i.trait_name.as_deref() == Some("Printable"))
         .expect("MyClass: Printable extension");
-    assert_eq!(printable_ext.methods.len(), 1, "Printable extension has 1 method");
+    assert_eq!(
+        printable_ext.methods.len(),
+        1,
+        "Printable extension has 1 method"
+    );
 }
 
 #[test]
 fn test_swift_extension_methods() {
     let ir = extract_fixture("extensions.swift");
-    let simple_ext = ir.implementations.iter()
+    let simple_ext = ir
+        .implementations
+        .iter()
         .find(|i| i.target == "MyClass" && i.trait_name.is_none())
         .expect("Simple MyClass extension");
-    assert_eq!(simple_ext.methods.len(), 2, "Simple extension has 2 methods");
+    assert_eq!(
+        simple_ext.methods.len(),
+        2,
+        "Simple extension has 2 methods"
+    );
 }
 
 // =========================================================================
@@ -379,5 +601,8 @@ fn test_swift_extension_methods() {
 fn test_swift_top_level_functions() {
     let ir = extract_fixture("classes.swift");
     // No top-level functions in classes.swift
-    assert!(ir.functions.is_empty(), "classes.swift has no top-level functions");
+    assert!(
+        ir.functions.is_empty(),
+        "classes.swift has no top-level functions"
+    );
 }

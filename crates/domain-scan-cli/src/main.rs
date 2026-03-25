@@ -5,12 +5,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use domain_scan_core::input_validation;
-use domain_scan_core::ir::{
-    BuildStatus, EntityKind, FilterParams, Language, ScanConfig,
-};
+use domain_scan_core::ir::{BuildStatus, EntityKind, FilterParams, Language, ScanConfig};
 use domain_scan_core::output::{self, OutputFormat};
 use domain_scan_core::prompt::PromptConfig;
-use domain_scan_core::{cache, index, manifest, manifest_builder, parser, prompt, query_engine, validate, walker};
+use domain_scan_core::{
+    cache, index, manifest, manifest_builder, parser, prompt, query_engine, validate, walker,
+};
 use serde::Deserialize;
 
 mod tui;
@@ -551,10 +551,9 @@ fn parse_json_input<T: serde::de::DeserializeOwned>(
 
     let depth = json_depth(&value);
     if depth > MAX_JSON_DEPTH {
-        return Err(format!(
-            "JSON nesting depth is {depth}, exceeds maximum of {MAX_JSON_DEPTH}"
-        )
-        .into());
+        return Err(
+            format!("JSON nesting depth is {depth}, exceeds maximum of {MAX_JSON_DEPTH}").into(),
+        );
     }
 
     serde_json::from_value(value).map_err(|e| {
@@ -647,10 +646,7 @@ fn validate_root_path(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     if !cli.root.exists() {
         let err = CliError {
             code: "PATH_NOT_FOUND",
-            message: format!(
-                "Root directory does not exist: {}",
-                cli.root.display()
-            ),
+            message: format!("Root directory does not exist: {}", cli.root.display()),
             suggestion: Some(
                 "Check the path and ensure the directory exists. \
                  Use --root to specify a different directory."
@@ -664,10 +660,7 @@ fn validate_root_path(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     if !cli.root.is_dir() {
         let err = CliError {
             code: "NOT_A_DIRECTORY",
-            message: format!(
-                "Root path is not a directory: {}",
-                cli.root.display()
-            ),
+            message: format!("Root path is not a directory: {}", cli.root.display()),
             suggestion: Some(
                 "The --root flag must point to a directory, not a file. \
                  Provide the parent directory instead."
@@ -687,10 +680,7 @@ fn validate_config_path(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         if !config_path.exists() {
             let err = CliError {
                 code: "CONFIG_NOT_FOUND",
-                message: format!(
-                    "Config file does not exist: {}",
-                    config_path.display()
-                ),
+                message: format!("Config file does not exist: {}", config_path.display()),
                 suggestion: Some(
                     "Check the path to your .domain-scan.toml file. \
                      If you don't have a config, omit the --config flag \
@@ -705,10 +695,7 @@ fn validate_config_path(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         if !config_path.is_file() {
             let err = CliError {
                 code: "CONFIG_NOT_FILE",
-                message: format!(
-                    "Config path is not a file: {}",
-                    config_path.display()
-                ),
+                message: format!("Config path is not a file: {}", config_path.display()),
                 suggestion: Some(
                     "The --config flag must point to a .domain-scan.toml file, \
                      not a directory."
@@ -735,9 +722,11 @@ fn find_workspace_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
             }
         }
         if !dir.pop() {
-            return Err("Could not find workspace root (Cargo.toml with [workspace]). \
+            return Err(
+                "Could not find workspace root (Cargo.toml with [workspace]). \
                         Run from within the domain-scan repository."
-                .into());
+                    .into(),
+            );
         }
     }
 }
@@ -758,8 +747,7 @@ fn validate_string_inputs(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
                             .to_string(),
                     ),
                 };
-                serde_json::to_string_pretty(&err)
-                    .unwrap_or_else(|_| e.to_string())
+                serde_json::to_string_pretty(&err).unwrap_or_else(|_| e.to_string())
             })?;
         }
         Ok(())
@@ -868,7 +856,10 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 cmd_scan(&cli, format)
             }
         }
-        Commands::Interfaces { ref name, show_methods } => {
+        Commands::Interfaces {
+            ref name,
+            show_methods,
+        } => {
             if let Some(ref json) = cli.json_input {
                 check_json_conflicts(&[
                     ("--name", name.is_some()),
@@ -909,7 +900,14 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 let scan_index = run_scan(&cli)?;
                 run_tui(tui::TuiApp::from_services(&scan_index))
             } else {
-                cmd_services(&cli, format, kind.clone(), name.clone(), *show_routes, *show_deps)
+                cmd_services(
+                    &cli,
+                    format,
+                    kind.clone(),
+                    name.clone(),
+                    *show_routes,
+                    *show_deps,
+                )
             }
         }
         Commands::Methods {
@@ -935,7 +933,14 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                     input.name,
                 )
             } else {
-                cmd_methods(&cli, format, owner.clone(), *is_async, visibility.clone(), name.clone())
+                cmd_methods(
+                    &cli,
+                    format,
+                    owner.clone(),
+                    *is_async,
+                    visibility.clone(),
+                    name.clone(),
+                )
             }
         }
         Commands::Schemas {
@@ -964,7 +969,14 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 let scan_index = run_scan(&cli)?;
                 run_tui(tui::TuiApp::from_schemas(&scan_index))
             } else {
-                cmd_schemas(&cli, format, framework.clone(), kind.clone(), name.clone(), *show_fields)
+                cmd_schemas(
+                    &cli,
+                    format,
+                    framework.clone(),
+                    kind.clone(),
+                    name.clone(),
+                    *show_fields,
+                )
             }
         }
         Commands::Impls {
@@ -1083,7 +1095,14 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             ref apply_manifest,
             dry_run,
             ref name,
-        } => cmd_init(&cli, format, *bootstrap, apply_manifest.clone(), *dry_run, name.clone()),
+        } => cmd_init(
+            &cli,
+            format,
+            *bootstrap,
+            apply_manifest.clone(),
+            *dry_run,
+            name.clone(),
+        ),
         Commands::Prompt {
             agents,
             ref focus,
@@ -1101,10 +1120,7 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
                 cmd_prompt(&cli, *agents, focus.clone(), *include_scan)
             }
         }
-        Commands::Schema {
-            ref command,
-            all,
-        } => cmd_schema(&cli, command.clone(), *all),
+        Commands::Schema { ref command, all } => cmd_schema(&cli, command.clone(), *all),
         Commands::Skills { ref action } => cmd_skills(&cli, action),
     }
 }
@@ -1198,7 +1214,11 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
             .map(|(lang, count)| format!("{lang:?}: {count}"))
             .collect();
         lang_parts.sort();
-        eprintln!("[verbose] walk: {}ms, files by language: {}", walk_ms, lang_parts.join(", "));
+        eprintln!(
+            "[verbose] walk: {}ms, files by language: {}",
+            walk_ms,
+            lang_parts.join(", ")
+        );
     }
 
     // Step 2: Optional cache
@@ -1214,7 +1234,10 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
 
     if cli.verbose && config.cache_enabled {
         let entries = disk_cache.as_ref().map_or(0, |c| c.len());
-        eprintln!("[verbose] cache load: {}ms, {} entries", cache_load_ms, entries);
+        eprintln!(
+            "[verbose] cache load: {}ms, {} entries",
+            cache_load_ms, entries
+        );
     }
 
     // Step 3: Parse + Extract (parallel via rayon)
@@ -1224,40 +1247,41 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
     let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
 
     use rayon::prelude::*;
-    let ir_results: Vec<Result<domain_scan_core::ir::IrFile, Box<dyn std::error::Error + Send + Sync>>> =
-        walked
-            .par_iter()
-            .map(|walked_file| {
-                // Try cache first
-                let source_bytes = std::fs::read(&walked_file.path)?;
-                let hash = domain_scan_core::content_hash(&source_bytes);
+    let ir_results: Vec<
+        Result<domain_scan_core::ir::IrFile, Box<dyn std::error::Error + Send + Sync>>,
+    > = walked
+        .par_iter()
+        .map(|walked_file| {
+            // Try cache first
+            let source_bytes = std::fs::read(&walked_file.path)?;
+            let hash = domain_scan_core::content_hash(&source_bytes);
 
-                if let Some(ref c) = disk_cache {
-                    if let Some(cached_ir) = c.get(&hash) {
-                        cache_hits.fetch_add(1, Ordering::Relaxed);
-                        return Ok(cached_ir);
-                    }
+            if let Some(ref c) = disk_cache {
+                if let Some(cached_ir) = c.get(&hash) {
+                    cache_hits.fetch_add(1, Ordering::Relaxed);
+                    return Ok(cached_ir);
                 }
+            }
 
-                cache_misses.fetch_add(1, Ordering::Relaxed);
+            cache_misses.fetch_add(1, Ordering::Relaxed);
 
-                let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)?;
-                let ir = query_engine::extract(
-                    &tree,
-                    &source,
-                    &walked_file.path,
-                    walked_file.language,
-                    build_status,
-                )?;
+            let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)?;
+            let ir = query_engine::extract(
+                &tree,
+                &source,
+                &walked_file.path,
+                walked_file.language,
+                build_status,
+            )?;
 
-                // Store in cache (DashMap is thread-safe)
-                if let Some(ref c) = disk_cache {
-                    let _ = c.insert(hash, ir.clone());
-                }
+            // Store in cache (DashMap is thread-safe)
+            if let Some(ref c) = disk_cache {
+                let _ = c.insert(hash, ir.clone());
+            }
 
-                Ok(ir)
-            })
-            .collect();
+            Ok(ir)
+        })
+        .collect();
 
     // Collect results, propagate first error
     let mut ir_files = Vec::with_capacity(ir_results.len());
@@ -1288,13 +1312,8 @@ fn run_scan(cli: &Cli) -> Result<domain_scan_core::ir::ScanIndex, Box<dyn std::e
     // Step 4: Build Index
     let index_start = std::time::Instant::now();
     let duration_ms = total_start.elapsed().as_millis() as u64;
-    let scan_index = index::build_index(
-        config.root,
-        ir_files,
-        duration_ms,
-        cache_hits,
-        cache_misses,
-    );
+    let scan_index =
+        index::build_index(config.root, ir_files, duration_ms, cache_hits, cache_misses);
     let index_ms = index_start.elapsed().as_millis();
 
     if cli.verbose {
@@ -1363,10 +1382,7 @@ fn emit_json<T: serde::Serialize>(
                     let valid_list: Vec<&str> = valid.iter().map(|s| s.as_str()).collect();
                     let err = CliError {
                         code: "INVALID_FIELDS",
-                        message: format!(
-                            "Unknown field(s): {}",
-                            invalid.join(", ")
-                        ),
+                        message: format!("Unknown field(s): {}", invalid.join(", ")),
                         suggestion: Some(format!(
                             "Valid fields for '{}': {}",
                             cmd,
@@ -1515,14 +1531,12 @@ fn cmd_interfaces(
         }
         OutputFormat::Table => {
             let mut table = comfy_table::Table::new();
-            table.set_header(vec!["Language", "Kind", "Name", "Methods", "Extends", "File"]);
+            table.set_header(vec![
+                "Language", "Kind", "Name", "Methods", "Extends", "File",
+            ]);
             for iface in &interfaces {
                 let extends = iface.extends.join(", ");
-                let file_loc = format!(
-                    "{}:{}",
-                    iface.file.display(),
-                    iface.span.start_line
-                );
+                let file_loc = format!("{}:{}", iface.file.display(), iface.span.start_line);
                 table.add_row(vec![
                     interface_kind_str(&iface.language_kind).to_string(),
                     interface_kind_str(&iface.language_kind).to_string(),
@@ -1599,8 +1613,7 @@ fn cmd_services(
             }
             table.set_header(headers);
             for svc in &services {
-                let file_loc =
-                    format!("{}:{}", svc.file.display(), svc.span.start_line);
+                let file_loc = format!("{}:{}", svc.file.display(), svc.span.start_line);
                 let mut row = vec![
                     format!("{:?}", svc.kind),
                     svc.name.clone(),
@@ -1696,12 +1709,18 @@ fn cmd_methods(
         }
         OutputFormat::Table => {
             let mut table = comfy_table::Table::new();
-            table.set_header(vec!["Name", "Owner", "Async", "Visibility", "Return", "File"]);
+            table.set_header(vec![
+                "Name",
+                "Owner",
+                "Async",
+                "Visibility",
+                "Return",
+                "File",
+            ]);
             for m in &methods {
                 let owner_name = m.owner.as_deref().unwrap_or("-");
                 let ret = m.return_type.as_deref().unwrap_or("-");
-                let file_loc =
-                    format!("{}:{}", m.file.display(), m.span.start_line);
+                let file_loc = format!("{}:{}", m.file.display(), m.span.start_line);
                 table.add_row(vec![
                     m.name.clone(),
                     owner_name.to_string(),
@@ -1721,10 +1740,7 @@ fn cmd_methods(
                 if owner_name.is_empty() {
                     out.push_str(&format!("method:{async_str}{}\n", m.name));
                 } else {
-                    out.push_str(&format!(
-                        "method:{owner_name}.{async_str}{}\n",
-                        m.name
-                    ));
+                    out.push_str(&format!("method:{owner_name}.{async_str}{}\n", m.name));
                 }
             }
             emit(cli, &out)?;
@@ -1764,8 +1780,7 @@ fn cmd_schemas(
             let mut table = comfy_table::Table::new();
             table.set_header(vec!["Framework", "Kind", "Name", "Fields", "File"]);
             for s in &schemas {
-                let file_loc =
-                    format!("{}:{}", s.file.display(), s.span.start_line);
+                let file_loc = format!("{}:{}", s.file.display(), s.span.start_line);
                 table.add_row(vec![
                     s.source_framework.clone(),
                     format!("{:?}", s.kind),
@@ -1843,11 +1858,7 @@ fn cmd_impls(
                 table.set_header(headers);
                 for imp in &all_impls {
                     let trait_name = imp.trait_name.as_deref().unwrap_or("-");
-                    let file_loc = format!(
-                        "{}:{}",
-                        imp.file.display(),
-                        imp.span.start_line
-                    );
+                    let file_loc = format!("{}:{}", imp.file.display(), imp.span.start_line);
                     let mut row = vec![
                         imp.target.clone(),
                         trait_name.to_string(),
@@ -1901,16 +1912,8 @@ fn cmd_impls(
                 }
                 table.set_header(headers);
                 for imp in &impls {
-                    let file_loc = format!(
-                        "{}:{}",
-                        imp.file.display(),
-                        imp.span.start_line
-                    );
-                    let mut row = vec![
-                        imp.target.clone(),
-                        imp.methods.len().to_string(),
-                        file_loc,
-                    ];
+                    let file_loc = format!("{}:{}", imp.file.display(), imp.span.start_line);
+                    let mut row = vec![imp.target.clone(), imp.methods.len().to_string(), file_loc];
                     if show_methods {
                         let names: Vec<_> = imp.methods.iter().map(|m| m.name.as_str()).collect();
                         row.push(names.join(", "));
@@ -2000,12 +2003,7 @@ fn cmd_search(
         OutputFormat::Compact => {
             let mut out = String::new();
             for s in &summaries {
-                out.push_str(&format!(
-                    "{:?}:{} [{}]\n",
-                    s.kind,
-                    s.name,
-                    s.file.display(),
-                ));
+                out.push_str(&format!("{:?}:{} [{}]\n", s.kind, s.name, s.file.display(),));
             }
             emit(cli, &out)?;
         }
@@ -2033,10 +2031,7 @@ fn cmd_stats(cli: &Cli, format: OutputFormat) -> Result<(), Box<dyn std::error::
 
             let mut langs: Vec<_> = stats.files_by_language.iter().collect();
             langs.sort_by(|a, b| b.1.cmp(a.1));
-            let lang_str: Vec<_> = langs
-                .iter()
-                .map(|(l, c)| format!("{l} ({c})"))
-                .collect();
+            let lang_str: Vec<_> = langs.iter().map(|(l, c)| format!("{l} ({c})")).collect();
             out.push_str(&format!("Languages:       {}\n", lang_str.join(", ")));
 
             out.push('\n');
@@ -2047,7 +2042,10 @@ fn cmd_stats(cli: &Cli, format: OutputFormat) -> Result<(), Box<dyn std::error::
             out.push_str(&format!("Functions:       {}\n", stats.total_functions));
             out.push_str(&format!("Schemas:         {}\n", stats.total_schemas));
             out.push_str(&format!("Type aliases:    {}\n", stats.total_type_aliases));
-            out.push_str(&format!("Implementations: {}\n", stats.total_implementations));
+            out.push_str(&format!(
+                "Implementations: {}\n",
+                stats.total_implementations
+            ));
 
             if stats.parse_duration_ms > 0 || stats.cache_hits > 0 {
                 out.push('\n');
@@ -2106,9 +2104,7 @@ fn cmd_validate_self_test(
 
     let mut ir_files = Vec::new();
     for walked_file in &walked {
-        let build_status = config
-            .build_status_override
-            .unwrap_or(BuildStatus::Built);
+        let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
         let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)?;
         let ir = query_engine::extract(
             &tree,
@@ -2167,9 +2163,71 @@ fn cmd_validate(
     cli: &Cli,
     format: OutputFormat,
     rules: Option<String>,
-    _manifest_path: Option<PathBuf>,
+    manifest_path: Option<PathBuf>,
     strict: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(ref manifest_path) = manifest_path {
+        if rules.is_some() {
+            return Err(
+                "validate --manifest cannot be combined with --rules. \
+                 Use validate without --manifest for entity rules, or run match separately for coverage."
+                    .into(),
+            );
+        }
+        let system_manifest = manifest::parse_system_manifest_file(manifest_path)?;
+        let scan_index = run_scan(cli)?;
+        let violations = manifest::validate_system_manifest(&system_manifest);
+        let match_result = manifest::match_entities(&scan_index, &system_manifest.as_manifest());
+        let report = manifest::ManifestValidationReport {
+            manifest_path: manifest_path.display().to_string(),
+            domains: system_manifest.domains.len(),
+            subsystems: system_manifest.subsystems.len(),
+            connections: system_manifest.connections.len(),
+            validation_errors: violations.len(),
+            violations,
+            coverage_percent: match_result.coverage_percent,
+            matched: match_result.matched.len(),
+            unmatched: match_result.unmatched.len(),
+        };
+
+        match format {
+            OutputFormat::Json => {
+                emit_json(cli, &report, format, None)?;
+            }
+            OutputFormat::Table | OutputFormat::Compact => {
+                let mut out = format!(
+                    "Manifest: {}\n\
+                     Domains: {} | Subsystems: {} | Connections: {}\n\
+                     Validation errors: {}\n\
+                     Coverage: {:.1}% ({} matched, {} unmatched)\n",
+                    report.manifest_path,
+                    report.domains,
+                    report.subsystems,
+                    report.connections,
+                    report.validation_errors,
+                    report.coverage_percent,
+                    report.matched,
+                    report.unmatched,
+                );
+                if !report.violations.is_empty() {
+                    out.push_str("\nValidation errors:\n");
+                    for v in &report.violations {
+                        out.push_str(&format!(
+                            "  {} / {}: '{}' (expected {})\n",
+                            v.subsystem_id, v.field, v.value, v.expected,
+                        ));
+                    }
+                }
+                emit(cli, &out)?;
+            }
+        }
+
+        if report.validation_errors > 0 {
+            process::exit(1);
+        }
+        return Ok(());
+    }
+
     let scan_index = run_scan(cli)?;
 
     let result = if let Some(ref rule_list) = rules {
@@ -2239,17 +2297,16 @@ fn cmd_match(
     // --write-back (with optional --dry-run)
     if write_back {
         // Try SystemManifest first (preserves meta/domains/connections)
-        let serialized = if let Ok(mut sys_manifest) =
-            manifest::parse_system_manifest_file(&manifest_path)
-        {
-            manifest::write_back_system(&mut sys_manifest, &result, &scan_index);
-            manifest::serialize_system_manifest(&sys_manifest)?
-        } else {
-            // Fallback: plain Manifest (subsystems only)
-            let mut updated_manifest = manifest_data.clone();
-            manifest::write_back(&mut updated_manifest, &result, &scan_index);
-            manifest::serialize_manifest(&updated_manifest)?
-        };
+        let serialized =
+            if let Ok(mut sys_manifest) = manifest::parse_system_manifest_file(&manifest_path) {
+                manifest::write_back_system(&mut sys_manifest, &result, &scan_index);
+                manifest::serialize_system_manifest(&sys_manifest)?
+            } else {
+                // Fallback: plain Manifest (subsystems only)
+                let mut updated_manifest = manifest_data.clone();
+                manifest::write_back(&mut updated_manifest, &result, &scan_index);
+                manifest::serialize_manifest(&updated_manifest)?
+            };
 
         if dry_run {
             // Show what would be written as structured JSON
@@ -2273,12 +2330,8 @@ fn cmd_match(
         }
 
         // Actually write the manifest
-        std::fs::write(&manifest_path, serialized.as_bytes()).map_err(|e| {
-            format!(
-                "failed to write manifest {}: {e}",
-                manifest_path.display()
-            )
-        })?;
+        std::fs::write(&manifest_path, serialized.as_bytes())
+            .map_err(|e| format!("failed to write manifest {}: {e}", manifest_path.display()))?;
         eprintln!(
             "Wrote back {} matched entities to {}",
             result.matched.len(),
@@ -2435,10 +2488,7 @@ fn cmd_schema(
             }
             None => {
                 let names = schema::all_command_names().join(", ");
-                Err(format!(
-                    "Unknown command: '{cmd_name}'. Valid commands: {names}"
-                )
-                .into())
+                Err(format!("Unknown command: '{cmd_name}'. Valid commands: {names}").into())
             }
         }
     } else {
@@ -2458,17 +2508,50 @@ fn cmd_schema(
 // ---------------------------------------------------------------------------
 
 const EMBEDDED_SKILLS: &[(&str, &str)] = &[
-    ("domain-scan-cli", include_str!("../../../skills/domain-scan-cli.md")),
-    ("domain-scan-scan", include_str!("../../../skills/domain-scan-scan.md")),
-    ("domain-scan-query", include_str!("../../../skills/domain-scan-query.md")),
-    ("domain-scan-validate", include_str!("../../../skills/domain-scan-validate.md")),
-    ("domain-scan-match", include_str!("../../../skills/domain-scan-match.md")),
-    ("domain-scan-prompt", include_str!("../../../skills/domain-scan-prompt.md")),
-    ("domain-scan-cache", include_str!("../../../skills/domain-scan-cache.md")),
-    ("domain-scan-safety", include_str!("../../../skills/domain-scan-safety.md")),
-    ("domain-scan-schema", include_str!("../../../skills/domain-scan-schema.md")),
-    ("domain-scan-init", include_str!("../../../skills/domain-scan-init.md")),
-    ("domain-scan-tube-map", include_str!("../../../skills/domain-scan-tube-map.md")),
+    (
+        "domain-scan-cli",
+        include_str!("../../../skills/domain-scan-cli.md"),
+    ),
+    (
+        "domain-scan-scan",
+        include_str!("../../../skills/domain-scan-scan.md"),
+    ),
+    (
+        "domain-scan-query",
+        include_str!("../../../skills/domain-scan-query.md"),
+    ),
+    (
+        "domain-scan-validate",
+        include_str!("../../../skills/domain-scan-validate.md"),
+    ),
+    (
+        "domain-scan-match",
+        include_str!("../../../skills/domain-scan-match.md"),
+    ),
+    (
+        "domain-scan-prompt",
+        include_str!("../../../skills/domain-scan-prompt.md"),
+    ),
+    (
+        "domain-scan-cache",
+        include_str!("../../../skills/domain-scan-cache.md"),
+    ),
+    (
+        "domain-scan-safety",
+        include_str!("../../../skills/domain-scan-safety.md"),
+    ),
+    (
+        "domain-scan-schema",
+        include_str!("../../../skills/domain-scan-schema.md"),
+    ),
+    (
+        "domain-scan-init",
+        include_str!("../../../skills/domain-scan-init.md"),
+    ),
+    (
+        "domain-scan-tube-map",
+        include_str!("../../../skills/domain-scan-tube-map.md"),
+    ),
 ];
 
 // ---------------------------------------------------------------------------
@@ -2490,8 +2573,7 @@ fn cmd_skills(cli: &Cli, action: &SkillsAction) -> Result<(), Box<dyn std::error
             match skill {
                 Some(content) => emit(cli, content),
                 None => {
-                    let names: Vec<&str> =
-                        EMBEDDED_SKILLS.iter().map(|(n, _)| *n).collect();
+                    let names: Vec<&str> = EMBEDDED_SKILLS.iter().map(|(n, _)| *n).collect();
                     Err(format!(
                         "Unknown skill: '{}'. Available skills: {}",
                         name,
@@ -2543,18 +2625,13 @@ fn cmd_skills_install(
     }
 
     for target_dir in &targets {
-        std::fs::create_dir_all(target_dir).map_err(|e| {
-            format!(
-                "Failed to create directory {}: {e}",
-                target_dir.display()
-            )
-        })?;
+        std::fs::create_dir_all(target_dir)
+            .map_err(|e| format!("Failed to create directory {}: {e}", target_dir.display()))?;
 
         for (name, content) in EMBEDDED_SKILLS {
             let file_path = target_dir.join(format!("{name}.md"));
-            std::fs::write(&file_path, content).map_err(|e| {
-                format!("Failed to write {}: {e}", file_path.display())
-            })?;
+            std::fs::write(&file_path, content)
+                .map_err(|e| format!("Failed to write {}: {e}", file_path.display()))?;
         }
 
         if !cli.quiet {
@@ -2575,9 +2652,7 @@ fn cmd_skills_install(
 /// Add the skills directory to .gitignore if not already present.
 fn update_gitignore(root: &Path, skills_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let gitignore_path = root.join(".gitignore");
-    let relative = skills_dir
-        .strip_prefix(root)
-        .unwrap_or(skills_dir);
+    let relative = skills_dir.strip_prefix(root).unwrap_or(skills_dir);
     let entry = format!("{}/", relative.display());
 
     let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
@@ -2632,12 +2707,10 @@ fn cmd_init(
     }
 
     if !bootstrap {
-        return Err(
-            "init requires --bootstrap or --apply-manifest. \
+        return Err("init requires --bootstrap or --apply-manifest. \
              Use --bootstrap to infer domains/subsystems from the codebase, \
              or --apply-manifest <path> to validate an existing manifest."
-                .into(),
-        );
+            .into());
     }
 
     // --bootstrap: scan codebase, infer manifest
@@ -2653,7 +2726,10 @@ fn cmd_init(
 
     if dry_run {
         // Show what would be written
-        let output_path = cli.out.as_deref().unwrap_or(std::path::Path::new("system.json"));
+        let output_path = cli
+            .out
+            .as_deref()
+            .unwrap_or(std::path::Path::new("system.json"));
         if !cli.quiet {
             eprintln!(
                 "Dry run: would write manifest with {} domains, {} subsystems, {} connections to {}",
@@ -2695,9 +2771,8 @@ fn cmd_init(
 
     // Write the manifest to file
     if let Some(ref out_path) = cli.out {
-        std::fs::write(out_path, json_output.as_bytes()).map_err(|e| {
-            format!("failed to write manifest to {}: {e}", out_path.display())
-        })?;
+        std::fs::write(out_path, json_output.as_bytes())
+            .map_err(|e| format!("failed to write manifest to {}: {e}", out_path.display()))?;
         if !cli.quiet {
             eprintln!(
                 "Wrote manifest with {} domains, {} subsystems, {} connections to {}",
@@ -2726,29 +2801,28 @@ fn cmd_init_apply(
 
     // Validate
     let simple_manifest = system_manifest.as_manifest();
-    let violations = manifest::validate_manifest(&simple_manifest);
+    let violations = manifest::validate_system_manifest(&system_manifest);
 
     // Run scan and match
     let scan_index = run_scan(cli)?;
     let match_result = manifest::match_entities(&scan_index, &simple_manifest);
+    let report = manifest::ManifestValidationReport {
+        manifest_path: manifest_path.display().to_string(),
+        domains: system_manifest.domains.len(),
+        subsystems: system_manifest.subsystems.len(),
+        connections: system_manifest.connections.len(),
+        validation_errors: violations.len(),
+        violations,
+        coverage_percent: match_result.coverage_percent,
+        matched: match_result.matched.len(),
+        unmatched: match_result.unmatched.len(),
+    };
 
     if dry_run {
         // Show validation + coverage without writing
-        let result = serde_json::json!({
-            "manifest_path": manifest_path.display().to_string(),
-            "domains": system_manifest.domains.len(),
-            "subsystems": system_manifest.subsystems.len(),
-            "connections": system_manifest.connections.len(),
-            "validation_errors": violations.len(),
-            "coverage_percent": match_result.coverage_percent,
-            "matched": match_result.matched.len(),
-            "unmatched": match_result.unmatched.len(),
-        });
-
         match format {
             OutputFormat::Json => {
-                let json = serde_json::to_string_pretty(&result)?;
-                emit(cli, &json)?;
+                emit_json(cli, &report, format, None)?;
             }
             OutputFormat::Table | OutputFormat::Compact => {
                 let mut out = format!(
@@ -2756,18 +2830,18 @@ fn cmd_init_apply(
                      Domains: {} | Subsystems: {} | Connections: {}\n\
                      Validation errors: {}\n\
                      Coverage: {:.1}% ({} matched, {} unmatched)\n",
-                    manifest_path.display(),
-                    system_manifest.domains.len(),
-                    system_manifest.subsystems.len(),
-                    system_manifest.connections.len(),
-                    violations.len(),
-                    match_result.coverage_percent,
-                    match_result.matched.len(),
-                    match_result.unmatched.len(),
+                    report.manifest_path,
+                    report.domains,
+                    report.subsystems,
+                    report.connections,
+                    report.validation_errors,
+                    report.coverage_percent,
+                    report.matched,
+                    report.unmatched,
                 );
-                if !violations.is_empty() {
+                if !report.violations.is_empty() {
                     out.push_str("\nValidation errors:\n");
-                    for v in &violations {
+                    for v in &report.violations {
                         out.push_str(&format!(
                             "  {} / {}: '{}' (expected {})\n",
                             v.subsystem_id, v.field, v.value, v.expected,
@@ -2783,13 +2857,15 @@ fn cmd_init_apply(
     // --apply-manifest without --dry-run: write the file back (re-serialized)
     let serialized = serde_json::to_string_pretty(&system_manifest)?;
     if let Some(ref out_path) = cli.out {
-        std::fs::write(out_path, serialized.as_bytes()).map_err(|e| {
-            format!("failed to write manifest to {}: {e}", out_path.display())
-        })?;
+        std::fs::write(out_path, serialized.as_bytes())
+            .map_err(|e| format!("failed to write manifest to {}: {e}", out_path.display()))?;
     } else {
         // Overwrite original file
         std::fs::write(manifest_path, serialized.as_bytes()).map_err(|e| {
-            format!("failed to write manifest to {}: {e}", manifest_path.display())
+            format!(
+                "failed to write manifest to {}: {e}",
+                manifest_path.display()
+            )
         })?;
     }
 
@@ -2813,17 +2889,26 @@ mod tests {
 
     #[test]
     fn resolve_format_explicit_json() {
-        assert_eq!(resolve_format(Some(OutputFormatArg::Json)), OutputFormat::Json);
+        assert_eq!(
+            resolve_format(Some(OutputFormatArg::Json)),
+            OutputFormat::Json
+        );
     }
 
     #[test]
     fn resolve_format_explicit_table() {
-        assert_eq!(resolve_format(Some(OutputFormatArg::Table)), OutputFormat::Table);
+        assert_eq!(
+            resolve_format(Some(OutputFormatArg::Table)),
+            OutputFormat::Table
+        );
     }
 
     #[test]
     fn resolve_format_explicit_compact() {
-        assert_eq!(resolve_format(Some(OutputFormatArg::Compact)), OutputFormat::Compact);
+        assert_eq!(
+            resolve_format(Some(OutputFormatArg::Compact)),
+            OutputFormat::Compact
+        );
     }
 
     #[test]

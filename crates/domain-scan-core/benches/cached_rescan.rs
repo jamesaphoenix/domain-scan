@@ -36,7 +36,11 @@ fn fixture_files() -> Vec<(PathBuf, Language)> {
         if let Ok(entries) = std::fs::read_dir(&lang_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() && !path.extension().is_some_and(|e| e == "json" || e == "bincode") {
+                if path.is_file()
+                    && !path
+                        .extension()
+                        .is_some_and(|e| e == "json" || e == "bincode")
+                {
                     files.push((path, *language));
                 }
             }
@@ -59,11 +63,13 @@ fn bench_cached_rescan(c: &mut Criterion) {
     for (path, lang) in &files {
         let source = std::fs::read(path).unwrap_or_else(|e| panic!("read: {e}"));
         let hash = domain_scan_core::content_hash(&source);
-        let (tree, source_bytes) = parser::parse_file(path, *lang)
-            .unwrap_or_else(|e| panic!("parse: {e}"));
+        let (tree, source_bytes) =
+            parser::parse_file(path, *lang).unwrap_or_else(|e| panic!("parse: {e}"));
         let ir = query_engine::extract(&tree, &source_bytes, path, *lang, BuildStatus::Built)
             .unwrap_or_else(|e| panic!("extract: {e}"));
-        cache.insert(hash.clone(), ir).unwrap_or_else(|e| panic!("cache insert: {e}"));
+        cache
+            .insert(hash.clone(), ir)
+            .unwrap_or_else(|e| panic!("cache insert: {e}"));
         file_hashes.push((path.clone(), *lang, hash));
     }
 
@@ -72,39 +78,32 @@ fn bench_cached_rescan(c: &mut Criterion) {
     group.sample_size(50);
 
     // Benchmark: read source, compute hash, cache lookup (cache hit path)
-    group.bench_function(
-        BenchmarkId::new("cache_hit", file_count),
-        |b| {
-            b.iter(|| {
-                for (path, _lang, expected_hash) in &file_hashes {
-                    let source = std::fs::read(black_box(path))
-                        .unwrap_or_else(|e| panic!("read: {e}"));
-                    let hash = domain_scan_core::content_hash(&source);
-                    assert_eq!(&hash, expected_hash);
-                    let ir = cache.get(&hash);
-                    assert!(ir.is_some(), "expected cache hit");
-                    black_box(ir);
-                }
-            });
-        },
-    );
+    group.bench_function(BenchmarkId::new("cache_hit", file_count), |b| {
+        b.iter(|| {
+            for (path, _lang, expected_hash) in &file_hashes {
+                let source = std::fs::read(black_box(path)).unwrap_or_else(|e| panic!("read: {e}"));
+                let hash = domain_scan_core::content_hash(&source);
+                assert_eq!(&hash, expected_hash);
+                let ir = cache.get(&hash);
+                assert!(ir.is_some(), "expected cache hit");
+                black_box(ir);
+            }
+        });
+    });
 
     // Benchmark: just the hash computation (to isolate overhead)
-    group.bench_function(
-        BenchmarkId::new("hash_only", file_count),
-        |b| {
-            // Pre-read all file contents to isolate hashing cost
-            let contents: Vec<Vec<u8>> = file_hashes
-                .iter()
-                .map(|(path, _, _)| std::fs::read(path).unwrap_or_else(|e| panic!("read: {e}")))
-                .collect();
-            b.iter(|| {
-                for content in &contents {
-                    black_box(domain_scan_core::content_hash(black_box(content)));
-                }
-            });
-        },
-    );
+    group.bench_function(BenchmarkId::new("hash_only", file_count), |b| {
+        // Pre-read all file contents to isolate hashing cost
+        let contents: Vec<Vec<u8>> = file_hashes
+            .iter()
+            .map(|(path, _, _)| std::fs::read(path).unwrap_or_else(|e| panic!("read: {e}")))
+            .collect();
+        b.iter(|| {
+            for content in &contents {
+                black_box(domain_scan_core::content_hash(black_box(content)));
+            }
+        });
+    });
 
     group.finish();
 }

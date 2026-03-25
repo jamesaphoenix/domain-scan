@@ -79,7 +79,10 @@ fn test_kotlin_interface_generics() {
         .iter()
         .find(|i| i.name == "EventHandler")
         .expect("EventHandler not found");
-    assert!(!handler.generics.is_empty(), "EventHandler should have generics");
+    assert!(
+        !handler.generics.is_empty(),
+        "EventHandler should have generics"
+    );
 }
 
 #[test]
@@ -149,10 +152,7 @@ fn test_kotlin_class_generics() {
         .iter()
         .find(|c| c.name == "Config")
         .expect("Config not found");
-    assert!(
-        !config.generics.is_empty(),
-        "Config should have generics"
-    );
+    assert!(!config.generics.is_empty(), "Config should have generics");
 }
 
 #[test]
@@ -173,10 +173,7 @@ fn test_kotlin_class_methods() {
 #[test]
 fn test_kotlin_class_visibility() {
     let ir = extract_fixture("classes.kt");
-    let internal = ir
-        .classes
-        .iter()
-        .find(|c| c.name == "InternalHelper");
+    let internal = ir.classes.iter().find(|c| c.name == "InternalHelper");
     // InternalHelper is declared as `internal class`
     if let Some(helper) = internal {
         assert_ne!(
@@ -327,11 +324,7 @@ fn test_kotlin_schema_fields() {
         .iter()
         .find(|s| s.name == "User")
         .expect("User schema not found");
-    assert_eq!(
-        user.fields.len(),
-        4,
-        "User should have 4 fields"
-    );
+    assert_eq!(user.fields.len(), 4, "User should have 4 fields");
     let field_names: Vec<&str> = user.fields.iter().map(|f| f.name.as_str()).collect();
     assert!(field_names.contains(&"id"));
     assert!(field_names.contains(&"name"));

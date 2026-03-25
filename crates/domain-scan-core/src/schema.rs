@@ -147,7 +147,10 @@ pub fn prompt_schema() -> CommandSchema {
         output: {
             // Prompt output is a plain string
             let mut map = serde_json::Map::new();
-            map.insert("type".to_string(), serde_json::Value::String("string".to_string()));
+            map.insert(
+                "type".to_string(),
+                serde_json::Value::String("string".to_string()),
+            );
             map.insert(
                 "description".to_string(),
                 serde_json::Value::String(
@@ -281,13 +284,19 @@ mod tests {
     fn test_prompt_schema_output_is_string_type() {
         let schema = prompt_schema();
         let output = &schema.output;
-        assert_eq!(output.get("type"), Some(&serde_json::Value::String("string".to_string())));
+        assert_eq!(
+            output.get("type"),
+            Some(&serde_json::Value::String("string".to_string()))
+        );
     }
 
     #[test]
     fn test_schema_init_registered() {
         let schema = schema_for_command("init");
-        assert!(schema.is_some(), "schema_for_command(\"init\") should return Some");
+        assert!(
+            schema.is_some(),
+            "schema_for_command(\"init\") should return Some"
+        );
         if let Some(schema) = schema {
             assert_eq!(schema.command, "init");
             assert!(!schema.description.is_empty());
@@ -311,7 +320,10 @@ mod tests {
         let json = serde_json::to_string_pretty(&schema)?;
         let parsed: serde_json::Value = serde_json::from_str(&json)?;
         assert!(parsed.is_object());
-        assert_eq!(parsed.get("command"), Some(&serde_json::Value::String("init".to_string())));
+        assert_eq!(
+            parsed.get("command"),
+            Some(&serde_json::Value::String("init".to_string()))
+        );
         Ok(())
     }
 }

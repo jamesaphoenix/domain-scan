@@ -66,7 +66,10 @@ thread_local! {
 /// Parse source code into a tree-sitter syntax tree.
 ///
 /// Uses a thread-local parser pool so this is safe to call from rayon workers.
-pub fn parse_source(source: &[u8], language: Language) -> Result<tree_sitter::Tree, DomainScanError> {
+pub fn parse_source(
+    source: &[u8],
+    language: Language,
+) -> Result<tree_sitter::Tree, DomainScanError> {
     let ts_lang = get_tree_sitter_language(language)?;
     PARSER.with(|parser| {
         let mut parser = parser.borrow_mut();
@@ -80,7 +83,10 @@ pub fn parse_source(source: &[u8], language: Language) -> Result<tree_sitter::Tr
 }
 
 /// Parse a file from disk into a tree-sitter syntax tree.
-pub fn parse_file(path: &Path, language: Language) -> Result<(tree_sitter::Tree, Vec<u8>), DomainScanError> {
+pub fn parse_file(
+    path: &Path,
+    language: Language,
+) -> Result<(tree_sitter::Tree, Vec<u8>), DomainScanError> {
     let source = std::fs::read(path)?;
     let tree = parse_source(&source, language)?;
     Ok((tree, source))

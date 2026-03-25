@@ -179,8 +179,8 @@ fn resolve_absolute_path(path: &str, path_index: &HashMap<String, usize>) -> Opt
 /// Try adding common file extensions to resolve a path.
 fn resolve_with_extensions(source: &str, path_index: &HashMap<String, usize>) -> Option<usize> {
     for ext in &[
-        "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "kt", "scala", "cs", "swift",
-        "cpp", "hpp", "php", "rb",
+        "ts", "tsx", "js", "jsx", "py", "rs", "go", "java", "kt", "scala", "cs", "swift", "cpp",
+        "hpp", "php", "rb",
     ] {
         let with_ext = format!("{source}.{ext}");
         if let Some(&idx) = path_index.get(&with_ext) {
@@ -268,13 +268,8 @@ fn resolve_implementations(
     for file in files {
         for class in &file.classes {
             for iface_name in &class.implements {
-                let interface_file = find_interface_file(
-                    iface_name,
-                    file,
-                    files,
-                    path_index,
-                    &interface_files,
-                );
+                let interface_file =
+                    find_interface_file(iface_name, file, files, path_index, &interface_files);
 
                 links.push(ImplementationLink {
                     interface_name: iface_name.clone(),
@@ -295,13 +290,8 @@ fn resolve_implementations(
     for file in files {
         for impl_def in &file.implementations {
             if let Some(trait_name) = &impl_def.trait_name {
-                let interface_file = find_interface_file(
-                    trait_name,
-                    file,
-                    files,
-                    path_index,
-                    &interface_files,
-                );
+                let interface_file =
+                    find_interface_file(trait_name, file, files, path_index, &interface_files);
 
                 links.push(ImplementationLink {
                     interface_name: trait_name.clone(),
@@ -337,12 +327,15 @@ fn find_interface_file(
 
     // Follow imports: check if the implementing file imports this name
     for import in &importing_file.imports {
-        let imports_name = import.symbols.iter().any(|s| {
-            s.name == name || s.alias.as_deref() == Some(name)
-        });
+        let imports_name = import
+            .symbols
+            .iter()
+            .any(|s| s.name == name || s.alias.as_deref() == Some(name));
 
         if imports_name || import.is_wildcard {
-            if let Some(idx) = resolve_source(&import.source, path_index, Some(&importing_file.path)) {
+            if let Some(idx) =
+                resolve_source(&import.source, path_index, Some(&importing_file.path))
+            {
                 let target_file = &files[idx];
                 // Check if the target file defines this interface
                 if target_file.interfaces.iter().any(|i| i.name == name) {
@@ -352,7 +345,9 @@ fn find_interface_file(
                 for export in &target_file.exports {
                     if export.name == name {
                         if let Some(re_source) = &export.source {
-                            if let Some(re_idx) = resolve_source(re_source, path_index, Some(&target_file.path)) {
+                            if let Some(re_idx) =
+                                resolve_source(re_source, path_index, Some(&target_file.path))
+                            {
                                 return Some(files[re_idx].path.clone());
                             }
                         }
@@ -374,7 +369,10 @@ fn resolve_exports(
     files: &[IrFile],
     path_index: &HashMap<String, usize>,
     _root: &Path,
-) -> (HashMap<PathBuf, Vec<ResolvedExport>>, HashMap<String, Vec<PathBuf>>) {
+) -> (
+    HashMap<PathBuf, Vec<ResolvedExport>>,
+    HashMap<String, Vec<PathBuf>>,
+) {
     let mut exports_by_file: HashMap<PathBuf, Vec<ResolvedExport>> = HashMap::new();
     let mut files_by_export: HashMap<String, Vec<PathBuf>> = HashMap::new();
 
@@ -568,7 +566,12 @@ mod tests {
         }
     }
 
-    fn make_class(name: &str, path: &str, implements: Vec<&str>, methods: Vec<MethodDef>) -> ClassDef {
+    fn make_class(
+        name: &str,
+        path: &str,
+        implements: Vec<&str>,
+        methods: Vec<MethodDef>,
+    ) -> ClassDef {
         ClassDef {
             name: name.to_string(),
             file: PathBuf::from(path),
@@ -705,13 +708,18 @@ mod tests {
         let result = resolve(&files, root);
 
         // index.ts should have a re-export pointing to core.ts
-        let index_exports = result.exports_by_file.get(Path::new("/project/src/index.ts"));
+        let index_exports = result
+            .exports_by_file
+            .get(Path::new("/project/src/index.ts"));
         assert!(index_exports.is_some());
         let empty: Vec<ResolvedExport> = Vec::new();
         let exports = index_exports.unwrap_or(&empty);
         assert_eq!(exports.len(), 1);
         assert_eq!(exports[0].name, "Config");
-        assert_eq!(exports[0].origin_file, PathBuf::from("/project/src/core.ts"));
+        assert_eq!(
+            exports[0].origin_file,
+            PathBuf::from("/project/src/core.ts")
+        );
         assert_eq!(
             exports[0].via_file,
             Some(PathBuf::from("/project/src/index.ts"))
@@ -720,10 +728,7 @@ mod tests {
 
     #[test]
     fn test_check_implementation_completeness_all_present() {
-        let iface_methods = vec![
-            make_method_sig("get", false),
-            make_method_sig("set", false),
-        ];
+        let iface_methods = vec![make_method_sig("get", false), make_method_sig("set", false)];
         let impl_methods = vec![
             make_method_def("get", "test.ts"),
             make_method_def("set", "test.ts"),
@@ -800,13 +805,27 @@ mod tests {
         let root = Path::new("/project");
 
         let mut file_a = make_ir_file("/project/src/types.ts", Language::TypeScript);
-        file_a.interfaces = vec![make_interface("Serializable", "/project/src/types.ts", vec![])];
+        file_a.interfaces = vec![make_interface(
+            "Serializable",
+            "/project/src/types.ts",
+            vec![],
+        )];
 
         let mut file_b = make_ir_file("/project/src/user.ts", Language::TypeScript);
-        file_b.classes = vec![make_class("User", "/project/src/user.ts", vec!["Serializable"], vec![])];
+        file_b.classes = vec![make_class(
+            "User",
+            "/project/src/user.ts",
+            vec!["Serializable"],
+            vec![],
+        )];
 
         let mut file_c = make_ir_file("/project/src/post.ts", Language::TypeScript);
-        file_c.classes = vec![make_class("Post", "/project/src/post.ts", vec!["Serializable"], vec![])];
+        file_c.classes = vec![make_class(
+            "Post",
+            "/project/src/post.ts",
+            vec!["Serializable"],
+            vec![],
+        )];
 
         let files = vec![file_a, file_b, file_c];
         let result = resolve(&files, root);

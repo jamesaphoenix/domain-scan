@@ -170,12 +170,13 @@ export async function assertActiveTab(
 }
 
 /**
- * Assert that the tube map shows the manifest loader (no manifest loaded).
+ * Assert that the tube map shows either the scan gate or the manifest loader.
  */
 export async function assertManifestLoaderVisible(page: Page): Promise<void> {
-  await expect(
-    page.getByText(/load a system manifest/i),
-  ).toBeVisible();
+  // Could be the scan gate ("Open a project first") or the manifest loader ("Recommended")
+  const scanGate = page.getByText("Open a project first");
+  const manifestLoader = page.getByText("Recommended");
+  await expect(scanGate.or(manifestLoader)).toBeVisible({ timeout: 5_000 });
 }
 
 /**

@@ -21,10 +21,10 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Click "Create with Wizard" on the ManifestLoader screen */
+/** Click the wizard button on the ManifestLoader screen */
 async function startWizard(page: import("@playwright/test").Page) {
   await switchTab(page, "Subsystem Tube Map");
-  await page.getByRole("button", { name: /create with wizard/i }).click();
+  await page.getByRole("button", { name: /wizard/i }).click();
   // Wait for wizard header to appear
   await expect(page.getByText("Manifest Wizard")).toBeVisible({ timeout: 5_000 });
 }
@@ -91,7 +91,12 @@ test.describe("F.11: Manifest Builder — Tauri Wizard Integration", () => {
     await expect(page.getByText("Re-analyze codebase")).toBeVisible({ timeout: 5_000 });
 
     // Edit the "Core" domain label to "Core Platform"
-    const coreLabelInput = page.locator('input[value="Core"]').first();
+    const coreRow = page
+      .locator('input[placeholder="domain-id"][value="core"]')
+      .locator("..");
+    const coreLabelInput = coreRow.locator(
+      'input[placeholder="Display Name"]',
+    );
     await coreLabelInput.clear();
     await coreLabelInput.fill("Core Platform");
 
@@ -102,7 +107,7 @@ test.describe("F.11: Manifest Builder — Tauri Wizard Integration", () => {
 
     // Review step should show the updated domain label
     await expect(page.getByText("Manifest Review")).toBeVisible();
-    await expect(page.getByText("Core Platform")).toBeVisible();
+    await expect(page.getByText("Core Platform", { exact: true }).first()).toBeVisible();
   });
 
   test("wizard step 2 (subsystems) shows entities grouped by domain", async ({
@@ -127,8 +132,8 @@ test.describe("F.11: Manifest Builder — Tauri Wizard Integration", () => {
     await expect(page.getByText("Subsystems (3)")).toBeVisible();
 
     // Should show domain group headers with labels
-    await expect(page.getByText("Core").first()).toBeVisible();
-    await expect(page.getByText("Services").first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Core" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
 
     // Should show subsystem names in input fields
     await expect(page.locator('input[value="Authentication"]').first()).toBeVisible();
@@ -354,7 +359,7 @@ test.describe("F.11: Manifest Builder — Tauri Wizard Integration", () => {
 
     // The tube map should NOT show the ManifestLoader (blank slate)
     await expect(
-      page.getByText(/load a system manifest/i),
+      page.getByText("Recommended"),
     ).not.toBeVisible();
   });
 });

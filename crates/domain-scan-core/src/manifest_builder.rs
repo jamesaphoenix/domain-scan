@@ -70,10 +70,7 @@ const DOMAIN_COLORS: &[&str] = &[
 /// - Domains are inferred from top-level source directories.
 /// - Subsystems are inferred from second-level directories.
 /// - Connections are inferred from cross-directory import statements.
-pub fn bootstrap_manifest(
-    index: &ScanIndex,
-    options: &BootstrapOptions,
-) -> SystemManifest {
+pub fn bootstrap_manifest(index: &ScanIndex, options: &BootstrapOptions) -> SystemManifest {
     let root = &index.root;
 
     // Step 1: Group files by their top-level and second-level directories
@@ -92,10 +89,7 @@ pub fn bootstrap_manifest(
     let project_name = options
         .project_name
         .clone()
-        .or_else(|| {
-            root.file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-        })
+        .or_else(|| root.file_name().map(|n| n.to_string_lossy().into_owned()))
         .unwrap_or_else(|| "project".to_string());
 
     SystemManifest {
@@ -168,11 +162,7 @@ fn group_files_by_directory(index: &ScanIndex, root: &Path) -> DirGroups {
                 // use the second component as domain and derive subsystem
                 // from the next meaningful (non-source-root) component.
                 let first = components[0];
-                if is_workspace_dir(first)
-                    || first == "src"
-                    || first == "lib"
-                    || first == "app"
-                {
+                if is_workspace_dir(first) || first == "src" || first == "lib" || first == "app" {
                     let domain = components[1].to_string();
                     // Skip "src"/"lib"/"app" intermediary dirs to avoid
                     // grouping everything under a meaningless "src" subsystem.
@@ -348,7 +338,7 @@ fn compute_common_prefix(files: &[PathBuf], root: &Path) -> PathBuf {
         .collect();
 
     if rel_paths.is_empty() {
-        return PathBuf::new();
+        return PathBuf::from(".");
     }
 
     // Start with the parent of the first file
@@ -375,12 +365,14 @@ fn compute_common_prefix(files: &[PathBuf], root: &Path) -> PathBuf {
             .take_while(|(a, b)| a == b)
             .count();
 
-        common = common_components[..shared]
-            .iter()
-            .collect::<PathBuf>();
+        common = common_components[..shared].iter().collect::<PathBuf>();
     }
 
-    common
+    if common.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        common
+    }
 }
 
 /// Make an ID unique by appending a suffix if needed.
@@ -412,10 +404,7 @@ const MAX_EDGES_PER_SUBSYSTEM: usize = 8;
 /// For each import in a file, we check if the import source path resolves to
 /// a file in a different subsystem. If so, we add a `depends_on` connection.
 /// Results are capped to avoid noisy graphs.
-fn infer_connections(
-    index: &ScanIndex,
-    subsystems: &[ManifestSubsystem],
-) -> Vec<Connection> {
+fn infer_connections(index: &ScanIndex, subsystems: &[ManifestSubsystem]) -> Vec<Connection> {
     let mut edges: BTreeSet<(String, String)> = BTreeSet::new();
     // Track how many times each edge is seen (weight = import count)
     let mut edge_weights: BTreeMap<(String, String), usize> = BTreeMap::new();
@@ -519,10 +508,7 @@ fn resolve_import_to_subsystem(
     }
 
     // Try extracting a meaningful name from the import path
-    let parts: Vec<&str> = source
-        .split(['/', ':'])
-        .filter(|s| !s.is_empty())
-        .collect();
+    let parts: Vec<&str> = source.split(['/', ':']).filter(|s| !s.is_empty()).collect();
 
     // Skip common prefixes
     let meaningful_parts: Vec<&&str> = parts
@@ -548,7 +534,10 @@ fn resolve_import_to_subsystem(
                     .split(['/', '\\'])
                     .filter(|s| !s.is_empty())
                     .collect();
-                if sub_components.iter().any(|c| c.to_lowercase() == part_lower) {
+                if sub_components
+                    .iter()
+                    .any(|c| c.to_lowercase() == part_lower)
+                {
                     return Some(sub.id.clone());
                 }
             }
@@ -566,7 +555,10 @@ fn normalize_path(path: &Path) -> PathBuf {
             std::path::Component::ParentDir => {
                 // Pop the last normal component if there is one
                 if let Some(last) = components.last() {
-                    if !matches!(last, std::path::Component::RootDir | std::path::Component::Prefix(_)) {
+                    if !matches!(
+                        last,
+                        std::path::Component::RootDir | std::path::Component::Prefix(_)
+                    ) {
                         components.pop();
                         continue;
                     }
@@ -736,16 +728,15 @@ mod tests {
 
     #[test]
     fn test_serialize_manifest_roundtrip() {
-        let files = vec![
-            make_ir_file("/project/src/auth/handler.ts", Vec::new()),
-        ];
+        let files = vec![make_ir_file("/project/src/auth/handler.ts", Vec::new())];
         let index = make_scan_index("/project", files);
         let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
 
         let json = serialize_manifest(&manifest);
         assert!(json.is_ok(), "Serialization should succeed");
 
-        let parsed: Result<SystemManifest, _> = serde_json::from_str(&json.as_ref().map_or("".to_string(), |s| s.clone()));
+        let parsed: Result<SystemManifest, _> =
+            serde_json::from_str(&json.as_ref().map_or("".to_string(), |s| s.clone()));
         assert!(parsed.is_ok(), "Deserialized manifest should be valid");
     }
 
@@ -771,7 +762,11 @@ mod tests {
         assert!(json.is_ok());
         let json_str = json.as_ref().map_or("", |s| s.as_str());
         let reparsed = crate::manifest::parse_system_manifest(json_str);
-        assert!(reparsed.is_ok(), "Re-parsed manifest should be valid SystemManifest: {:?}", reparsed.err());
+        assert!(
+            reparsed.is_ok(),
+            "Re-parsed manifest should be valid SystemManifest: {:?}",
+            reparsed.err()
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -861,6 +856,30 @@ mod tests {
         assert!(
             !manifest.subsystems.is_empty(),
             "Fallback should create at least one subsystem per domain"
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_root_level_files_use_dot_file_path() {
+        let files = vec![
+            make_ir_file("/project/handler.ts", Vec::new()),
+            make_ir_file("/project/repo.ts", Vec::new()),
+            make_ir_file("/project/types.ts", Vec::new()),
+        ];
+        let index = make_scan_index("/project", files);
+        let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
+
+        assert!(
+            manifest
+                .subsystems
+                .iter()
+                .all(|sub| sub.file_path == PathBuf::from(".")),
+            "Root-level bootstrap subsystems should target '.', got: {:?}",
+            manifest
+                .subsystems
+                .iter()
+                .map(|sub| sub.file_path.clone())
+                .collect::<Vec<_>>()
         );
     }
 }

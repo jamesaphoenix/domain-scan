@@ -59,9 +59,9 @@ Also add `shell:allow-open` for the "Open in Editor" feature which likely has th
 
 ### 2.3 Acceptance Criteria
 
-- [ ] Clicking "Open Directory" opens a native macOS/Linux/Windows folder picker
-- [ ] Selecting a directory triggers a scan
-- [ ] No code changes needed — only the capabilities file
+- [x] Clicking "Open Directory" opens a native macOS/Linux/Windows folder picker
+- [x] Selecting a directory triggers a scan
+- [x] No code changes needed — only the capabilities file
 
 ---
 

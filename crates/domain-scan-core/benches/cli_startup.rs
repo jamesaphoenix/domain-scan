@@ -28,8 +28,7 @@ fn full_pipeline_scan() -> String {
     };
 
     // Walk
-    let walked = walker::walk_directory(&config)
-        .unwrap_or_else(|e| panic!("walk failed: {e}"));
+    let walked = walker::walk_directory(&config).unwrap_or_else(|e| panic!("walk failed: {e}"));
 
     // Parse + Extract
     let mut ir_files = Vec::new();
@@ -37,12 +36,16 @@ fn full_pipeline_scan() -> String {
         let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)
             .unwrap_or_else(|e| panic!("parse failed: {e}"));
 
-        let build_status = config
-            .build_status_override
-            .unwrap_or(BuildStatus::Built);
+        let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
 
-        let ir = query_engine::extract(&tree, &source, &walked_file.path, walked_file.language, build_status)
-            .unwrap_or_else(|e| panic!("extract failed: {e}"));
+        let ir = query_engine::extract(
+            &tree,
+            &source,
+            &walked_file.path,
+            walked_file.language,
+            build_status,
+        )
+        .unwrap_or_else(|e| panic!("extract failed: {e}"));
 
         ir_files.push(ir);
     }
@@ -68,20 +71,23 @@ fn ts_only_pipeline_scan() -> String {
         cache_dir: root.join(".bench-cache"),
     };
 
-    let walked = walker::walk_directory(&config)
-        .unwrap_or_else(|e| panic!("walk failed: {e}"));
+    let walked = walker::walk_directory(&config).unwrap_or_else(|e| panic!("walk failed: {e}"));
 
     let mut ir_files = Vec::new();
     for walked_file in &walked {
         let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)
             .unwrap_or_else(|e| panic!("parse failed: {e}"));
 
-        let build_status = config
-            .build_status_override
-            .unwrap_or(BuildStatus::Built);
+        let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
 
-        let ir = query_engine::extract(&tree, &source, &walked_file.path, walked_file.language, build_status)
-            .unwrap_or_else(|e| panic!("extract failed: {e}"));
+        let ir = query_engine::extract(
+            &tree,
+            &source,
+            &walked_file.path,
+            walked_file.language,
+            build_status,
+        )
+        .unwrap_or_else(|e| panic!("extract failed: {e}"));
 
         ir_files.push(ir);
     }

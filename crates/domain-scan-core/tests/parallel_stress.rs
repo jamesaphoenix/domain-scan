@@ -29,8 +29,7 @@ fn run_full_pipeline() -> usize {
         cache_dir: root.join(".stress-test-cache"),
     };
 
-    let walked = walker::walk_directory(&config)
-        .unwrap_or_else(|e| panic!("walk failed: {e}"));
+    let walked = walker::walk_directory(&config).unwrap_or_else(|e| panic!("walk failed: {e}"));
 
     let ir_files: Vec<_> = walked
         .par_iter()
@@ -60,8 +59,7 @@ fn run_pipeline_with_cache() -> usize {
         cache_dir: root.join(".stress-test-cache"),
     };
 
-    let walked = walker::walk_directory(&config)
-        .unwrap_or_else(|e| panic!("walk failed: {e}"));
+    let walked = walker::walk_directory(&config).unwrap_or_else(|e| panic!("walk failed: {e}"));
 
     let cache = Arc::new(Cache::new(
         tempfile::tempdir()
@@ -73,8 +71,7 @@ fn run_pipeline_with_cache() -> usize {
     let ir_files: Vec<_> = walked
         .par_iter()
         .map(|wf| {
-            let source = std::fs::read(&wf.path)
-                .unwrap_or_else(|e| panic!("read: {e}"));
+            let source = std::fs::read(&wf.path).unwrap_or_else(|e| panic!("read: {e}"));
             let hash = content_hash(&source);
 
             // Try cache
@@ -82,8 +79,8 @@ fn run_pipeline_with_cache() -> usize {
                 return ir;
             }
 
-            let (tree, source_bytes) = parser::parse_file(&wf.path, wf.language)
-                .unwrap_or_else(|e| panic!("parse: {e}"));
+            let (tree, source_bytes) =
+                parser::parse_file(&wf.path, wf.language).unwrap_or_else(|e| panic!("parse: {e}"));
             let ir = query_engine::extract(
                 &tree,
                 &source_bytes,
@@ -127,11 +124,7 @@ fn test_no_deadlock_cached_parallel_scans() {
 #[test]
 fn test_no_deadlock_concurrent_pipelines() {
     let handles: Vec<_> = (0..4)
-        .map(|_| {
-            std::thread::spawn(|| {
-                run_full_pipeline()
-            })
-        })
+        .map(|_| std::thread::spawn(|| run_full_pipeline()))
         .collect();
 
     let mut total = 0;
@@ -171,14 +164,14 @@ fn test_no_deadlock_concurrent_cached_pipelines() {
                     cache_dir: root.join(".stress-cache"),
                 };
 
-                let walked = walker::walk_directory(&config)
-                    .unwrap_or_else(|e| panic!("walk: {e}"));
+                let walked =
+                    walker::walk_directory(&config).unwrap_or_else(|e| panic!("walk: {e}"));
 
                 let ir_files: Vec<_> = walked
                     .par_iter()
                     .map(|wf| {
-                        let source = std::fs::read(&wf.path)
-                            .unwrap_or_else(|e| panic!("read: {e}"));
+                        let source =
+                            std::fs::read(&wf.path).unwrap_or_else(|e| panic!("read: {e}"));
                         let hash = content_hash(&source);
 
                         if let Some(ir) = cache.get(&hash) {
@@ -188,7 +181,11 @@ fn test_no_deadlock_concurrent_cached_pipelines() {
                         let (tree, src) = parser::parse_file(&wf.path, wf.language)
                             .unwrap_or_else(|e| panic!("parse: {e}"));
                         let ir = query_engine::extract(
-                            &tree, &src, &wf.path, wf.language, BuildStatus::Built,
+                            &tree,
+                            &src,
+                            &wf.path,
+                            wf.language,
+                            BuildStatus::Built,
                         )
                         .unwrap_or_else(|e| panic!("extract: {e}"));
 
@@ -204,7 +201,9 @@ fn test_no_deadlock_concurrent_cached_pipelines() {
 
     let mut total = 0;
     for handle in handles {
-        total += handle.join().unwrap_or_else(|e| panic!("Thread panicked: {e:?}"));
+        total += handle
+            .join()
+            .unwrap_or_else(|e| panic!("Thread panicked: {e:?}"));
     }
     assert!(total > 0);
 }

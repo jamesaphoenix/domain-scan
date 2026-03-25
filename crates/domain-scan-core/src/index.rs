@@ -368,6 +368,11 @@ impl ScanIndex {
         let mut summaries = Vec::new();
 
         for file in &self.files {
+            if let Some(prefix) = &filter.path_prefix {
+                if !file.path.starts_with(prefix) {
+                    continue;
+                }
+            }
             if let Some(langs) = &filter.languages {
                 if !langs.contains(&file.language) {
                     continue;
@@ -746,8 +751,16 @@ mod tests {
     fn test_get_services_by_kind() {
         let mut file = make_ir_file("/project/src/app.ts", Language::TypeScript);
         file.services = vec![
-            make_service("UserController", "/project/src/app.ts", ServiceKind::HttpController),
-            make_service("PostController", "/project/src/app.ts", ServiceKind::HttpController),
+            make_service(
+                "UserController",
+                "/project/src/app.ts",
+                ServiceKind::HttpController,
+            ),
+            make_service(
+                "PostController",
+                "/project/src/app.ts",
+                ServiceKind::HttpController,
+            ),
             make_service("EventWorker", "/project/src/app.ts", ServiceKind::Worker),
         ];
 
@@ -767,9 +780,24 @@ mod tests {
     fn test_get_schemas_by_framework_and_kind() {
         let mut file = make_ir_file("/project/src/schemas.ts", Language::TypeScript);
         file.schemas = vec![
-            make_schema("UserSchema", "/project/src/schemas.ts", "zod", SchemaKind::ValidationSchema),
-            make_schema("PostSchema", "/project/src/schemas.ts", "zod", SchemaKind::ValidationSchema),
-            make_schema("User", "/project/src/schemas.ts", "drizzle", SchemaKind::OrmModel),
+            make_schema(
+                "UserSchema",
+                "/project/src/schemas.ts",
+                "zod",
+                SchemaKind::ValidationSchema,
+            ),
+            make_schema(
+                "PostSchema",
+                "/project/src/schemas.ts",
+                "zod",
+                SchemaKind::ValidationSchema,
+            ),
+            make_schema(
+                "User",
+                "/project/src/schemas.ts",
+                "drizzle",
+                SchemaKind::OrmModel,
+            ),
         ];
 
         let index = build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
@@ -893,13 +921,7 @@ mod tests {
         let mut rs_file = make_ir_file("/project/src/types.rs", Language::Rust);
         rs_file.interfaces = vec![make_interface("RsFoo", "/project/src/types.rs")];
 
-        let index = build_index(
-            PathBuf::from("/project"),
-            vec![ts_file, rs_file],
-            0,
-            0,
-            0,
-        );
+        let index = build_index(PathBuf::from("/project"), vec![ts_file, rs_file], 0, 0, 0);
 
         let filter = FilterParams {
             languages: Some(vec![Language::TypeScript]),
@@ -910,6 +932,35 @@ mod tests {
         assert_eq!(summaries[0].name, "TsFoo");
     }
 
+    #[test]
+    fn test_path_prefix_filter() {
+        let mut auth_file = make_ir_file("/project/src/auth/types.ts", Language::TypeScript);
+        auth_file.interfaces = vec![make_interface("AuthThing", "/project/src/auth/types.ts")];
+
+        let mut billing_file = make_ir_file("/project/src/billing/types.ts", Language::TypeScript);
+        billing_file.interfaces = vec![make_interface(
+            "BillingThing",
+            "/project/src/billing/types.ts",
+        )];
+
+        let index = build_index(
+            PathBuf::from("/project"),
+            vec![auth_file, billing_file],
+            0,
+            0,
+            0,
+        );
+
+        let filter = FilterParams {
+            path_prefix: Some(PathBuf::from("/project/src/auth")),
+            ..FilterParams::default()
+        };
+        let summaries = index.get_entity_summaries(&filter);
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].name, "AuthThing");
+    }
+
     // -----------------------------------------------------------------------
     // Adversarial repo integration tests
     // -----------------------------------------------------------------------
@@ -917,8 +968,7 @@ mod tests {
     /// Helper: run the full pipeline (walk → parse → extract → index) on a directory.
     fn scan_fixture_dir(dir: &Path) -> ScanIndex {
         let config = ScanConfig::new(dir.to_path_buf());
-        let walked = crate::walker::walk_directory(&config)
-            .unwrap_or_default();
+        let walked = crate::walker::walk_directory(&config).unwrap_or_default();
 
         let build_status = BuildStatus::Built;
         let mut ir_files = Vec::new();
@@ -941,8 +991,7 @@ mod tests {
     }
 
     fn adversarial_fixtures() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/adversarial_repos")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/adversarial_repos")
     }
 
     #[test]
@@ -979,8 +1028,7 @@ mod tests {
             user_services.len()
         );
         // All must have unique file paths
-        let paths: std::collections::HashSet<_> =
-            user_services.iter().map(|s| &s.file).collect();
+        let paths: std::collections::HashSet<_> = user_services.iter().map(|s| &s.file).collect();
         assert_eq!(paths.len(), 50, "All UserService files must be unique");
     }
 

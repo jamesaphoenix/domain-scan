@@ -56,7 +56,10 @@ fn test_scan_table_output() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Scan:"), "table output should contain 'Scan:'");
+    assert!(
+        stdout.contains("Scan:"),
+        "table output should contain 'Scan:'"
+    );
     assert!(stdout.contains("3 files"), "should report 3 files");
 }
 
@@ -71,7 +74,10 @@ fn test_scan_compact_output() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("3 files"), "compact output should mention file count");
+    assert!(
+        stdout.contains("3 files"),
+        "compact output should mention file count"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -94,10 +100,7 @@ fn test_interfaces_json_output() {
     let arr = json.as_array().expect("should be array");
     assert!(arr.len() >= 3, "should have at least 3 interfaces");
 
-    let names: Vec<&str> = arr
-        .iter()
-        .filter_map(|v| v.get("name")?.as_str())
-        .collect();
+    let names: Vec<&str> = arr.iter().filter_map(|v| v.get("name")?.as_str()).collect();
     assert!(names.contains(&"EventHandler"));
     assert!(names.contains(&"Repository"));
 }
@@ -207,7 +210,11 @@ fn test_search_json() {
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
     let arr = json.as_array().expect("should be array");
     // EventHandler (interface) + LogEventHandler + MetricsHandler (classes)
-    assert!(arr.len() >= 3, "should find at least 3 Handler entities, got {}", arr.len());
+    assert!(
+        arr.len() >= 3,
+        "should find at least 3 Handler entities, got {}",
+        arr.len()
+    );
 }
 
 #[test]
@@ -242,7 +249,10 @@ fn test_validate_exits_1_on_failure() {
         .expect("command should run");
 
     // Cross-file fixtures have interfaces without implementors
-    assert!(!output.status.success(), "validate should exit 1 with failures");
+    assert!(
+        !output.status.success(),
+        "validate should exit 1 with failures"
+    );
 }
 
 #[test]
@@ -368,7 +378,12 @@ fn test_fields_interfaces_name_only() {
     // Each element should only have "name" field
     for item in arr {
         let obj = item.as_object().expect("should be object");
-        assert_eq!(obj.len(), 1, "should have exactly 1 field, got: {:?}", obj.keys().collect::<Vec<_>>());
+        assert_eq!(
+            obj.len(),
+            1,
+            "should have exactly 1 field, got: {:?}",
+            obj.keys().collect::<Vec<_>>()
+        );
         assert!(obj.contains_key("name"), "should have 'name' field");
     }
 }
@@ -416,12 +431,20 @@ fn test_fields_scan_dot_notation() {
     let obj = json.as_object().expect("should be object");
 
     // Should only have "files" and "stats"
-    assert_eq!(obj.len(), 2, "should have exactly 2 fields, got: {:?}", obj.keys().collect::<Vec<_>>());
+    assert_eq!(
+        obj.len(),
+        2,
+        "should have exactly 2 fields, got: {:?}",
+        obj.keys().collect::<Vec<_>>()
+    );
     assert!(obj.contains_key("files"));
     assert!(obj.contains_key("stats"));
 
     // Each file entry should only have "path"
-    let files = obj.get("files").and_then(|v| v.as_array()).expect("files should be array");
+    let files = obj
+        .get("files")
+        .and_then(|v| v.as_array())
+        .expect("files should be array");
     for file in files {
         let file_obj = file.as_object().expect("file should be object");
         assert_eq!(file_obj.len(), 1, "file should have exactly 1 field");
@@ -458,10 +481,19 @@ fn test_fields_invalid_field_exits_1() {
         .output()
         .expect("command should run");
 
-    assert!(!output.status.success(), "should exit with error for invalid field");
+    assert!(
+        !output.status.success(),
+        "should exit with error for invalid field"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("INVALID_FIELDS"), "should have INVALID_FIELDS error code");
-    assert!(stderr.contains("nonexistent_field"), "should mention the invalid field");
+    assert!(
+        stderr.contains("INVALID_FIELDS"),
+        "should have INVALID_FIELDS error code"
+    );
+    assert!(
+        stderr.contains("nonexistent_field"),
+        "should mention the invalid field"
+    );
 }
 
 #[test]
@@ -500,7 +532,11 @@ fn test_json_interfaces_name_filter() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
@@ -520,7 +556,11 @@ fn test_json_interfaces_show_methods() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
@@ -540,7 +580,11 @@ fn test_json_interfaces_empty_object() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
@@ -559,7 +603,11 @@ fn test_json_search() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
@@ -578,7 +626,11 @@ fn test_json_search_with_kind() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
@@ -622,7 +674,9 @@ fn test_json_invalid_syntax() {
     assert!(!output.status.success(), "should fail with invalid JSON");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Invalid JSON syntax") || stderr.contains("JSON_PARSE_ERROR") || stderr.contains("CLI_ERROR"),
+        stderr.contains("Invalid JSON syntax")
+            || stderr.contains("JSON_PARSE_ERROR")
+            || stderr.contains("CLI_ERROR"),
         "should report JSON parse error, got: {stderr}"
     );
 }
@@ -709,9 +763,16 @@ fn test_json_works_with_table_output() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("EventHandler"), "table output should contain EventHandler");
+    assert!(
+        stdout.contains("EventHandler"),
+        "table output should contain EventHandler"
+    );
 }
 
 #[test]
@@ -728,7 +789,11 @@ fn test_json_works_with_fields() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let json: serde_json::Value =
         serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
@@ -751,18 +816,29 @@ fn test_page_all_interfaces_emits_ndjson() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Each line should be a valid JSON object
     let lines: Vec<&str> = stdout.lines().collect();
-    assert!(lines.len() >= 3, "should have at least 3 interfaces, got {}", lines.len());
+    assert!(
+        lines.len() >= 3,
+        "should have at least 3 interfaces, got {}",
+        lines.len()
+    );
 
     for line in &lines {
-        let parsed: serde_json::Value =
-            serde_json::from_str(line).unwrap_or_else(|e| panic!("line should be valid JSON: {e}\nline: {line}"));
+        let parsed: serde_json::Value = serde_json::from_str(line)
+            .unwrap_or_else(|e| panic!("line should be valid JSON: {e}\nline: {line}"));
         assert!(parsed.is_object(), "each line should be a JSON object");
-        assert!(parsed.get("name").is_some(), "each object should have a name field");
+        assert!(
+            parsed.get("name").is_some(),
+            "each object should have a name field"
+        );
     }
 }
 
@@ -877,7 +953,11 @@ fn test_page_all_with_fields() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     let lines: Vec<&str> = stdout.lines().collect();
@@ -1009,10 +1089,7 @@ fn test_snapshot_search_json() {
 fn test_auto_detect_json_when_piped() {
     // When no --output is specified and stdout is piped (assert_cmd always pipes),
     // the output should default to JSON.
-    let output = base_cmd()
-        .arg("scan")
-        .output()
-        .expect("command should run");
+    let output = base_cmd().arg("scan").output().expect("command should run");
 
     assert!(output.status.success());
 
@@ -1033,8 +1110,8 @@ fn test_auto_detect_json_interfaces_when_piped() {
 
     assert!(output.status.success());
 
-    let json: serde_json::Value =
-        serde_json::from_slice(&output.stdout).expect("piped interfaces output should default to JSON");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("piped interfaces output should default to JSON");
     let arr = json.as_array().expect("should be array");
     assert!(arr.len() >= 3, "should have at least 3 interfaces");
 }
@@ -1053,7 +1130,10 @@ fn test_explicit_output_overrides_auto_detect() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should be table format, not JSON
-    assert!(stdout.contains("Scan:"), "explicit --output table should produce table format");
+    assert!(
+        stdout.contains("Scan:"),
+        "explicit --output table should produce table format"
+    );
     // And it should NOT be valid JSON
     assert!(
         serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
@@ -1073,7 +1153,10 @@ fn test_explicit_output_compact_overrides_auto_detect() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("3 files"), "compact output should mention file count");
+    assert!(
+        stdout.contains("3 files"),
+        "compact output should mention file count"
+    );
 }
 
 #[test]
@@ -1219,7 +1302,11 @@ fn test_skills_list_outputs_all_skill_names() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let names: Vec<String> =
         serde_json::from_str(&stdout).expect("output should be valid JSON array");
-    assert!(names.len() >= 11, "should have at least 11 skills, got {}", names.len());
+    assert!(
+        names.len() >= 11,
+        "should have at least 11 skills, got {}",
+        names.len()
+    );
     assert!(names.contains(&"domain-scan-cli".to_string()));
     assert!(names.contains(&"domain-scan-init".to_string()));
     assert!(names.contains(&"domain-scan-tube-map".to_string()));
@@ -1239,10 +1326,19 @@ fn test_skills_show_outputs_valid_yaml_frontmatter_and_markdown() {
     assert!(output.status.success(), "skills show should succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Check YAML frontmatter
-    assert!(stdout.starts_with("---\n"), "should start with YAML frontmatter");
-    assert!(stdout.contains("name: domain-scan-init"), "should contain skill name");
+    assert!(
+        stdout.starts_with("---\n"),
+        "should start with YAML frontmatter"
+    );
+    assert!(
+        stdout.contains("name: domain-scan-init"),
+        "should contain skill name"
+    );
     assert!(stdout.contains("version:"), "should contain version");
-    assert!(stdout.contains("description:"), "should contain description");
+    assert!(
+        stdout.contains("description:"),
+        "should contain description"
+    );
     // Check markdown content
     assert!(stdout.contains("# "), "should contain markdown headers");
 }
@@ -1284,7 +1380,10 @@ fn test_skills_install_claude_code() {
         .output()
         .expect("command should run");
 
-    assert!(output.status.success(), "install --claude-code should succeed");
+    assert!(
+        output.status.success(),
+        "install --claude-code should succeed"
+    );
 
     let skills_dir = root.join(".claude").join("skills");
     assert!(skills_dir.exists(), ".claude/skills/ should be created");
@@ -1297,7 +1396,11 @@ fn test_skills_install_claude_code() {
         .expect("should read skills dir")
         .filter_map(|e| e.ok())
         .collect();
-    assert!(entries.len() >= 11, "should have at least 11 skill files, got {}", entries.len());
+    assert!(
+        entries.len() >= 11,
+        "should have at least 11 skill files, got {}",
+        entries.len()
+    );
 }
 
 #[test]
@@ -1477,7 +1580,10 @@ fn test_installed_skill_matches_show_output() {
     assert!(install_output.status.success());
 
     // Read installed file
-    let installed_path = root.join(".claude").join("skills").join("domain-scan-init.md");
+    let installed_path = root
+        .join(".claude")
+        .join("skills")
+        .join("domain-scan-init.md");
     let installed_content =
         std::fs::read_to_string(&installed_path).expect("should read installed file");
 
@@ -1496,7 +1602,7 @@ fn test_installed_skill_matches_show_output() {
 ///
 /// Simulates the full workflow from `domain-scan-init.md`:
 ///   1. Bootstrap a starter manifest via `domain-scan init --bootstrap -o system.json`
-///   2. Validate via `domain-scan init --apply-manifest system.json --dry-run --output json`
+///   2. Validate via `domain-scan validate --manifest system.json --output json`
 ///   3. Match via `domain-scan match --manifest system.json --output json`
 ///   4. Verify: valid JSON, all statuses = "new", kebab-case IDs, coverage ≥ 0
 #[test]
@@ -1535,10 +1641,22 @@ fn test_skill_create_manifest_from_scratch() {
         serde_json::from_str(&content).expect("manifest should be valid JSON")
     };
 
-    assert!(manifest_json.get("meta").is_some(), "should have meta field");
-    assert!(manifest_json.get("domains").is_some(), "should have domains field");
-    assert!(manifest_json.get("subsystems").is_some(), "should have subsystems field");
-    assert!(manifest_json.get("connections").is_some(), "should have connections field");
+    assert!(
+        manifest_json.get("meta").is_some(),
+        "should have meta field"
+    );
+    assert!(
+        manifest_json.get("domains").is_some(),
+        "should have domains field"
+    );
+    assert!(
+        manifest_json.get("subsystems").is_some(),
+        "should have subsystems field"
+    );
+    assert!(
+        manifest_json.get("connections").is_some(),
+        "should have connections field"
+    );
 
     // Verify project name was applied
     assert_eq!(
@@ -1552,7 +1670,8 @@ fn test_skill_create_manifest_from_scratch() {
         for sub in subsystems {
             let status = sub["status"].as_str().unwrap_or("unknown");
             assert_eq!(
-                status, "new",
+                status,
+                "new",
                 "Bootstrap should set all subsystems to 'new', got '{}' for '{}'",
                 status,
                 sub["id"].as_str().unwrap_or("?")
@@ -1562,14 +1681,11 @@ fn test_skill_create_manifest_from_scratch() {
             // bootstrap IDs are derived from file/directory names and may contain
             // underscores or dots — the agent cleans these up in the refinement step)
             let id = sub["id"].as_str().unwrap_or("");
-            assert!(
-                !id.is_empty(),
-                "subsystem ID should not be empty"
-            );
+            assert!(!id.is_empty(), "subsystem ID should not be empty");
         }
     }
 
-    // Step 2: Validate via --apply-manifest --dry-run (as skill instructs: "always --dry-run before writing")
+    // Step 2: Validate the bootstrapped draft
     let validate_output = Command::cargo_bin("domain-scan")
         .expect("binary should exist")
         .arg("--root")
@@ -1580,16 +1696,15 @@ fn test_skill_create_manifest_from_scratch() {
         .arg("-q")
         .arg("--output")
         .arg("json")
-        .arg("init")
-        .arg("--apply-manifest")
+        .arg("validate")
+        .arg("--manifest")
         .arg(&manifest_path)
-        .arg("--dry-run")
         .output()
         .expect("validate command should run");
 
     assert!(
         validate_output.status.success(),
-        "init --apply-manifest --dry-run should succeed: {}",
+        "validate --manifest should succeed: {}",
         String::from_utf8_lossy(&validate_output.stderr)
     );
 
@@ -1649,7 +1764,7 @@ fn test_skill_create_manifest_from_scratch() {
 ///   2. Read and parse the JSON
 ///   3. Edit it: rename a subsystem, update description, add a connection
 ///   4. Write back the edited JSON
-///   5. Validate: still passes --apply-manifest --dry-run
+///   5. Validate: still passes `validate --manifest`
 ///   6. Match: coverage is still valid
 ///   7. Verify: edits are reflected in the output
 #[test]
@@ -1695,7 +1810,10 @@ fn test_skill_refine_manifest_via_direct_edits() {
             let original_id = first_sub["id"].as_str().unwrap_or("unknown").to_string();
             renamed_id = format!("{}-refined", original_id);
             first_sub["id"] = serde_json::Value::String(renamed_id.clone());
-            first_sub["name"] = serde_json::Value::String(format!("{} (Refined)", first_sub["name"].as_str().unwrap_or("Unknown")));
+            first_sub["name"] = serde_json::Value::String(format!(
+                "{} (Refined)",
+                first_sub["name"].as_str().unwrap_or("Unknown")
+            ));
 
             // Also update any connections referencing the old ID
             if let Some(connections) = manifest["connections"].as_array_mut() {
@@ -1737,7 +1855,7 @@ fn test_skill_refine_manifest_via_direct_edits() {
     let edited_json = serde_json::to_string_pretty(&manifest).expect("serialize edited manifest");
     std::fs::write(&manifest_path, edited_json.as_bytes()).expect("write edited manifest");
 
-    // Step 5: Validate — should still pass --apply-manifest --dry-run
+    // Step 5: Validate — should still pass validate --manifest
     let validate_output = Command::cargo_bin("domain-scan")
         .expect("binary should exist")
         .arg("--root")
@@ -1748,10 +1866,9 @@ fn test_skill_refine_manifest_via_direct_edits() {
         .arg("-q")
         .arg("--output")
         .arg("json")
-        .arg("init")
-        .arg("--apply-manifest")
+        .arg("validate")
+        .arg("--manifest")
         .arg(&manifest_path)
-        .arg("--dry-run")
         .output()
         .expect("validate should run");
 
@@ -1823,4 +1940,82 @@ fn test_skill_refine_manifest_via_direct_edits() {
             renamed_id
         );
     }
+}
+
+#[test]
+fn test_validate_manifest_catches_semantic_errors() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let manifest_path = tmp.path().join("system.json");
+
+    let invalid_manifest = serde_json::json!({
+        "meta": { "name": "bad", "version": "1.0.0", "description": "" },
+        "domains": {
+            "platform": { "label": "Platform", "color": "#3b82f6" }
+        },
+        "subsystems": [
+            {
+                "id": "auth",
+                "name": "Auth",
+                "domain": "missing-domain",
+                "status": "new",
+                "filePath": "/project/src/auth/",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": ["ghost-subsystem"]
+            }
+        ],
+        "connections": [
+            {
+                "from": "auth",
+                "to": "missing-target",
+                "label": "calls",
+                "type": "depends_on"
+            }
+        ]
+    });
+    std::fs::write(
+        &manifest_path,
+        serde_json::to_string_pretty(&invalid_manifest).expect("serialize manifest"),
+    )
+    .expect("write manifest");
+
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(fixture_root())
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("--output")
+        .arg("json")
+        .arg("validate")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .output()
+        .expect("validate should run");
+
+    assert!(
+        !output.status.success(),
+        "validate --manifest should fail on semantic manifest errors"
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("validation output should be JSON");
+    assert_eq!(json["validation_errors"].as_u64(), Some(3));
+    let violations = json["violations"]
+        .as_array()
+        .expect("violations should be an array");
+    assert!(violations
+        .iter()
+        .any(|v| v["field"].as_str() == Some("domain")));
+    assert!(violations
+        .iter()
+        .any(|v| v["field"].as_str() == Some("dependencies")));
+    assert!(violations
+        .iter()
+        .any(|v| v["field"].as_str() == Some("connections.to")));
 }

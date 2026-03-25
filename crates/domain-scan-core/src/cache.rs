@@ -262,9 +262,8 @@ impl Cache {
             ))
         })?;
 
-        let bytes = bincode::serialize(cached).map_err(|e| {
-            DomainScanError::Cache(format!("failed to serialize cache entry: {e}"))
-        })?;
+        let bytes = bincode::serialize(cached)
+            .map_err(|e| DomainScanError::Cache(format!("failed to serialize cache entry: {e}")))?;
 
         let path = self.disk_path(hash);
         fs::write(&path, &bytes).map_err(|e| {
@@ -280,10 +279,7 @@ impl Cache {
     /// Read a single `.bincode` file from disk.
     fn read_from_disk_file(&self, path: &Path) -> Result<CachedFile, DomainScanError> {
         let bytes = fs::read(path).map_err(|e| {
-            DomainScanError::Cache(format!(
-                "failed to read cache file {}: {e}",
-                path.display()
-            ))
+            DomainScanError::Cache(format!("failed to read cache file {}: {e}", path.display()))
         })?;
 
         bincode::deserialize(&bytes).map_err(|e| {

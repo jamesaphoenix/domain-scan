@@ -79,7 +79,10 @@ fn test_java_interface_generics() {
         .iter()
         .find(|i| i.name == "EventHandler")
         .expect("EventHandler not found");
-    assert!(!handler.generics.is_empty(), "EventHandler should have generics");
+    assert!(
+        !handler.generics.is_empty(),
+        "EventHandler should have generics"
+    );
 }
 
 #[test]
@@ -103,7 +106,11 @@ fn test_java_interface_extends() {
 #[test]
 fn test_java_classes_count() {
     let ir = extract_fixture("classes.java");
-    assert!(ir.classes.len() >= 4, "Expected at least 4 classes, got {}", ir.classes.len());
+    assert!(
+        ir.classes.len() >= 4,
+        "Expected at least 4 classes, got {}",
+        ir.classes.len()
+    );
 }
 
 #[test]
@@ -182,7 +189,10 @@ fn test_java_import_sources() {
 fn test_java_wildcard_import() {
     let ir = extract_fixture("imports.java");
     let wildcard = ir.imports.iter().find(|i| i.is_wildcard);
-    assert!(wildcard.is_some(), "Should have at least one wildcard import");
+    assert!(
+        wildcard.is_some(),
+        "Should have at least one wildcard import"
+    );
 }
 
 #[test]
@@ -302,11 +312,7 @@ fn test_java_record_fields() {
         .iter()
         .find(|s| s.name == "UserDTO")
         .expect("UserDTO not found");
-    assert_eq!(
-        user_dto.fields.len(),
-        3,
-        "UserDTO should have 3 fields"
-    );
+    assert_eq!(user_dto.fields.len(), 3, "UserDTO should have 3 fields");
     let field_names: Vec<&str> = user_dto.fields.iter().map(|f| f.name.as_str()).collect();
     assert!(field_names.contains(&"name"));
     assert!(field_names.contains(&"email"));

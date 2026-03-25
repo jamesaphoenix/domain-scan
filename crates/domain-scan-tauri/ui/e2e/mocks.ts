@@ -650,6 +650,29 @@ export async function setupTauriMocks(
         return [];
       }
 
+      // Check if a scan is loaded (for the tube map scan gate)
+      if (cmd === "get_current_scan") {
+        return config.scanStats;
+      }
+
+      // Platform release info (for the agent prompt)
+      if (cmd === "get_platform_release_info") {
+        return {
+          os: "darwin",
+          arch: "aarch64",
+          latest_tag: "v0.4.0",
+          assets: [{ name: "domain-scan-darwin-aarch64.tar.gz", download_url: "https://example.com/domain-scan.tar.gz", size: 5000000 }],
+          matching_asset: { name: "domain-scan-darwin-aarch64.tar.gz", download_url: "https://example.com/domain-scan.tar.gz", size: 5000000 },
+          cargo_install_cmd: "cargo install domain-scan-cli",
+          scanned_root: config.dialogResult,
+        };
+      }
+
+      // Open in editor
+      if (cmd === "open_in_editor") {
+        throw new Error("No editor available in test mode");
+      }
+
       // Default: return null for unknown commands
       return null;
     };

@@ -91,7 +91,7 @@ domain-scan --version
 \`\`\``;
   }
 
-  return `# Build a system.json manifest for this codebase from scratch
+  return `# Build a system.json manifest for this codebase
 
 You are an AI agent (Claude Code, Codex, or similar) tasked with generating a
 **system.json manifest** for the codebase you are currently inside.
@@ -102,9 +102,11 @@ source code — then maps them to a manifest of domains, subsystems, and
 connections. The manifest powers a "tube map" visualization of the codebase's
 architecture.
 
-Your job: install the CLI, install agent skills, scan the codebase, and then
-create a high-quality system.json from scratch — iterating until coverage
-exceeds 90%. You will use 5-10 parallel sub-agents depending on codebase size.
+Your job: install the CLI, install agent skills, scan the codebase, bootstrap a
+starter manifest, and then improve it aggressively until coverage exceeds 90%.
+The refinement work matters more than the bootstrap: merge duplicates, reorder
+domains, tighten or widen subsystem boundaries, and clean up noisy connections.
+You will use 5-10 parallel sub-agents depending on codebase size.
 ${info?.scanned_root ? `
 ## Project directory
 
@@ -149,11 +151,13 @@ You should see skills like: domain-scan-cli, domain-scan-scan, domain-scan-init,
 domain-scan-match, domain-scan-query, domain-scan-validate, domain-scan-prompt,
 domain-scan-tube-map, domain-scan-cache, domain-scan-safety, domain-scan-schema.
 
-These skills contain detailed workflows and rules. Read \`domain-scan-init\` and
-\`domain-scan-match\` before proceeding — they contain critical constraints:
+These skills contain detailed workflows and rules. Read \`domain-scan-init\`,
+\`domain-scan-validate\`, and \`domain-scan-match\` before proceeding — they
+contain critical constraints:
 
 \`\`\`bash
 domain-scan skills show domain-scan-init
+domain-scan skills show domain-scan-validate
 domain-scan skills show domain-scan-match
 \`\`\`
 
@@ -254,16 +258,17 @@ The manifest has this structure:
 
 ---
 
-## Step 5 — Bootstrap the manifest
+## Step 5 — Bootstrap then Refine the manifest
 
-Always start with \`--bootstrap\`. It uses directory structure and import analysis
-to produce a reasonable starter manifest:
+Always start with \`--bootstrap\`. It gives the agent a usable first draft based
+on directory structure and import analysis:
 
 \`\`\`bash
 domain-scan init --bootstrap --name "<project-name>" -o system.json
 \`\`\`
 
-Review the output — check domains, subsystems, and connections. Then refine:
+Do not stop at the bootstrap output. Review domains, subsystems, and
+connections, then improve them:
 
 ### 5a. Refine domains (3-7 max)
 
@@ -279,6 +284,7 @@ Review the output — check domains, subsystems, and connections. Then refine:
 - Use the scan output to verify paths: \`domain-scan scan . --output json\`
 - Subsystem IDs must be kebab-case: "auth-jwt", "billing-stripe", "api-rest"
 - Merge tiny subsystems (< 3 entities) into a parent
+- De-dupe overlapping subsystems and widen or narrow \`filePath\` boundaries when bootstrap cut them badly
 
 ### 5c. Populate entity arrays
 
@@ -293,6 +299,7 @@ Do not guess or hallucinate entity names.
 
 - Use the import graph: if subsystem A imports from subsystem B, add a connection
 - Label with a verb phrase: "authenticates-via", "persists-to", "reads-from"
+- Remove redundant or low-signal connections if bootstrap added too many
 - Cap at 3-5 connections per subsystem to keep the tube map readable
 
 ### 5e. Write system.json
@@ -306,8 +313,8 @@ Write the complete manifest to \`system.json\` in the repository root.
 After writing system.json, validate it immediately:
 
 \`\`\`bash
-# Check the manifest parses correctly
-domain-scan init --apply-manifest system.json --dry-run
+# Check semantic manifest integrity
+domain-scan validate --manifest system.json --output json
 
 # Run matching — this maps scanned entities to your subsystems
 domain-scan match --manifest system.json
@@ -351,8 +358,8 @@ For each batch of unmatched entities:
    - **Expand**: Widen an existing subsystem's \`filePath\` to cover the directory
    - **Create**: Add a new subsystem if the group represents a distinct concern
    - **Merge**: If only 1-2 entities, merge into the nearest existing subsystem
-4. Edit system.json accordingly
-5. Re-validate: \`domain-scan init --apply-manifest system.json --dry-run\`
+4. Edit system.json accordingly. Prefer patching the bootstrap output over rebuilding whole sections.
+5. Re-validate: \`domain-scan validate --manifest system.json --output json\`
 6. Re-match: \`domain-scan match --manifest system.json --fields coverage_percent\`
 7. Repeat until coverage > 90%
 
@@ -383,7 +390,7 @@ When working in parallel, assign each sub-agent a domain or set of domains:
 7. **kebab-case IDs only** — "auth-jwt" not "authJwt" or "auth_jwt"
 8. **Verb-first connection labels** — "authenticates-via" not "auth connection"
 9. **Cap connections** — max 3-5 outgoing connections per subsystem
-10. **Validate after every edit** — run \`domain-scan init --apply-manifest system.json --dry-run\`
+10. **Validate after every edit** — run \`domain-scan validate --manifest system.json --output json\`
     after every change to system.json
 11. **Write system.json to the project root**${info?.scanned_root ? ` — \`${info.scanned_root}/system.json\`` : " — not /tmp, not a subdirectory"}
 12. **Install skills for BOTH Claude Code and Codex** — the user may use either`;
@@ -478,7 +485,7 @@ export function ManifestLoader({
         </h2>
         <p className="text-sm text-slate-400 mb-4 leading-relaxed">
           Visualize your codebase architecture as a tube map. Use an AI agent to
-          create a manifest from scratch, or load an existing one.
+          bootstrap and refine a manifest, or load an existing one.
         </p>
 
         {/* Release + Platform badge */}
@@ -553,14 +560,14 @@ export function ManifestLoader({
                   {releaseInfo?.matching_asset?.name}
                 </span>
                 . The agent will install the CLI, bootstrap skills for both
-                Claude Code and Codex, scan your code, and create system.json
-                from scratch using 5-10 parallel sub-agents.
+                Claude Code and Codex, scan your code, bootstrap a starter
+                manifest, and then refine it using 5-10 parallel sub-agents.
               </>
             ) : (
               <>
                 The agent will build the CLI from source, bootstrap skills,
-                scan your code, and create system.json from scratch using 5-10
-                parallel sub-agents.
+                scan your code, bootstrap a starter manifest, and then refine
+                it using 5-10 parallel sub-agents.
               </>
             )}
           </p>

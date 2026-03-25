@@ -27,7 +27,7 @@ domain-scan match --manifest system.json --unmatched-only --output json --fields
 domain-scan match --manifest system.json --prompt-unmatched --agents 3
 
 # Validate manifest structure
-domain-scan init --apply-manifest system.json --dry-run --output json
+domain-scan validate --manifest system.json --output json
 
 # Get subsystem detail
 domain-scan match --manifest system.json --output json --fields "subsystems.id,subsystems.matched_entity_count"
@@ -37,7 +37,7 @@ domain-scan match --manifest system.json --output json --fields "subsystems.id,s
 
 1. **Scan** the codebase: `domain-scan scan --root . --output json --fields stats`
 2. **Bootstrap** a manifest: `domain-scan init --bootstrap -o system.json`
-3. **Refine** the manifest (see `domain-scan-init` skill)
+3. **Refine** the manifest: merge duplicates, fix boundaries, prune noisy connections, and tighten domains (see `domain-scan-init`)
 4. **Match** entities: `domain-scan match --manifest system.json --output json`
 5. **Fix unmatched**: iterate on the manifest until `coverage_percent` is satisfactory
 6. **View** in the Tauri app: load the manifest in the Subsystem Tube Map tab
@@ -49,7 +49,7 @@ domain-scan match --manifest system.json --output json --fields "subsystems.id,s
 | >90% | Excellent | Minor cleanup — check remaining unmatched items |
 | 70-90% | Good | Review unmatched items, may need new subsystems or adjusted file paths |
 | 50-70% | Fair | Significant gaps — likely missing domains or subsystem boundaries are wrong |
-| <50% | Poor | Manifest needs major rework — re-bootstrap or restructure domains |
+| <50% | Poor | Manifest needs major rework — re-bootstrap, merge duplicates, or restructure domains |
 
 ## Fixing unmatched entities
 
@@ -59,7 +59,7 @@ domain-scan match --manifest system.json --output json --fields "subsystems.id,s
    - Expand an existing subsystem's `filePath` to include the directory
    - Create a new subsystem in the appropriate domain
    - Add entity names to a subsystem's `interfaces`, `operations`, `tables`, or `events` arrays
-4. Re-validate: `domain-scan init --apply-manifest system.json --dry-run`
+4. Re-validate: `domain-scan validate --manifest system.json --output json`
 5. Re-match: `domain-scan match --manifest system.json --output json --fields coverage_percent`
 
 ## Dependency tracing

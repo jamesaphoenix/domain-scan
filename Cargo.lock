@@ -1059,7 +1059,7 @@ dependencies = [
 
 [[package]]
 name = "domain-scan-cli"
-version = "0.4.0"
+version = "0.4.2"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -1079,7 +1079,7 @@ dependencies = [
 
 [[package]]
 name = "domain-scan-core"
-version = "0.4.0"
+version = "0.4.2"
 dependencies = [
  "bincode",
  "chrono",
@@ -1119,14 +1119,14 @@ dependencies = [
 
 [[package]]
 name = "domain-scan-mcp"
-version = "0.4.0"
+version = "0.4.2"
 dependencies = [
  "domain-scan-core",
 ]
 
 [[package]]
 name = "domain-scan-tauri"
-version = "0.4.0"
+version = "0.4.2"
 dependencies = [
  "domain-scan-core",
  "serde",

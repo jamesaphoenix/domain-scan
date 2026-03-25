@@ -59,11 +59,7 @@ impl TuiApp {
         for iface in &interfaces {
             let parent_idx = nodes.len();
             nodes.push(TreeNode {
-                label: format!(
-                    "{} ({} methods)",
-                    iface.name,
-                    iface.methods.len()
-                ),
+                label: format!("{} ({} methods)", iface.name, iface.methods.len()),
                 kind: EntityKind::Interface,
                 depth: 0,
                 child_count: iface.methods.len(),
@@ -434,7 +430,7 @@ impl TuiApp {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3), // Header
-                Constraint::Min(1),   // Tree
+                Constraint::Min(1),    // Tree
                 Constraint::Length(3), // Footer / search bar
             ])
             .split(area);
@@ -482,14 +478,12 @@ impl TuiApp {
                 let kind_color = kind_color(node.kind);
 
                 let line = if is_selected {
-                    Line::from(vec![
-                        Span::styled(
-                            format!("{prefix}{}", node.label),
-                            Style::default()
-                                .fg(kind_color)
-                                .add_modifier(Modifier::BOLD | Modifier::REVERSED),
-                        ),
-                    ])
+                    Line::from(vec![Span::styled(
+                        format!("{prefix}{}", node.label),
+                        Style::default()
+                            .fg(kind_color)
+                            .add_modifier(Modifier::BOLD | Modifier::REVERSED),
+                    )])
                 } else {
                     Line::from(vec![
                         Span::styled(prefix, Style::default().fg(Color::DarkGray)),
@@ -501,8 +495,7 @@ impl TuiApp {
             })
             .collect();
 
-        let tree = List::new(items)
-            .block(Block::default().borders(Borders::ALL));
+        let tree = List::new(items).block(Block::default().borders(Borders::ALL));
         frame.render_widget(tree, area);
     }
 
@@ -522,13 +515,15 @@ impl TuiApp {
                 format!(" {loc}  |  [↑↓] navigate  [Enter] toggle  [/] search  [q] quit")
             }
         };
-        let footer = Paragraph::new(text)
-            .block(Block::default().borders(Borders::ALL));
+        let footer = Paragraph::new(text).block(Block::default().borders(Borders::ALL));
         frame.render_widget(footer, area);
     }
 
     /// Run the TUI event loop with a real terminal.
-    pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<(), Box<dyn std::error::Error>>
+    pub fn run<B: Backend>(
+        &mut self,
+        terminal: &mut Terminal<B>,
+    ) -> Result<(), Box<dyn std::error::Error>>
     where
         B::Error: 'static,
     {
@@ -568,7 +563,9 @@ fn kind_color(kind: EntityKind) -> Color {
 // Terminal setup/teardown for real usage
 // ---------------------------------------------------------------------------
 
-pub fn setup_terminal() -> Result<Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>, Box<dyn std::error::Error>> {
+pub fn setup_terminal(
+) -> Result<Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>, Box<dyn std::error::Error>>
+{
     crossterm::terminal::enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     crossterm::execute!(
@@ -581,7 +578,9 @@ pub fn setup_terminal() -> Result<Terminal<ratatui::backend::CrosstermBackend<st
     Ok(terminal)
 }
 
-pub fn teardown_terminal(terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn teardown_terminal(
+    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     crossterm::terminal::disable_raw_mode()?;
     crossterm::execute!(
         terminal.backend_mut(),
@@ -605,11 +604,11 @@ mod tests {
 
     /// Helper to build a minimal ScanIndex with test interfaces.
     fn test_scan_index() -> ScanIndex {
+        use domain_scan_core::index::build_index;
         use domain_scan_core::ir::{
-            BuildStatus, Confidence, IrFile, InterfaceDef, InterfaceKind, Language,
+            BuildStatus, Confidence, InterfaceDef, InterfaceKind, IrFile, Language,
             MethodSignature, Span, Visibility,
         };
-        use domain_scan_core::index::build_index;
         use std::path::PathBuf;
 
         let span = |start: u32, end: u32| Span {
@@ -663,16 +662,14 @@ mod tests {
                     visibility: Visibility::Public,
                     generics: vec![],
                     extends: vec![],
-                    methods: vec![
-                        MethodSignature {
-                            name: "handle".to_string(),
-                            span: span(13, 13),
-                            is_async: false,
-                            parameters: vec![],
-                            return_type: Some("void".to_string()),
-                            has_default: false,
-                        },
-                    ],
+                    methods: vec![MethodSignature {
+                        name: "handle".to_string(),
+                        span: span(13, 13),
+                        is_async: false,
+                        parameters: vec![],
+                        return_type: Some("void".to_string()),
+                        has_default: false,
+                    }],
                     properties: vec![],
                     language_kind: InterfaceKind::Interface,
                     decorators: vec![],
@@ -812,9 +809,7 @@ mod tests {
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).unwrap();
 
-        terminal
-            .draw(|f| app.render(f))
-            .unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
     }
 
     #[test]
@@ -828,16 +823,24 @@ mod tests {
         // Expand
         app.handle_event(key(KeyCode::Enter));
 
-        terminal
-            .draw(|f| app.render(f))
-            .unwrap();
+        terminal.draw(|f| app.render(f)).unwrap();
 
         // Verify the buffer contains method names
-        let buf = terminal.backend().buffer().content().iter()
+        let buf = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
             .map(|c| c.symbol().to_string())
             .collect::<String>();
-        assert!(buf.contains("findById"), "Buffer should contain method name 'findById'");
-        assert!(buf.contains("findAll"), "Buffer should contain method name 'findAll'");
+        assert!(
+            buf.contains("findById"),
+            "Buffer should contain method name 'findById'"
+        );
+        assert!(
+            buf.contains("findAll"),
+            "Buffer should contain method name 'findAll'"
+        );
     }
 
     #[test]
@@ -887,13 +890,8 @@ mod tests {
 
     #[test]
     fn test_empty_scan_index() {
-        let index = domain_scan_core::index::build_index(
-            std::path::PathBuf::from("."),
-            vec![],
-            0,
-            0,
-            0,
-        );
+        let index =
+            domain_scan_core::index::build_index(std::path::PathBuf::from("."), vec![], 0, 0, 0);
         let app = TuiApp::from_interfaces(&index);
 
         assert!(app.nodes.is_empty());

@@ -9,9 +9,9 @@ pub use crate::ir::{
     BuildStatus, ClassDef, Confidence, Entity, EntityKind, EntitySummary, ExportDef, ExportKind,
     FilterParams, FunctionDef, HttpMethod, ImplDef, ImportDef, ImportedSymbol, InterfaceDef,
     InterfaceKind, IrFile, Language, MatchResult, MatchStrategy, MatchedEntity, MethodDef,
-    MethodSignature, Parameter, PropertyDef, RouteDef, ScanConfig, ScanIndex, ScanStats,
-    SchemaDef, SchemaField, SchemaKind, ServiceDef, ServiceKind, Span, TypeAlias,
-    UnmatchedEntity, ValidationResult, Violation, ViolationSeverity, Visibility,
+    MethodSignature, Parameter, PropertyDef, RouteDef, ScanConfig, ScanIndex, ScanStats, SchemaDef,
+    SchemaField, SchemaKind, ServiceDef, ServiceKind, Span, TypeAlias, UnmatchedEntity,
+    ValidationResult, Violation, ViolationSeverity, Visibility,
 };
 pub use crate::prompt::PromptConfig;
 pub use crate::DomainScanError;

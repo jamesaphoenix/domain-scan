@@ -48,9 +48,9 @@ domain-scan scan --output json -o scan-results.json
 - Use `--no-cache` when debugging stale results or after modifying `.scm` query files.
 - Check `build_status` and `confidence` fields per file — `unbuilt` and `rebuild` files have lower confidence extractions.
 
-## Scan → Init → Tube Map workflow
+## Scan → Bootstrap → Refine workflow
 
-After scanning, use `domain-scan init --bootstrap` to generate a starter manifest, then refine it:
+After scanning, bootstrap a starter manifest, then improve it aggressively before trusting the tube map:
 
 ```bash
 # 1. Scan the codebase
@@ -59,11 +59,17 @@ domain-scan scan --root /path/to/project --output json --fields stats
 # 2. Bootstrap a manifest from scan results
 domain-scan init --bootstrap -o system.json
 
-# 3. Validate and check coverage
-domain-scan init --apply-manifest system.json --dry-run --output json
-domain-scan match --manifest system.json --output json --fields coverage_percent
+# 3. Refine the draft
+#    - merge duplicate subsystems
+#    - reorder or relabel domains
+#    - widen/narrow filePath boundaries
+#    - prune noisy connections
 
-# 4. View in the tube map (Tauri app) or iterate on unmatched entities
+# 4. Validate and check coverage
+domain-scan validate --manifest system.json --output json
+domain-scan match --manifest system.json --output json --fields coverage_percent,unmatched
+
+# 5. View in the tube map (Tauri app) or iterate on unmatched entities
 domain-scan match --manifest system.json --unmatched-only --output json --fields "name,kind,file"
 ```
 

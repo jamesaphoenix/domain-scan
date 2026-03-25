@@ -5,11 +5,11 @@
 
 use std::path::{Path, PathBuf};
 
+use domain_scan_core::index;
 use domain_scan_core::ir::{BuildStatus, Language};
 use domain_scan_core::parser;
 use domain_scan_core::query_engine;
 use domain_scan_core::resolver;
-use domain_scan_core::index;
 
 fn fixture_path(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -23,8 +23,14 @@ fn parse_fixture(name: &str) -> domain_scan_core::ir::IrFile {
         .unwrap_or_else(|e| panic!("Failed to read fixture {name}: {e}"));
     let tree = parser::parse_source(source.as_bytes(), Language::TypeScript)
         .unwrap_or_else(|e| panic!("Failed to parse fixture {name}: {e}"));
-    query_engine::extract(&tree, source.as_bytes(), &path, Language::TypeScript, BuildStatus::Built)
-        .unwrap_or_else(|e| panic!("Failed to extract from fixture {name}: {e}"))
+    query_engine::extract(
+        &tree,
+        source.as_bytes(),
+        &path,
+        Language::TypeScript,
+        BuildStatus::Built,
+    )
+    .unwrap_or_else(|e| panic!("Failed to extract from fixture {name}: {e}"))
 }
 
 #[test]
@@ -39,8 +45,14 @@ fn test_cross_file_interface_in_a_impl_in_b() {
         types_ir.interfaces.len()
     );
 
-    let event_handler = types_ir.interfaces.iter().find(|i| i.name == "EventHandler");
-    assert!(event_handler.is_some(), "Expected EventHandler interface in types.ts");
+    let event_handler = types_ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "EventHandler");
+    assert!(
+        event_handler.is_some(),
+        "Expected EventHandler interface in types.ts"
+    );
 
     // handler.ts should have classes implementing EventHandler
     assert!(
@@ -49,11 +61,16 @@ fn test_cross_file_interface_in_a_impl_in_b() {
         handler_ir.classes.len()
     );
 
-    let log_handler = handler_ir.classes.iter().find(|c| c.name == "LogEventHandler");
-    assert!(log_handler.is_some(), "Expected LogEventHandler class in handler.ts");
+    let log_handler = handler_ir
+        .classes
+        .iter()
+        .find(|c| c.name == "LogEventHandler");
     assert!(
-        log_handler
-            .is_some_and(|c| c.implements.contains(&"EventHandler".to_string())),
+        log_handler.is_some(),
+        "Expected LogEventHandler class in handler.ts"
+    );
+    assert!(
+        log_handler.is_some_and(|c| c.implements.contains(&"EventHandler".to_string())),
         "LogEventHandler should implement EventHandler"
     );
 }
@@ -70,7 +87,10 @@ fn test_cross_file_resolver_finds_implementors() {
 
     // EventHandler should have 2 implementors: LogEventHandler, MetricsHandler
     let event_impls = result.implementors.get("EventHandler");
-    assert!(event_impls.is_some(), "Expected implementors for EventHandler");
+    assert!(
+        event_impls.is_some(),
+        "Expected implementors for EventHandler"
+    );
     let empty_vec = Vec::new();
     let event_impls = event_impls.unwrap_or(&empty_vec);
     assert!(
@@ -93,7 +113,9 @@ fn test_cross_file_import_resolution() {
     let result = resolver::resolve(&files, &root);
 
     // handler.ts imports from ./types
-    let handler_imports: Vec<_> = result.imports.iter()
+    let handler_imports: Vec<_> = result
+        .imports
+        .iter()
         .filter(|i| i.importing_file.ends_with("handler.ts"))
         .collect();
     assert!(
@@ -103,7 +125,10 @@ fn test_cross_file_import_resolution() {
 
     // The import should resolve to types.ts
     let types_import = handler_imports.iter().find(|i| i.source.contains("types"));
-    assert!(types_import.is_some(), "Expected import from ./types in handler.ts");
+    assert!(
+        types_import.is_some(),
+        "Expected import from ./types in handler.ts"
+    );
     assert!(
         types_import.is_some_and(|i| i.resolved_path.is_some()),
         "Expected ./types import to resolve to a file"
@@ -121,8 +146,14 @@ fn test_cross_file_index_build() {
 
     // Check stats
     assert_eq!(scan_index.stats.total_files, 3);
-    assert!(scan_index.stats.total_interfaces >= 3, "Expected at least 3 interfaces");
-    assert!(scan_index.stats.total_classes >= 3, "Expected at least 3 classes");
+    assert!(
+        scan_index.stats.total_interfaces >= 3,
+        "Expected at least 3 interfaces"
+    );
+    assert!(
+        scan_index.stats.total_classes >= 3,
+        "Expected at least 3 classes"
+    );
 
     // Query: find implementors of EventHandler
     let implementors = scan_index.get_implementors("EventHandler");

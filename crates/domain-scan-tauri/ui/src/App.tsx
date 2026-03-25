@@ -12,19 +12,30 @@ import { TubeMapView } from "./components/TubeMapView";
 import { useToast } from "./hooks/useToast";
 import type { Entity, Language, FilterParams } from "./types";
 
+interface EntityPathScope {
+  subsystemId: string;
+  name: string;
+  prefix: string;
+}
+
 function App() {
   const scan = useScan();
   const tree = useTreeState();
   const { addToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<Tab>("entities");
+  const [activeTab, setActiveTab] = useState<Tab>("tube-map");
   const [selectedDetail, setSelectedDetail] = useState<Entity | null>(null);
   const [sourceCode, setSourceCode] = useState<string | null>(null);
   const [highlightLine, setHighlightLine] = useState<number | null>(null);
   const [highlightEndLine, setHighlightEndLine] = useState<number | null>(null);
+  const [selectedChildIdx, setSelectedChildIdx] = useState<number | null>(null);
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
   const [activeTabIdx, setActiveTabIdx] = useState(0);
   const [currentFilters, setCurrentFilters] = useState<FilterParams>({});
+  const [entityPathScope, setEntityPathScope] = useState<EntityPathScope | null>(null);
+
+  // Client-side file source cache — survives tab switches without IPC round-trips
+  const fileSourceCache = useRef<Map<string, string>>(new Map());
   const [promptOutput, setPromptOutput] = useState<string | null>(null);
   const [exportOutput, setExportOutput] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState<"json" | "csv" | "markdown">("json");
@@ -47,7 +58,20 @@ function App() {
     return parts[parts.length - 1] ?? filePath;
   }, []);
 
+  // Helper: get file source from client cache or IPC (and cache the result)
+  const getCachedFileSource = useCallback(
+    async (filePath: string): Promise<string> => {
+      const cached = fileSourceCache.current.get(filePath);
+      if (cached !== undefined) return cached;
+      const src = await scan.getFileSource(filePath);
+      fileSourceCache.current.set(filePath, src);
+      return src;
+    },
+    [scan],
+  );
+
   // Load entity detail + source when selection changes.
+  // Detail and source are fetched IN PARALLEL for speed.
   // Also populates children so tree expand works on first click.
   useEffect(() => {
     const entity = tree.selectedEntity;
@@ -60,12 +84,19 @@ function App() {
     }
 
     let cancelled = false;
+    const filePath = entity.file;
 
     (async () => {
       try {
-        const detail = await scan.getEntityDetail(entity.name, entity.file);
+        // Fetch detail and file source IN PARALLEL
+        const [detail, src] = await Promise.all([
+          scan.getEntityDetail(entity.name, entity.file),
+          getCachedFileSource(filePath),
+        ]);
         if (cancelled) return;
+
         setSelectedDetail(detail);
+        setSelectedChildIdx(null); // Reset child selection on parent change
 
         // Populate children so the tree can expand them
         const children = extractChildren(detail);
@@ -74,22 +105,15 @@ function App() {
             n.entity.name === entity.name && n.entity.file === entity.file,
         );
         if (idx >= 0) {
-          // Set children AND expand in one atomic state update
           tree.updateNodeChildren(idx, children, children.length > 0);
         }
 
-        // Load full file content for Monaco editor
-        const span = getSpanFromDetail(detail);
-        const filePath = entity.file;
-
-        // Check if file is already open in a tab
+        // Manage tabs
         const existingTabIdx = openTabs.findIndex((t) => t.file === filePath);
 
         if (existingTabIdx >= 0) {
-          // Tab already open — just switch to it and update highlight
           setActiveTabIdx(existingTabIdx);
         } else {
-          // Open a new tab (enforce LRU limit)
           const newTab: OpenTab = {
             file: filePath,
             label: makeTabLabel(filePath),
@@ -97,31 +121,26 @@ function App() {
           setOpenTabs((prev) => {
             const next = [...prev, newTab];
             if (next.length > MAX_OPEN_TABS) {
-              // Remove oldest (first) tab
               return next.slice(1);
             }
             return next;
           });
-          // Set active to the new tab (last index, or capped)
           setActiveTabIdx(
             Math.min(openTabs.length, MAX_OPEN_TABS - 1),
           );
         }
 
-        // Load full file source
-        const src = await scan.getFileSource(filePath);
-        if (!cancelled) {
-          setSourceCode(src);
-          if (span) {
-            setHighlightLine(span.start_line);
-            setHighlightEndLine(span.end_line);
-          } else {
-            setHighlightLine(entity.line);
-            setHighlightEndLine(null);
-          }
+        // Set source + highlight (already available — no second await)
+        const span = getSpanFromDetail(detail);
+        setSourceCode(src);
+        if (span) {
+          setHighlightLine(span.start_line);
+          setHighlightEndLine(span.end_line);
+        } else {
+          setHighlightLine(entity.line);
+          setHighlightEndLine(null);
         }
       } catch {
-        // Entity detail not found, clear
         if (!cancelled) {
           setSelectedDetail(null);
           setSourceCode(null);
@@ -139,7 +158,13 @@ function App() {
   // Apply filters
   const applyFilters = useCallback(
     (updates: Partial<FilterParams>) => {
-      const next = { ...currentFilters, ...updates };
+      const next: FilterParams = { ...currentFilters, ...updates };
+      if (!next.name_pattern) {
+        delete next.name_pattern;
+      }
+      if (!next.path_prefix) {
+        delete next.path_prefix;
+      }
       setCurrentFilters(next);
       scan.filterEntities(next);
     },
@@ -149,14 +174,18 @@ function App() {
   // Handle search (uses search_entities for fuzzy matching)
   const handleSearch = useCallback(
     (query: string) => {
-      if (query.trim()) {
-        scan.searchEntities(query);
-      } else {
-        scan.filterEntities(currentFilters);
-      }
+      applyFilters({ name_pattern: query.trim() || undefined });
     },
-    [scan, currentFilters],
+    [applyFilters],
   );
+
+  const clearEntityPathScope = useCallback(() => {
+    setEntityPathScope(null);
+    const next: FilterParams = { ...currentFilters };
+    delete next.path_prefix;
+    setCurrentFilters(next);
+    scan.filterEntities(next);
+  }, [currentFilters, scan]);
 
   // Scan on open
   const handleOpenDirectory = useCallback(async () => {
@@ -164,12 +193,29 @@ function App() {
     if (selected) {
       try {
         await scan.scanDirectory(selected as string);
+        setCurrentFilters({});
+        setEntityPathScope(null);
         addToast("Scan complete", "success");
       } catch {
         addToast("Scan failed", "error");
       }
     }
   }, [scan, addToast]);
+
+  const handleTabChange = useCallback(
+    (nextTab: Tab) => {
+      if (nextTab === "entities" && entityPathScope) {
+        const nextFilters: FilterParams = {
+          ...currentFilters,
+          path_prefix: entityPathScope.prefix,
+        };
+        setCurrentFilters(nextFilters);
+        scan.filterEntities(nextFilters);
+      }
+      setActiveTab(nextTab);
+    },
+    [currentFilters, entityPathScope, scan],
+  );
 
   // Prompt generation
   const handleGeneratePrompt = useCallback(
@@ -197,28 +243,24 @@ function App() {
     [scan, currentFilters],
   );
 
-  // Tab management
+  // Tab management — uses client cache for instant switches
   const handleTabSelect = useCallback(
     (index: number) => {
       setActiveTabIdx(index);
       const tab = openTabs[index];
       if (tab) {
-        // Load the file content for the selected tab
-        scan.getFileSource(tab.file).then((src) => {
+        getCachedFileSource(tab.file).then((src) => {
           setSourceCode(src);
-        }).catch(() => {
-          // File may have been deleted
-        });
+        }).catch(() => {});
       }
     },
-    [openTabs, scan],
+    [openTabs, getCachedFileSource],
   );
 
   const handleTabClose = useCallback(
     (index: number) => {
       setOpenTabs((prev) => {
         const next = prev.filter((_, i) => i !== index);
-        // Adjust active tab index
         setActiveTabIdx((prevIdx) => {
           if (next.length === 0) {
             setSourceCode(null);
@@ -229,10 +271,9 @@ function App() {
           if (prevIdx >= next.length) return next.length - 1;
           if (index < prevIdx) return prevIdx - 1;
           if (index === prevIdx && prevIdx < next.length) {
-            // Load the content of the tab that takes this position
             const tab = next[prevIdx];
             if (tab) {
-              scan.getFileSource(tab.file).then((src) => {
+              getCachedFileSource(tab.file).then((src) => {
                 setSourceCode(src);
               }).catch(() => {});
             }
@@ -242,7 +283,41 @@ function App() {
         return next;
       });
     },
-    [scan],
+    [getCachedFileSource],
+  );
+
+  // Close other tabs / close all / close to the right
+  const handleCloseOtherTabs = useCallback(
+    (keepIndex: number) => {
+      setOpenTabs((prev) => {
+        const kept = prev[keepIndex];
+        if (!kept) return prev;
+        setActiveTabIdx(0);
+        return [kept];
+      });
+    },
+    [],
+  );
+
+  const handleCloseAllTabs = useCallback(() => {
+    setOpenTabs([]);
+    setActiveTabIdx(0);
+    setSourceCode(null);
+    setHighlightLine(null);
+    setHighlightEndLine(null);
+  }, []);
+
+  const handleCloseTabsToRight = useCallback(
+    (index: number) => {
+      setOpenTabs((prev) => {
+        const next = prev.slice(0, index + 1);
+        setActiveTabIdx((prevIdx) =>
+          prevIdx > index ? index : prevIdx,
+        );
+        return next;
+      });
+    },
+    [],
   );
 
   // Open in editor
@@ -262,6 +337,30 @@ function App() {
       }
     },
     [scan, addToast],
+  );
+
+  // Child row selection — clicking a method/property/field/route scrolls Monaco to its line
+  const handleSelectChild = useCallback(
+    (nodeIndex: number, childIndex: number) => {
+      const node = tree.nodes[nodeIndex];
+      if (!node) return;
+      const child = node.children[childIndex];
+      if (!child) return;
+
+      // If parent not already selected, select it first (triggers entity load)
+      if (nodeIndex !== tree.selectedIndex) {
+        tree.select(nodeIndex);
+      }
+
+      setSelectedChildIdx(childIndex);
+
+      // Scroll Monaco to the child's line
+      if (child.line > 0) {
+        setHighlightLine(child.line);
+        setHighlightEndLine(null);
+      }
+    },
+    [tree],
   );
 
   // Keyboard navigation (only fires on entities tab)
@@ -354,7 +453,7 @@ function App() {
       </div>
 
       {/* Tab bar */}
-      <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <TabBar activeTab={activeTab} onTabChange={handleTabChange} />
 
       {/* Tab content */}
       {activeTab === "entities" ? (
@@ -365,14 +464,16 @@ function App() {
               <EntityTree
                 nodes={tree.nodes}
                 selectedIndex={tree.selectedIndex}
+                selectedChildIndex={selectedChildIdx}
                 onSelect={(index) => {
-                  // If re-clicking the same node, toggle collapse
+                  setSelectedChildIdx(null);
                   if (index === tree.selectedIndex) {
                     tree.toggleExpand(index);
                   } else {
                     tree.select(index);
                   }
                 }}
+                onSelectChild={handleSelectChild}
               />
             </div>
             <FilterBar
@@ -381,6 +482,15 @@ function App() {
               onFilterLanguage={(langs) => applyFilters({ languages: langs })}
               availableLanguages={availableLanguages}
               searchInputRef={searchInputRef}
+              pathScope={
+                currentFilters.path_prefix
+                  ? {
+                      prefix: currentFilters.path_prefix,
+                      label: entityPathScope?.name,
+                    }
+                  : null
+              }
+              onClearPathScope={clearEntityPathScope}
             />
           </div>
 
@@ -445,6 +555,9 @@ function App() {
                 activeTabIndex={activeTabIdx}
                 onTabSelect={handleTabSelect}
                 onTabClose={handleTabClose}
+                onCloseOtherTabs={handleCloseOtherTabs}
+                onCloseAllTabs={handleCloseAllTabs}
+                onCloseTabsToRight={handleCloseTabsToRight}
               />
             )}
           </div>
@@ -459,7 +572,7 @@ function App() {
           </div>
         </div>
       ) : (
-        <TubeMapView />
+        <TubeMapView onSelectedPathContextChange={setEntityPathScope} />
       )}
     </div>
   );

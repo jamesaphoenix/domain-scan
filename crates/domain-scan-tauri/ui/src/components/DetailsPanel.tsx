@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type {
   EntitySummary,
   Entity,
@@ -9,8 +8,6 @@ import type {
 interface DetailsPanelProps {
   entity: EntitySummary | null;
   detail: Entity | null;
-  onGeneratePrompt: (entityIds: string[]) => void;
-  onExport: (format: string) => void;
   onOpenInEditor: (file: string, line: number) => void;
 }
 
@@ -33,12 +30,8 @@ const CONFIDENCE_LABELS: Record<
 export function DetailsPanel({
   entity,
   detail,
-  onGeneratePrompt,
-  onExport,
   onOpenInEditor,
 }: DetailsPanelProps) {
-  const [exportFormat, setExportFormat] = useState("json");
-
   if (!entity) {
     return (
       <div className="flex items-center justify-center h-full text-gray-600 text-sm">
@@ -93,33 +86,6 @@ export function DetailsPanel({
         {detail && <DetailMeta detail={detail} />}
       </div>
 
-      {/* Actions */}
-      <div className="space-y-2 pt-2 border-t border-gray-700">
-        <button
-          className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs rounded transition-colors"
-          onClick={() => onGeneratePrompt([entity.name])}
-        >
-          Generate Prompt
-        </button>
-
-        <div className="flex gap-1">
-          <select
-            className="flex-1 bg-gray-800 text-gray-300 text-xs border border-gray-700 rounded px-2 py-1"
-            value={exportFormat}
-            onChange={(e) => setExportFormat(e.target.value)}
-          >
-            <option value="json">JSON</option>
-            <option value="csv">CSV</option>
-            <option value="markdown">Markdown</option>
-          </select>
-          <button
-            className="px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded transition-colors"
-            onClick={() => onExport(exportFormat)}
-          >
-            Export
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -705,10 +705,7 @@ fn extract_ts_types(
 
 // --- Imports ---
 
-fn extract_ts_imports(
-    tree: &Tree,
-    source: &[u8],
-) -> Result<Vec<ImportDef>, DomainScanError> {
+fn extract_ts_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
     let query = get_ts_query(&TS_IMPORTS_Q, TS_IMPORTS_SCM)?;
     let mut cursor = QueryCursor::new();
     let mut imports = Vec::new();
@@ -740,10 +737,7 @@ fn extract_ts_imports(
 
 // --- Exports ---
 
-fn extract_ts_exports(
-    tree: &Tree,
-    source: &[u8],
-) -> Result<Vec<ExportDef>, DomainScanError> {
+fn extract_ts_exports(tree: &Tree, source: &[u8]) -> Result<Vec<ExportDef>, DomainScanError> {
     let query = get_ts_query(&TS_EXPORTS_Q, TS_EXPORTS_SCM)?;
     let mut cursor = QueryCursor::new();
     let mut exports = Vec::new();
@@ -765,8 +759,7 @@ fn extract_ts_exports(
             .map(|s| strip_quotes(&node_text(s, source)));
 
         // Extract exported names
-        let exported =
-            extract_ts_export_names(def_node, source, is_default, &re_export_source);
+        let exported = extract_ts_export_names(def_node, source, is_default, &re_export_source);
         exports.extend(exported.into_iter().map(|(name, kind)| ExportDef {
             name,
             kind,
@@ -1256,10 +1249,7 @@ fn extract_rs_types(
 
 // --- Rust Imports ---
 
-fn extract_rs_imports(
-    tree: &Tree,
-    source: &[u8],
-) -> Result<Vec<ImportDef>, DomainScanError> {
+fn extract_rs_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
     let query = get_rs_query(&RS_IMPORTS_Q, RS_IMPORTS_SCM)?;
     let mut cursor = QueryCursor::new();
     let mut imports = Vec::new();
@@ -1312,9 +1302,9 @@ fn extract_rs_schemas(
         let derives = extract_rs_attributes(def_node, source);
 
         // Only include if it has Serialize or Deserialize derive
-        let has_serde = derives.iter().any(|d| {
-            d.contains("Serialize") || d.contains("Deserialize")
-        });
+        let has_serde = derives
+            .iter()
+            .any(|d| d.contains("Serialize") || d.contains("Deserialize"));
         if !has_serde {
             continue;
         }
@@ -1367,7 +1357,10 @@ fn extract_rs_services(
             .child_by_field_name("trait")
             .map(|t| node_text(t, source));
 
-        let kind = if attrs.iter().any(|a| a.contains("tonic") || a.contains("async_trait")) {
+        let kind = if attrs
+            .iter()
+            .any(|a| a.contains("tonic") || a.contains("async_trait"))
+        {
             if trait_name.is_some() {
                 Some(ServiceKind::GrpcService)
             } else {
@@ -1412,7 +1405,9 @@ fn rs_visibility(node: Node<'_>) -> Visibility {
             // Check child structure for pub(crate), pub(super), etc.
             let mut inner = child.walk();
             let has_restriction = child.named_children(&mut inner).any(|c| {
-                c.kind() == "crate" || c.kind() == "super" || c.kind() == "self"
+                c.kind() == "crate"
+                    || c.kind() == "super"
+                    || c.kind() == "self"
                     || c.kind() == "identifier"
             });
             return if has_restriction {
@@ -1443,7 +1438,10 @@ fn extract_rs_generics(node: Node<'_>, source: &[u8]) -> Vec<String> {
     let mut generics = Vec::new();
     let mut cursor = type_params.walk();
     for child in type_params.named_children(&mut cursor) {
-        if child.kind() == "type_identifier" || child.kind() == "lifetime" || child.kind() == "constrained_type_parameter" {
+        if child.kind() == "type_identifier"
+            || child.kind() == "lifetime"
+            || child.kind() == "constrained_type_parameter"
+        {
             generics.push(node_text(child, source));
         }
     }
@@ -1709,7 +1707,12 @@ fn extract_go_interface_members(
     let mut methods = Vec::new();
     let mut extends = Vec::new();
 
-    fn collect_members(node: Node<'_>, source: &[u8], methods: &mut Vec<MethodSignature>, extends: &mut Vec<String>) {
+    fn collect_members(
+        node: Node<'_>,
+        source: &[u8],
+        methods: &mut Vec<MethodSignature>,
+        extends: &mut Vec<String>,
+    ) {
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
             match child.kind() {
@@ -1746,7 +1749,9 @@ fn extract_go_interface_members(
                     // May contain embedded type identifiers
                     let mut inner = child.walk();
                     for inner_child in child.named_children(&mut inner) {
-                        if inner_child.kind() == "type_identifier" || inner_child.kind() == "qualified_type" {
+                        if inner_child.kind() == "type_identifier"
+                            || inner_child.kind() == "qualified_type"
+                        {
                             extends.push(node_text(inner_child, source));
                         }
                     }
@@ -1866,8 +1871,7 @@ fn extract_go_methods(
     // Group methods by receiver type
     let mut method_map: std::collections::HashMap<String, Vec<MethodDef>> =
         std::collections::HashMap::new();
-    let mut span_map: std::collections::HashMap<String, Span> =
-        std::collections::HashMap::new();
+    let mut span_map: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
 
     for m in cursor.matches(query, tree.root_node(), source) {
         let Some(name_node) = find_capture(&m, query, "method.name") else {
@@ -1912,18 +1916,13 @@ fn extract_go_methods(
         };
 
         span_map.entry(receiver_type.clone()).or_insert(span);
-        method_map
-            .entry(receiver_type)
-            .or_default()
-            .push(method);
+        method_map.entry(receiver_type).or_default().push(method);
     }
 
     let impls = method_map
         .into_iter()
         .map(|(target, methods)| {
-            let span = span_map
-                .remove(&target)
-                .unwrap_or_default();
+            let span = span_map.remove(&target).unwrap_or_default();
             ImplDef {
                 target,
                 trait_name: None,
@@ -1939,10 +1938,7 @@ fn extract_go_methods(
 
 // --- Go Imports ---
 
-fn extract_go_imports(
-    tree: &Tree,
-    source: &[u8],
-) -> Result<Vec<ImportDef>, DomainScanError> {
+fn extract_go_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
     let query = get_go_query(&GO_IMPORTS_Q, GO_IMPORTS_SCM)?;
     let mut cursor = QueryCursor::new();
     let mut imports = Vec::new();
@@ -2191,13 +2187,15 @@ fn go_struct_has_tags(body: Node<'_>, source: &[u8]) -> bool {
             if child.kind() == "field_declaration" {
                 if let Some(tag) = child.child_by_field_name("tag") {
                     let tag_text = node_text(tag, source);
-                    if tag_text.contains("json:") || tag_text.contains("db:") || tag_text.contains("xml:") || tag_text.contains("yaml:") {
+                    if tag_text.contains("json:")
+                        || tag_text.contains("db:")
+                        || tag_text.contains("xml:")
+                        || tag_text.contains("yaml:")
+                    {
                         return true;
                     }
                 }
-            } else if child.kind() == "field_declaration_list"
-                && check_tags(child, source)
-            {
+            } else if child.kind() == "field_declaration_list" && check_tags(child, source) {
                 return true;
             }
         }
@@ -2275,7 +2273,10 @@ fn extract_python(
 
     for cls in all_classes {
         let bases: Vec<&str> = cls.implements.iter().map(|s| s.as_str()).collect();
-        if bases.iter().any(|b| *b == "Protocol" || b.ends_with(".Protocol")) {
+        if bases
+            .iter()
+            .any(|b| *b == "Protocol" || b.ends_with(".Protocol"))
+        {
             interfaces.push(InterfaceDef {
                 name: cls.name,
                 file: cls.file,
@@ -2432,8 +2433,8 @@ fn extract_py_functions(
         let span = node_span(def_node);
         let visibility = py_visibility(&name);
 
-        let is_async = def_node.kind() == "function_definition"
-            && has_child_of_kind(def_node, "async");
+        let is_async =
+            def_node.kind() == "function_definition" && has_child_of_kind(def_node, "async");
 
         let params_node = def_node.child_by_field_name("parameters");
         let parameters = params_node
@@ -2464,10 +2465,7 @@ fn extract_py_functions(
 
 // --- Python Imports ---
 
-fn extract_py_imports(
-    tree: &Tree,
-    source: &[u8],
-) -> Result<Vec<ImportDef>, DomainScanError> {
+fn extract_py_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, DomainScanError> {
     let query = get_py_query(&PY_IMPORTS_Q, PY_IMPORTS_SCM)?;
     let mut cursor = QueryCursor::new();
     let mut imports = Vec::new();
@@ -2502,9 +2500,8 @@ fn extract_py_imports(
                         "aliased_import" => {
                             let name_node = child.child_by_field_name("name");
                             let alias_node = child.child_by_field_name("alias");
-                            let source_str = name_node
-                                .map(|n| node_text(n, source))
-                                .unwrap_or_default();
+                            let source_str =
+                                name_node.map(|n| node_text(n, source)).unwrap_or_default();
                             let alias = alias_node.map(|a| node_text(a, source));
                             imports.push(ImportDef {
                                 source: source_str.clone(),
@@ -2574,11 +2571,7 @@ fn extract_py_imports(
     Ok(imports)
 }
 
-fn extract_py_import_names(
-    node: Node<'_>,
-    source: &[u8],
-    symbols: &mut Vec<ImportedSymbol>,
-) {
+fn extract_py_import_names(node: Node<'_>, source: &[u8], symbols: &mut Vec<ImportedSymbol>) {
     match node.kind() {
         "dotted_name" | "identifier" => {
             symbols.push(ImportedSymbol {
@@ -2825,12 +2818,12 @@ fn extract_py_parameters(params_node: Node<'_>, source: &[u8]) -> Vec<Parameter>
                     Some(n)
                 } else {
                     let mut c = child.walk();
-                    let found = child.named_children(&mut c).find(|n| n.kind() == "identifier");
+                    let found = child
+                        .named_children(&mut c)
+                        .find(|n| n.kind() == "identifier");
                     found
                 };
-                let name = name_node
-                    .map(|n| node_text(n, source))
-                    .unwrap_or_default();
+                let name = name_node.map(|n| node_text(n, source)).unwrap_or_default();
                 if name == "self" || name == "cls" {
                     continue;
                 }
@@ -3029,7 +3022,10 @@ fn classify_py_schema(bases: &[String], decorators: &[String]) -> (Option<Schema
 
     // Check decorators
     for dec in decorators {
-        if dec == "dataclass" || dec.starts_with("dataclass(") || dec.starts_with("dataclasses.dataclass") {
+        if dec == "dataclass"
+            || dec.starts_with("dataclass(")
+            || dec.starts_with("dataclasses.dataclass")
+        {
             return (Some(SchemaKind::DataTransfer), "dataclass".to_string());
         }
     }
@@ -3265,13 +3261,14 @@ fn extract_jv_classes(
         let generics = extract_jv_generics(def_node, source);
         let decorators = extract_jv_annotations(def_node, source);
 
-        let extends = def_node
-            .child_by_field_name("superclass")
-            .and_then(|sc| {
-                let mut c = sc.walk();
-                let result = sc.named_children(&mut c).next().map(|n| node_text(n, source));
-                result
-            });
+        let extends = def_node.child_by_field_name("superclass").and_then(|sc| {
+            let mut c = sc.walk();
+            let result = sc
+                .named_children(&mut c)
+                .next()
+                .map(|n| node_text(n, source));
+            result
+        });
 
         let implements = extract_jv_implements(def_node, source);
 
@@ -3478,7 +3475,9 @@ fn extract_jv_services(
 
         let decorators = extract_jv_annotations(def_node, source);
         let kind = classify_jv_service_kind(&decorators);
-        let Some(kind) = kind else { continue; };
+        let Some(kind) = kind else {
+            continue;
+        };
 
         let name = node_text(name_node, source);
         let span = node_span(def_node);
@@ -4159,10 +4158,7 @@ fn extract_kt_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, Doma
         let full_text = node_text(def_node, source);
         let span = node_span(def_node);
 
-        let trimmed = full_text
-            .trim()
-            .trim_start_matches("import")
-            .trim();
+        let trimmed = full_text.trim().trim_start_matches("import").trim();
 
         let is_wildcard = trimmed.ends_with(".*");
         let source_path = if is_wildcard {
@@ -4218,7 +4214,9 @@ fn extract_kt_services(
 
         let decorators = extract_kt_annotations(def_node, source);
         let kind = classify_jv_service_kind(&decorators);
-        let Some(kind) = kind else { continue; };
+        let Some(kind) = kind else {
+            continue;
+        };
 
         let name = node_text(name_node, source);
         let span = node_span(def_node);
@@ -4341,7 +4339,8 @@ fn kt_is_interface(node: Node<'_>) -> bool {
 
 fn kt_class_body(node: Node<'_>) -> Option<Node<'_>> {
     let mut cursor = node.walk();
-    let result = node.named_children(&mut cursor)
+    let result = node
+        .named_children(&mut cursor)
         .find(|c| c.kind() == "class_body");
     result
 }
@@ -4375,7 +4374,8 @@ fn kt_has_class_modifier(node: Node<'_>, source: &[u8], modifier_name: &str) -> 
         if child.kind() == "modifiers" {
             let mut mc = child.walk();
             for modifier in child.named_children(&mut mc) {
-                if modifier.kind() == "class_modifier" || modifier.kind() == "inheritance_modifier" {
+                if modifier.kind() == "class_modifier" || modifier.kind() == "inheritance_modifier"
+                {
                     let text = node_text(modifier, source);
                     if text == modifier_name {
                         return true;
@@ -4397,7 +4397,9 @@ fn extract_kt_generics(node: Node<'_>, source: &[u8]) -> Vec<String> {
                 if tp.kind() == "type_parameter" {
                     let mut inner = tp.walk();
                     for inner_child in tp.named_children(&mut inner) {
-                        if inner_child.kind() == "type_identifier" || inner_child.kind() == "identifier" {
+                        if inner_child.kind() == "type_identifier"
+                            || inner_child.kind() == "identifier"
+                        {
                             generics.push(node_text(inner_child, source));
                             break;
                         }
@@ -4481,7 +4483,8 @@ fn extract_kt_return_type(node: Node<'_>, source: &[u8]) -> Option<String> {
 
 fn kt_has_function_body(node: Node<'_>) -> bool {
     let mut cursor = node.walk();
-    let result = node.named_children(&mut cursor)
+    let result = node
+        .named_children(&mut cursor)
         .any(|c| c.kind() == "function_body");
     result
 }
@@ -4507,7 +4510,9 @@ fn extract_kt_annotation_from_node(ann: Node<'_>, source: &[u8]) -> Option<Strin
     if let Some(user_type) = find_named_child(ann, "user_type") {
         Some(node_text(user_type, source))
     } else if let Some(ctor_inv) = find_named_child(ann, "constructor_invocation") {
-        ctor_inv.named_child(0).map(|type_node| node_text(type_node, source))
+        ctor_inv
+            .named_child(0)
+            .map(|type_node| node_text(type_node, source))
     } else {
         None
     }
@@ -4792,10 +4797,7 @@ fn extract_sc_imports(tree: &Tree, source: &[u8]) -> Result<Vec<ImportDef>, Doma
         let full_text = node_text(def_node, source);
         let span = node_span(def_node);
 
-        let trimmed = full_text
-            .trim()
-            .trim_start_matches("import")
-            .trim();
+        let trimmed = full_text.trim().trim_start_matches("import").trim();
 
         let is_wildcard = trimmed.ends_with("._") || trimmed.ends_with(".*");
         let source_path = if is_wildcard {
@@ -4966,9 +4968,7 @@ fn extract_sc_parameters(node: Node<'_>, source: &[u8]) -> Vec<Parameter> {
                     let type_annotation = param
                         .child_by_field_name("type")
                         .map(|t| node_text(t, source));
-                    let has_default = param
-                        .child_by_field_name("default")
-                        .is_some();
+                    let has_default = param.child_by_field_name("default").is_some();
 
                     parameters.push(Parameter {
                         name,
@@ -5365,7 +5365,9 @@ fn extract_cs_services(
 
         let decorators = extract_cs_attributes(def_node, source);
         let kind = classify_cs_service_kind(&decorators);
-        let Some(kind) = kind else { continue; };
+        let Some(kind) = kind else {
+            continue;
+        };
 
         let name = node_text(name_node, source);
         let span = node_span(def_node);
@@ -6136,7 +6138,9 @@ fn extract_sw_services(
 
         // Classify service by name suffix or attributes
         let kind = classify_sw_service_kind(&name, &decorators);
-        let Some(kind) = kind else { continue; };
+        let Some(kind) = kind else {
+            continue;
+        };
 
         let span = node_span(def_node);
         let body_node = find_capture(&m, query, "service.body");
@@ -6207,7 +6211,9 @@ fn extract_sw_schemas(
 
         // Check for Codable conformance
         let inheritance = extract_sw_inheritance(def_node, source);
-        let is_codable = inheritance.iter().any(|t| t == "Codable" || t == "Decodable" || t == "Encodable");
+        let is_codable = inheritance
+            .iter()
+            .any(|t| t == "Codable" || t == "Decodable" || t == "Encodable");
         if !is_codable {
             continue;
         }
@@ -6620,7 +6626,11 @@ fn sw_param_name(node: Node<'_>, source: &[u8]) -> String {
 fn sw_param_type(node: Node<'_>, source: &[u8]) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        if child.kind() == "user_type" || child.kind() == "optional_type" || child.kind() == "array_type" || child.kind() == "dictionary_type" {
+        if child.kind() == "user_type"
+            || child.kind() == "optional_type"
+            || child.kind() == "array_type"
+            || child.kind() == "dictionary_type"
+        {
             return Some(node_text(child, source));
         }
     }
@@ -6775,10 +6785,7 @@ fn cpp_is_pure_virtual_decl(node: Node<'_>, source: &[u8]) -> bool {
     // Must have a function declarator (not a field)
     let decl = node.child_by_field_name("declarator");
     let is_func = decl
-        .map(|d| {
-            d.kind() == "function_declarator"
-                || d.kind() == "abstract_function_declarator"
-        })
+        .map(|d| d.kind() == "function_declarator" || d.kind() == "abstract_function_declarator")
         .unwrap_or(false);
     if !is_func {
         return false;
@@ -6811,7 +6818,9 @@ fn cpp_extract_method_signatures(body: Node<'_>, source: &[u8]) -> Vec<MethodSig
         if child.kind() == "field_declaration" || child.kind() == "declaration" {
             let decl = child.child_by_field_name("declarator");
             let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
-            let Some(name) = name else { continue; };
+            let Some(name) = name else {
+                continue;
+            };
 
             // Skip destructors
             if name.starts_with('~') {
@@ -6819,7 +6828,9 @@ fn cpp_extract_method_signatures(body: Node<'_>, source: &[u8]) -> Vec<MethodSig
             }
 
             let span = node_span(child);
-            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let return_type = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
 
             let params = decl
                 .and_then(|d| cpp_find_parameter_list(d))
@@ -6842,7 +6853,9 @@ fn cpp_extract_method_signatures(body: Node<'_>, source: &[u8]) -> Vec<MethodSig
         if child.kind() == "function_definition" {
             let decl = child.child_by_field_name("declarator");
             let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
-            let Some(name) = name else { continue; };
+            let Some(name) = name else {
+                continue;
+            };
 
             // Skip destructors
             if name.starts_with('~') {
@@ -6850,7 +6863,9 @@ fn cpp_extract_method_signatures(body: Node<'_>, source: &[u8]) -> Vec<MethodSig
             }
 
             let span = node_span(child);
-            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let return_type = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
 
             let params = decl
                 .and_then(|d| cpp_find_parameter_list(d))
@@ -6879,7 +6894,10 @@ fn cpp_function_declarator_name(node: Node<'_>, source: &[u8]) -> Option<String>
         }
     }
     // If the node itself is an identifier
-    if node.kind() == "identifier" || node.kind() == "destructor_name" || node.kind() == "field_identifier" {
+    if node.kind() == "identifier"
+        || node.kind() == "destructor_name"
+        || node.kind() == "field_identifier"
+    {
         return Some(node_text(node, source));
     }
     // Search children for function_declarator
@@ -6958,7 +6976,9 @@ fn extract_cpp_classes(
             Vec::new()
         };
 
-        let is_abstract = body_node.map(|b| cpp_has_pure_virtual(b, source)).unwrap_or(false);
+        let is_abstract = body_node
+            .map(|b| cpp_has_pure_virtual(b, source))
+            .unwrap_or(false);
 
         let mut methods = body_node
             .map(|b| extract_cpp_class_methods(b, source, path, is_struct))
@@ -7020,7 +7040,9 @@ fn extract_cpp_class_methods(
         if child.kind() == "function_definition" {
             let decl = child.child_by_field_name("declarator");
             let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
-            let Some(name) = name else { continue; };
+            let Some(name) = name else {
+                continue;
+            };
 
             // Skip destructors
             if name.starts_with('~') {
@@ -7028,7 +7050,9 @@ fn extract_cpp_class_methods(
             }
 
             let span = node_span(child);
-            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let return_type = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
             let is_static = cpp_has_storage_class_in(child, source, "static");
 
             let params = decl
@@ -7056,13 +7080,14 @@ fn extract_cpp_class_methods(
         if child.kind() == "field_declaration" || child.kind() == "declaration" {
             let decl = child.child_by_field_name("declarator");
             let name = decl.and_then(|d| cpp_function_declarator_name(d, source));
-            let Some(ref name_str) = name else { continue; };
+            let Some(ref name_str) = name else {
+                continue;
+            };
 
             // Only include if it has a function declarator (not a field)
             let has_func_decl = decl
                 .map(|d| {
-                    d.kind() == "function_declarator"
-                        || d.kind() == "abstract_function_declarator"
+                    d.kind() == "function_declarator" || d.kind() == "abstract_function_declarator"
                 })
                 .unwrap_or(false);
             if !has_func_decl {
@@ -7075,7 +7100,9 @@ fn extract_cpp_class_methods(
             }
 
             let span = node_span(child);
-            let return_type = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let return_type = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
             let is_static = cpp_has_storage_class_in(child, source, "static");
 
             let params = decl
@@ -7134,15 +7161,16 @@ fn extract_cpp_class_properties(
             // Skip if it's a function declarator (method, not property)
             let is_func = decl
                 .map(|d| {
-                    d.kind() == "function_declarator"
-                        || d.kind() == "abstract_function_declarator"
+                    d.kind() == "function_declarator" || d.kind() == "abstract_function_declarator"
                 })
                 .unwrap_or(false);
             if is_func {
                 continue;
             }
 
-            let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let type_annotation = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
             let is_const = cpp_has_type_qualifier(child, "const");
 
             // Get the declarator name (could be identifier, field_identifier, pointer_declarator, etc.)
@@ -7154,7 +7182,9 @@ fn extract_cpp_class_properties(
                     cpp_innermost_identifier(d, source)
                 }
             });
-            let Some(name) = name else { continue; };
+            let Some(name) = name else {
+                continue;
+            };
             if name.is_empty() {
                 continue;
             }
@@ -7207,8 +7237,8 @@ fn extract_cpp_functions(
 
         let name = node_text(name_node, source);
         let span = node_span(def_node);
-        let return_type = find_capture(&m, query, "function.return_type")
-            .map(|rt| node_text(rt, source));
+        let return_type =
+            find_capture(&m, query, "function.return_type").map(|rt| node_text(rt, source));
 
         let params_node = find_capture(&m, query, "function.params");
         let parameters = params_node
@@ -7336,8 +7366,7 @@ fn cpp_body_has_methods(body: Node<'_>) -> bool {
             let decl = child.child_by_field_name("declarator");
             let is_func = decl
                 .map(|d| {
-                    d.kind() == "function_declarator"
-                        || d.kind() == "abstract_function_declarator"
+                    d.kind() == "function_declarator" || d.kind() == "abstract_function_declarator"
                 })
                 .unwrap_or(false);
             if is_func {
@@ -7361,7 +7390,9 @@ fn extract_cpp_schema_fields(body: Node<'_>, source: &[u8]) -> Vec<SchemaField> 
             if name.is_empty() {
                 continue;
             }
-            let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+            let type_annotation = child
+                .child_by_field_name("type")
+                .map(|t| node_text(t, source));
 
             fields.push(SchemaField {
                 name,
@@ -7455,7 +7486,9 @@ fn extract_cpp_parameters(params: Node<'_>, source: &[u8]) -> Vec<Parameter> {
     for child in params.named_children(&mut cursor) {
         match child.kind() {
             "parameter_declaration" | "optional_parameter_declaration" => {
-                let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+                let type_annotation = child
+                    .child_by_field_name("type")
+                    .map(|t| node_text(t, source));
                 let name = child
                     .child_by_field_name("declarator")
                     .map(|d| cpp_innermost_identifier(d, source))
@@ -7473,7 +7506,9 @@ fn extract_cpp_parameters(params: Node<'_>, source: &[u8]) -> Vec<Parameter> {
                 });
             }
             "variadic_parameter_declaration" => {
-                let type_annotation = child.child_by_field_name("type").map(|t| node_text(t, source));
+                let type_annotation = child
+                    .child_by_field_name("type")
+                    .map(|t| node_text(t, source));
                 let name = child
                     .child_by_field_name("declarator")
                     .map(|d| cpp_innermost_identifier(d, source))
@@ -8286,7 +8321,10 @@ fn rb_extract_superclass(node: Node<'_>, source: &[u8]) -> Option<String> {
         if child.kind() == "superclass" {
             // superclass has a child which is the class name expression
             let mut sc = child.walk();
-            let first = child.named_children(&mut sc).next().map(|n| node_text(n, source));
+            let first = child
+                .named_children(&mut sc)
+                .next()
+                .map(|n| node_text(n, source));
             if let Some(name) = first {
                 return Some(name);
             }
@@ -8824,9 +8862,7 @@ fn extract_ts_parameters(params_node: Node<'_>, source: &[u8]) -> Vec<Parameter>
                     let id_node = child
                         .named_children(&mut inner_cursor)
                         .find(|c| c.kind() == "identifier");
-                    id_node
-                        .map(|n| node_text(n, source))
-                        .unwrap_or_default()
+                    id_node.map(|n| node_text(n, source)).unwrap_or_default()
                 };
 
                 let type_annotation = child
@@ -8862,10 +8898,7 @@ fn extract_type_annotation_text(node: Node<'_>, source: &[u8]) -> String {
 // Helper: Import symbols
 // ---------------------------------------------------------------------------
 
-fn extract_ts_import_symbols(
-    import_node: Node<'_>,
-    source: &[u8],
-) -> (Vec<ImportedSymbol>, bool) {
+fn extract_ts_import_symbols(import_node: Node<'_>, source: &[u8]) -> (Vec<ImportedSymbol>, bool) {
     let mut symbols = Vec::new();
     let mut is_wildcard = false;
 
@@ -8984,12 +9017,12 @@ fn extract_ts_export_names(
             _ if is_default => {
                 let name = match child.kind() {
                     "identifier" => node_text(child, source),
-                    "function_declaration"
-                    | "class_declaration"
-                    | "abstract_class_declaration" => child
-                        .child_by_field_name("name")
-                        .map(|n| node_text(n, source))
-                        .unwrap_or_else(|| "default".to_string()),
+                    "function_declaration" | "class_declaration" | "abstract_class_declaration" => {
+                        child
+                            .child_by_field_name("name")
+                            .map(|n| node_text(n, source))
+                            .unwrap_or_else(|| "default".to_string())
+                    }
                     _ => "default".to_string(),
                 };
                 names.push((name, ExportKind::Default));
@@ -9199,22 +9232,18 @@ fn classify_schema_member(obj: &str, prop: &str) -> (Option<SchemaKind>, String,
             "effect-schema".to_string(),
             None,
         ),
-        ("z", "object") | ("z", "enum") => (
-            Some(SchemaKind::ValidationSchema),
-            "zod".to_string(),
-            None,
-        ),
+        ("z", "object") | ("z", "enum") => {
+            (Some(SchemaKind::ValidationSchema), "zod".to_string(), None)
+        }
         _ => (None, String::new(), None),
     }
 }
 
 fn classify_schema_function(fn_name: &str) -> (Option<SchemaKind>, String, Option<String>) {
     match fn_name {
-        "pgTable" | "mysqlTable" | "sqliteTable" => (
-            Some(SchemaKind::OrmModel),
-            "drizzle".to_string(),
-            None,
-        ),
+        "pgTable" | "mysqlTable" | "sqliteTable" => {
+            (Some(SchemaKind::OrmModel), "drizzle".to_string(), None)
+        }
         _ => (None, String::new(), None),
     }
 }
@@ -9337,10 +9366,7 @@ mod tests {
             classify_service_kind(&["Injectable()".to_string()]),
             Some(ServiceKind::Microservice)
         );
-        assert_eq!(
-            classify_service_kind(&["Component()".to_string()]),
-            None
-        );
+        assert_eq!(classify_service_kind(&["Component()".to_string()]), None);
     }
 
     #[test]
@@ -9423,7 +9449,11 @@ mod tests {
         ];
         for (name, source) in queries {
             let result = Query::new(&lang, source);
-            assert!(result.is_ok(), "Failed to compile {name}.scm: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to compile {name}.scm: {:?}",
+                result.err()
+            );
         }
     }
 
@@ -9440,7 +9470,11 @@ mod tests {
         ];
         for (name, source) in queries {
             let result = Query::new(&lang, source);
-            assert!(result.is_ok(), "Failed to compile java/{name}.scm: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to compile java/{name}.scm: {:?}",
+                result.err()
+            );
         }
     }
 
@@ -9457,7 +9491,11 @@ mod tests {
         ];
         for (name, source) in queries {
             let result = Query::new(&lang, source);
-            assert!(result.is_ok(), "Failed to compile kotlin/{name}.scm: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to compile kotlin/{name}.scm: {:?}",
+                result.err()
+            );
         }
     }
 
@@ -9475,7 +9513,11 @@ mod tests {
         ];
         for (name, source) in queries {
             let result = Query::new(&lang, source);
-            assert!(result.is_ok(), "Failed to compile cpp/{name}.scm: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to compile cpp/{name}.scm: {:?}",
+                result.err()
+            );
         }
     }
 
@@ -9491,7 +9533,11 @@ mod tests {
         ];
         for (name, source) in queries {
             let result = Query::new(&lang, source);
-            assert!(result.is_ok(), "Failed to compile php/{name}.scm: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to compile php/{name}.scm: {:?}",
+                result.err()
+            );
         }
     }
 
@@ -9506,7 +9552,11 @@ mod tests {
         ];
         for (name, source) in queries {
             let result = Query::new(&lang, source);
-            assert!(result.is_ok(), "Failed to compile ruby/{name}.scm: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to compile ruby/{name}.scm: {:?}",
+                result.err()
+            );
         }
     }
 
@@ -9521,7 +9571,11 @@ mod tests {
         ];
         for (name, source) in queries {
             let result = Query::new(&lang, source);
-            assert!(result.is_ok(), "Failed to compile scala/{name}.scm: {:?}", result.err());
+            assert!(
+                result.is_ok(),
+                "Failed to compile scala/{name}.scm: {:?}",
+                result.err()
+            );
         }
     }
 }

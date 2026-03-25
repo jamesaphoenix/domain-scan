@@ -6,13 +6,14 @@ export interface UseTreeStateReturn {
   selectedIndex: number;
   selectedEntity: EntitySummary | null;
   toggleExpand: (index: number) => void;
+  expandNode: (index: number) => void;
   select: (index: number) => void;
   moveUp: () => void;
   moveDown: () => void;
   expandSelected: () => void;
   collapseSelected: () => void;
   setEntities: (entities: EntitySummary[]) => void;
-  updateNodeChildren: (index: number, children: TreeChild[]) => void;
+  updateNodeChildren: (index: number, children: TreeChild[], expand?: boolean) => void;
   /** Total number of visible rows (nodes + expanded children) */
   visibleRowCount: number;
 }
@@ -36,6 +37,14 @@ export function useTreeState(): UseTreeStateReturn {
     setNodes((prev) =>
       prev.map((node, i) =>
         i === index ? { ...node, expanded: !node.expanded } : node,
+      ),
+    );
+  }, []);
+
+  const expandNode = useCallback((index: number) => {
+    setNodes((prev) =>
+      prev.map((node, i) =>
+        i === index ? { ...node, expanded: true } : node,
       ),
     );
   }, []);
@@ -83,10 +92,12 @@ export function useTreeState(): UseTreeStateReturn {
   }, [selectedIndex]);
 
   const updateNodeChildren = useCallback(
-    (index: number, children: TreeChild[]) => {
+    (index: number, children: TreeChild[], expand?: boolean) => {
       setNodes((prev) =>
         prev.map((node, i) =>
-          i === index ? { ...node, children } : node,
+          i === index
+            ? { ...node, children, ...(expand ? { expanded: true } : {}) }
+            : node,
         ),
       );
     },
@@ -100,6 +111,7 @@ export function useTreeState(): UseTreeStateReturn {
     selectedIndex,
     selectedEntity,
     toggleExpand,
+    expandNode,
     select,
     moveUp,
     moveDown,

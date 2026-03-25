@@ -68,13 +68,15 @@ fn arb_parameter() -> impl Strategy<Value = Parameter> {
         any::<bool>(),
         any::<bool>(),
     )
-        .prop_map(|(name, type_annotation, is_optional, has_default, is_rest)| Parameter {
-            name,
-            type_annotation,
-            is_optional,
-            has_default,
-            is_rest,
-        })
+        .prop_map(
+            |(name, type_annotation, is_optional, has_default, is_rest)| Parameter {
+                name,
+                type_annotation,
+                is_optional,
+                has_default,
+                is_rest,
+            },
+        )
 }
 
 fn arb_method_signature() -> impl Strategy<Value = MethodSignature> {
@@ -193,8 +195,12 @@ fn arb_ir_file() -> impl Strategy<Value = IrFile> {
         proptest::collection::vec(arb_interface_def(), 0..3),
     )
         .prop_map(|(language, build_status, interfaces)| {
-            let mut ir =
-                IrFile::new(PathBuf::from("test.ts"), language, "hash123".to_string(), build_status);
+            let mut ir = IrFile::new(
+                PathBuf::from("test.ts"),
+                language,
+                "hash123".to_string(),
+                build_status,
+            );
             ir.interfaces = interfaces;
             ir
         })

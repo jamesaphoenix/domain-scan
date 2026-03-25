@@ -5,17 +5,16 @@
 
 use std::path::{Path, PathBuf};
 
+use domain_scan_core::index;
 use domain_scan_core::ir::{BuildStatus, Language, ScanConfig};
-use domain_scan_core::walker;
+use domain_scan_core::output::{self, OutputFormat};
 use domain_scan_core::parser;
 use domain_scan_core::query_engine;
-use domain_scan_core::index;
-use domain_scan_core::output::{self, OutputFormat};
 use domain_scan_core::validate;
+use domain_scan_core::walker;
 
 fn fixture_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/cross_file")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cross_file")
 }
 
 /// Run the full pipeline: walk -> parse -> extract -> index -> output
@@ -32,8 +31,7 @@ fn run_pipeline() -> domain_scan_core::ir::ScanIndex {
     };
 
     // Step 1: Walk
-    let walked = walker::walk_directory(&config)
-        .unwrap_or_else(|e| panic!("Walk failed: {e}"));
+    let walked = walker::walk_directory(&config).unwrap_or_else(|e| panic!("Walk failed: {e}"));
     assert!(!walked.is_empty(), "Walk should find files");
 
     // Step 2: Parse + Extract
@@ -42,12 +40,16 @@ fn run_pipeline() -> domain_scan_core::ir::ScanIndex {
         let (tree, source) = parser::parse_file(&walked_file.path, walked_file.language)
             .unwrap_or_else(|e| panic!("Parse failed for {}: {e}", walked_file.path.display()));
 
-        let build_status = config
-            .build_status_override
-            .unwrap_or(BuildStatus::Built);
+        let build_status = config.build_status_override.unwrap_or(BuildStatus::Built);
 
-        let ir = query_engine::extract(&tree, &source, &walked_file.path, walked_file.language, build_status)
-            .unwrap_or_else(|e| panic!("Extract failed for {}: {e}", walked_file.path.display()));
+        let ir = query_engine::extract(
+            &tree,
+            &source,
+            &walked_file.path,
+            walked_file.language,
+            build_status,
+        )
+        .unwrap_or_else(|e| panic!("Extract failed for {}: {e}", walked_file.path.display()));
 
         ir_files.push(ir);
     }
@@ -61,7 +63,10 @@ fn test_pipeline_walks_all_ts_files() {
     let scan_index = run_pipeline();
     assert_eq!(scan_index.stats.total_files, 3, "Should find 3 .ts files");
     assert_eq!(
-        scan_index.stats.files_by_language.get(&Language::TypeScript),
+        scan_index
+            .stats
+            .files_by_language
+            .get(&Language::TypeScript),
         Some(&3),
         "All files should be TypeScript"
     );
@@ -111,7 +116,8 @@ fn test_pipeline_query_interfaces() {
 
     let handler_interfaces = scan_index.get_interfaces(Some("Handler"));
     assert_eq!(
-        handler_interfaces.len(), 1,
+        handler_interfaces.len(),
+        1,
         "Expected 1 interface matching 'Handler'"
     );
     assert_eq!(handler_interfaces[0].name, "EventHandler");
@@ -125,8 +131,8 @@ fn test_pipeline_json_output() {
         .unwrap_or_else(|e| panic!("JSON formatting failed: {e}"));
 
     // Should be valid JSON
-    let parsed: serde_json::Value = serde_json::from_str(&json)
-        .unwrap_or_else(|e| panic!("Output is not valid JSON: {e}"));
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).unwrap_or_else(|e| panic!("Output is not valid JSON: {e}"));
 
     // Check top-level structure
     assert!(parsed.get("root").is_some());
@@ -147,7 +153,10 @@ fn test_pipeline_table_output() {
         .unwrap_or_else(|e| panic!("Table formatting failed: {e}"));
 
     assert!(table.contains("3 files"), "Table should mention 3 files");
-    assert!(table.contains("Interfaces:"), "Table should have Interfaces line");
+    assert!(
+        table.contains("Interfaces:"),
+        "Table should have Interfaces line"
+    );
 }
 
 #[test]
@@ -157,7 +166,10 @@ fn test_pipeline_compact_output() {
     let compact = output::format_scan_index(&scan_index, OutputFormat::Compact)
         .unwrap_or_else(|e| panic!("Compact formatting failed: {e}"));
 
-    assert!(compact.contains("3 files"), "Compact should mention 3 files");
+    assert!(
+        compact.contains("3 files"),
+        "Compact should mention 3 files"
+    );
 }
 
 #[test]
@@ -177,8 +189,5 @@ fn test_pipeline_search() {
     let scan_index = run_pipeline();
 
     let results = scan_index.search("Repo");
-    assert!(
-        !results.is_empty(),
-        "Search for 'Repo' should find results"
-    );
+    assert!(!results.is_empty(), "Search for 'Repo' should find results");
 }

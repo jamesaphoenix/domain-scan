@@ -8,7 +8,7 @@
 //! 2. Name matching against interfaces/operations/tables/events
 //! 3. Unmatched bucket for human review or LLM enrichment
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use globset::Glob;
@@ -16,8 +16,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::ir::{
-    BuildStatus, EntityKind, EntitySummary, MatchResult, MatchStrategy, MatchedEntity,
-    ScanIndex, UnmatchedEntity,
+    BuildStatus, EntityKind, EntitySummary, MatchResult, MatchStrategy, MatchedEntity, ScanIndex,
+    UnmatchedEntity,
 };
 use crate::DomainScanError;
 
@@ -194,7 +194,8 @@ fn flatten_recursive(subsystem: &ManifestSubsystem, out: &mut Vec<FlatSubsystem>
 
 /// Parse a manifest from a JSON string.
 pub fn parse_manifest(json: &str) -> Result<Manifest, DomainScanError> {
-    serde_json::from_str(json).map_err(|e| DomainScanError::Config(format!("manifest parse error: {e}")))
+    serde_json::from_str(json)
+        .map_err(|e| DomainScanError::Config(format!("manifest parse error: {e}")))
 }
 
 /// Parse a manifest from a file path.
@@ -324,9 +325,7 @@ fn find_match(
 
         if matches {
             let specificity = resolved.components().count();
-            let is_more_specific = best_match
-                .as_ref()
-                .is_none_or(|(_, s)| specificity > *s);
+            let is_more_specific = best_match.as_ref().is_none_or(|(_, s)| specificity > *s);
             if is_more_specific {
                 best_match = Some((sub, specificity));
             }
@@ -346,7 +345,11 @@ fn find_match(
             return Some((sub.id.clone(), sub.name.clone(), MatchStrategy::NameMatch));
         }
         // Check operations
-        if sub.operations.iter().any(|o| o == &entity_name_with_parens || o == entity_name) {
+        if sub
+            .operations
+            .iter()
+            .any(|o| o == &entity_name_with_parens || o == entity_name)
+        {
             return Some((sub.id.clone(), sub.name.clone(), MatchStrategy::NameMatch));
         }
         // Check tables (for schema entities)
@@ -450,13 +453,154 @@ pub fn validate_manifest(manifest: &Manifest) -> Vec<ManifestViolation> {
     violations
 }
 
+/// Validate a full SystemManifest, including naming rules and semantic
+/// cross-reference integrity between domains, dependencies, and connections.
+pub fn validate_system_manifest(system_manifest: &SystemManifest) -> Vec<ManifestViolation> {
+    let mut violations = validate_manifest(&system_manifest.as_manifest());
+    let mut seen_ids = HashSet::new();
+    let mut all_ids = HashSet::new();
+
+    collect_subsystem_ids(
+        &system_manifest.subsystems,
+        &mut seen_ids,
+        &mut all_ids,
+        &mut violations,
+    );
+    validate_subsystem_semantics(
+        &system_manifest.subsystems,
+        &system_manifest.domains,
+        &all_ids,
+        None,
+        &mut violations,
+    );
+    validate_connections(&system_manifest.connections, &all_ids, &mut violations);
+
+    violations
+}
+
 /// A naming convention violation in a manifest.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ManifestViolation {
     pub subsystem_id: String,
     pub field: String,
     pub value: String,
     pub expected: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
+pub struct ManifestValidationReport {
+    pub manifest_path: String,
+    pub domains: usize,
+    pub subsystems: usize,
+    pub connections: usize,
+    pub validation_errors: usize,
+    pub violations: Vec<ManifestViolation>,
+    pub coverage_percent: f64,
+    pub matched: usize,
+    pub unmatched: usize,
+}
+
+fn collect_subsystem_ids(
+    subsystems: &[ManifestSubsystem],
+    seen_ids: &mut HashSet<String>,
+    all_ids: &mut HashSet<String>,
+    violations: &mut Vec<ManifestViolation>,
+) {
+    for sub in subsystems {
+        if !seen_ids.insert(sub.id.clone()) {
+            violations.push(ManifestViolation {
+                subsystem_id: sub.id.clone(),
+                field: "id".to_string(),
+                value: sub.id.clone(),
+                expected: "unique subsystem id".to_string(),
+            });
+        }
+        all_ids.insert(sub.id.clone());
+        collect_subsystem_ids(&sub.children, seen_ids, all_ids, violations);
+    }
+}
+
+fn validate_subsystem_semantics(
+    subsystems: &[ManifestSubsystem],
+    domains: &HashMap<String, DomainDef>,
+    subsystem_ids: &HashSet<String>,
+    parent_domain: Option<&str>,
+    violations: &mut Vec<ManifestViolation>,
+) {
+    for sub in subsystems {
+        if sub.file_path.as_os_str().is_empty() {
+            violations.push(ManifestViolation {
+                subsystem_id: sub.id.clone(),
+                field: "filePath".to_string(),
+                value: String::new(),
+                expected: "non-empty directory path".to_string(),
+            });
+        }
+
+        if !domains.is_empty() && !sub.domain.is_empty() && !domains.contains_key(&sub.domain) {
+            violations.push(ManifestViolation {
+                subsystem_id: sub.id.clone(),
+                field: "domain".to_string(),
+                value: sub.domain.clone(),
+                expected: "existing domain id".to_string(),
+            });
+        }
+
+        if let Some(parent) = parent_domain {
+            if !parent.is_empty() && !sub.domain.is_empty() && sub.domain != parent {
+                violations.push(ManifestViolation {
+                    subsystem_id: sub.id.clone(),
+                    field: "domain".to_string(),
+                    value: sub.domain.clone(),
+                    expected: format!("same domain as parent ({parent})"),
+                });
+            }
+        }
+
+        for dependency in &sub.dependencies {
+            if !subsystem_ids.contains(dependency) {
+                violations.push(ManifestViolation {
+                    subsystem_id: sub.id.clone(),
+                    field: "dependencies".to_string(),
+                    value: dependency.clone(),
+                    expected: "existing subsystem id".to_string(),
+                });
+            }
+        }
+
+        validate_subsystem_semantics(
+            &sub.children,
+            domains,
+            subsystem_ids,
+            Some(&sub.domain),
+            violations,
+        );
+    }
+}
+
+fn validate_connections(
+    connections: &[Connection],
+    subsystem_ids: &HashSet<String>,
+    violations: &mut Vec<ManifestViolation>,
+) {
+    for conn in connections {
+        if !subsystem_ids.contains(&conn.from) {
+            violations.push(ManifestViolation {
+                subsystem_id: conn.from.clone(),
+                field: "connections.from".to_string(),
+                value: conn.from.clone(),
+                expected: "existing subsystem id".to_string(),
+            });
+        }
+        if !subsystem_ids.contains(&conn.to) {
+            violations.push(ManifestViolation {
+                subsystem_id: conn.to.clone(),
+                field: "connections.to".to_string(),
+                value: conn.to.clone(),
+                expected: "existing subsystem id".to_string(),
+            });
+        }
+    }
 }
 
 fn is_pascal_case(s: &str) -> bool {
@@ -516,20 +660,13 @@ fn is_dot_notation(s: &str) -> bool {
 /// - Human-authored fields are never touched.
 /// - Duplicates are never introduced.
 /// - Status is never changed (human-controlled).
-pub fn write_back(
-    manifest: &mut Manifest,
-    match_result: &MatchResult,
-    _index: &ScanIndex,
-) {
+pub fn write_back(manifest: &mut Manifest, match_result: &MatchResult, _index: &ScanIndex) {
     for m in &match_result.matched {
         write_back_to_subsystem(&mut manifest.subsystems, m);
     }
 }
 
-fn write_back_to_subsystem(
-    subsystems: &mut [ManifestSubsystem],
-    matched: &MatchedEntity,
-) {
+fn write_back_to_subsystem(subsystems: &mut [ManifestSubsystem], matched: &MatchedEntity) {
     for sub in subsystems.iter_mut() {
         if sub.id == matched.subsystem_id {
             // Add entity to appropriate list
@@ -712,7 +849,10 @@ mod tests {
             "hash1".to_string(),
             BuildStatus::Built,
         );
-        file.interfaces = vec![make_iface("AuthPrincipal", "/project/src/other/principal.ts")];
+        file.interfaces = vec![make_iface(
+            "AuthPrincipal",
+            "/project/src/other/principal.ts",
+        )];
 
         let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
         let result = match_entities(&index, &manifest);
@@ -745,7 +885,10 @@ mod tests {
     fn test_validate_manifest_clean() {
         let manifest = sample_manifest();
         let violations = validate_manifest(&manifest);
-        assert!(violations.is_empty(), "Expected no violations, got: {violations:?}");
+        assert!(
+            violations.is_empty(),
+            "Expected no violations, got: {violations:?}"
+        );
     }
 
     #[test]
@@ -766,8 +909,7 @@ mod tests {
             }]
         }"#;
 
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
         let violations = validate_manifest(&manifest);
         assert_eq!(violations.len(), 4);
     }
@@ -848,8 +990,12 @@ mod tests {
         };
 
         write_back(&mut manifest, &match_result, &index);
-        assert!(manifest.subsystems[0].interfaces.contains(&"NewInterface".to_string()));
-        assert!(manifest.subsystems[0].interfaces.contains(&"AuthPrincipal".to_string()));
+        assert!(manifest.subsystems[0]
+            .interfaces
+            .contains(&"NewInterface".to_string()));
+        assert!(manifest.subsystems[0]
+            .interfaces
+            .contains(&"AuthPrincipal".to_string()));
     }
 
     #[test]
@@ -893,18 +1039,16 @@ mod tests {
     #[test]
     fn test_serialize_roundtrip() {
         let manifest = sample_manifest();
-        let json = serialize_manifest(&manifest)
-            .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
-        let reparsed = parse_manifest(&json)
-            .unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
+        let json =
+            serialize_manifest(&manifest).unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
+        let reparsed = parse_manifest(&json).unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
         assert_eq!(manifest, reparsed);
     }
 
     #[test]
     fn test_empty_manifest() {
         let json = r#"{"subsystems": []}"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let index = crate::index::build_index(PathBuf::from("/project"), vec![], 0, 0, 0);
         let result = match_entities(&index, &manifest);
@@ -979,8 +1123,14 @@ mod tests {
         assert_eq!(manifest.domains["platform-core"].color, "#3b82f6");
         assert_eq!(manifest.subsystems.len(), 2);
         assert_eq!(manifest.connections.len(), 2);
-        assert_eq!(manifest.connections[0].connection_type, ConnectionType::DependsOn);
-        assert_eq!(manifest.connections[1].connection_type, ConnectionType::Uses);
+        assert_eq!(
+            manifest.connections[0].connection_type,
+            ConnectionType::DependsOn
+        );
+        assert_eq!(
+            manifest.connections[1].connection_type,
+            ConnectionType::Uses
+        );
     }
 
     #[test]
@@ -1019,11 +1169,85 @@ mod tests {
             "subsystems": [],
             "connections": []
         }"#;
-        let manifest = parse_system_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest =
+            parse_system_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
         assert!(manifest.domains.is_empty());
         assert!(manifest.subsystems.is_empty());
         assert!(manifest.connections.is_empty());
+    }
+
+    #[test]
+    fn test_validate_system_manifest_clean() {
+        let manifest = parse_system_manifest(sample_system_manifest_json())
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let violations = validate_system_manifest(&manifest);
+        assert!(
+            violations.is_empty(),
+            "Expected no violations, got: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_system_manifest_semantic_violations() {
+        let json = r##"{
+            "meta": { "name": "Bad", "version": "1.0", "description": "" },
+            "domains": {
+                "platform": { "label": "Platform", "color": "#3b82f6" }
+            },
+            "subsystems": [
+                {
+                    "id": "auth",
+                    "name": "Auth",
+                    "domain": "missing-domain",
+                    "status": "new",
+                    "filePath": "/project/src/auth/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": ["ghost-subsystem"]
+                },
+                {
+                    "id": "auth",
+                    "name": "Duplicate Auth",
+                    "domain": "platform",
+                    "status": "new",
+                    "filePath": "/project/src/auth-2/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                }
+            ],
+            "connections": [
+                {
+                    "from": "auth",
+                    "to": "missing-target",
+                    "label": "calls",
+                    "type": "depends_on"
+                }
+            ]
+        }"##;
+
+        let manifest =
+            parse_system_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let violations = validate_system_manifest(&manifest);
+
+        assert!(violations
+            .iter()
+            .any(|v| v.field == "domain" && v.value == "missing-domain"));
+        assert!(violations
+            .iter()
+            .any(|v| v.field == "dependencies" && v.value == "ghost-subsystem"));
+        assert!(violations
+            .iter()
+            .any(|v| v.field == "connections.to" && v.value == "missing-target"));
+        assert!(violations
+            .iter()
+            .any(|v| v.field == "id" && v.value == "auth"));
     }
 
     #[test]
@@ -1034,11 +1258,11 @@ mod tests {
             label: "test".to_string(),
             connection_type: ConnectionType::Triggers,
         };
-        let json = serde_json::to_string(&conn)
-            .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
+        let json =
+            serde_json::to_string(&conn).unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
         assert!(json.contains("\"type\":\"triggers\""));
-        let deserialized: Connection = serde_json::from_str(&json)
-            .unwrap_or_else(|e| panic!("Failed to deserialize: {e}"));
+        let deserialized: Connection =
+            serde_json::from_str(&json).unwrap_or_else(|e| panic!("Failed to deserialize: {e}"));
         assert_eq!(deserialized.connection_type, ConnectionType::Triggers);
     }
 
@@ -1072,8 +1296,8 @@ mod tests {
         // Serialize and re-parse
         let serialized = serialize_system_manifest(&sys_manifest)
             .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
-        let reparsed = parse_system_manifest(&serialized)
-            .unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
+        let reparsed =
+            parse_system_manifest(&serialized).unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
 
         // meta, domains, connections must survive the round-trip
         assert_eq!(reparsed.meta, original.meta);
@@ -1102,22 +1326,33 @@ mod tests {
         // Parse as generic JSON to verify structure
         let value: serde_json::Value = serde_json::from_str(&serialized)
             .unwrap_or_else(|e| panic!("Failed to parse JSON: {e}"));
-        let obj = value.as_object().unwrap_or_else(|| panic!("Expected JSON object"));
+        let obj = value
+            .as_object()
+            .unwrap_or_else(|| panic!("Expected JSON object"));
 
         assert!(obj.contains_key("meta"), "Preview must contain 'meta'");
-        assert!(obj.contains_key("domains"), "Preview must contain 'domains'");
-        assert!(obj.contains_key("subsystems"), "Preview must contain 'subsystems'");
-        assert!(obj.contains_key("connections"), "Preview must contain 'connections'");
+        assert!(
+            obj.contains_key("domains"),
+            "Preview must contain 'domains'"
+        );
+        assert!(
+            obj.contains_key("subsystems"),
+            "Preview must contain 'subsystems'"
+        );
+        assert!(
+            obj.contains_key("connections"),
+            "Preview must contain 'connections'"
+        );
     }
 
     #[test]
     fn test_fallback_manifest_only_subsystems() {
         // A manifest with only subsystems (no meta/domains/connections)
         let manifest = sample_manifest();
-        let serialized = serialize_manifest(&manifest)
-            .unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
-        let reparsed = parse_manifest(&serialized)
-            .unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
+        let serialized =
+            serialize_manifest(&manifest).unwrap_or_else(|e| panic!("Failed to serialize: {e}"));
+        let reparsed =
+            parse_manifest(&serialized).unwrap_or_else(|e| panic!("Failed to reparse: {e}"));
         assert_eq!(manifest, reparsed);
     }
 
@@ -1144,8 +1379,7 @@ mod tests {
                 }
             ]
         }"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let mut file = IrFile::new(
             PathBuf::from("/abs/project/packages/auth/handler.ts"),
@@ -1153,12 +1387,19 @@ mod tests {
             "hash1".to_string(),
             BuildStatus::Built,
         );
-        file.interfaces = vec![make_iface("AuthHandler", "/abs/project/packages/auth/handler.ts")];
+        file.interfaces = vec![make_iface(
+            "AuthHandler",
+            "/abs/project/packages/auth/handler.ts",
+        )];
 
         let index = crate::index::build_index(PathBuf::from("/abs/project"), vec![file], 0, 0, 0);
         let result = match_entities(&index, &manifest);
 
-        assert_eq!(result.matched.len(), 1, "Relative filePath should match absolute entity path");
+        assert_eq!(
+            result.matched.len(),
+            1,
+            "Relative filePath should match absolute entity path"
+        );
         assert_eq!(result.matched[0].subsystem_id, "auth");
         assert_eq!(result.matched[0].match_strategy, MatchStrategy::FilePath);
         assert!(result.coverage_percent > 0.0);
@@ -1215,8 +1456,7 @@ mod tests {
                 }
             ]
         }"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let mut file1 = IrFile::new(
             PathBuf::from("/abs/project/packages/auth/handler.ts"),
@@ -1224,7 +1464,10 @@ mod tests {
             "hash1".to_string(),
             BuildStatus::Built,
         );
-        file1.interfaces = vec![make_iface("AuthHandler", "/abs/project/packages/auth/handler.ts")];
+        file1.interfaces = vec![make_iface(
+            "AuthHandler",
+            "/abs/project/packages/auth/handler.ts",
+        )];
 
         let mut file2 = IrFile::new(
             PathBuf::from("/abs/project/packages/billing/invoice.ts"),
@@ -1232,15 +1475,26 @@ mod tests {
             "hash2".to_string(),
             BuildStatus::Built,
         );
-        file2.interfaces = vec![make_iface("InvoiceService", "/abs/project/packages/billing/invoice.ts")];
+        file2.interfaces = vec![make_iface(
+            "InvoiceService",
+            "/abs/project/packages/billing/invoice.ts",
+        )];
 
-        let index = crate::index::build_index(PathBuf::from("/abs/project"), vec![file1, file2], 0, 0, 0);
+        let index =
+            crate::index::build_index(PathBuf::from("/abs/project"), vec![file1, file2], 0, 0, 0);
         let result = match_entities(&index, &manifest);
 
-        assert_eq!(result.matched.len(), 2, "Both relative and absolute paths should match");
+        assert_eq!(
+            result.matched.len(),
+            2,
+            "Both relative and absolute paths should match"
+        );
         let auth_match = result.matched.iter().find(|m| m.subsystem_id == "auth");
         let billing_match = result.matched.iter().find(|m| m.subsystem_id == "billing");
-        assert!(auth_match.is_some(), "Relative path 'packages/auth/' should match");
+        assert!(
+            auth_match.is_some(),
+            "Relative path 'packages/auth/' should match"
+        );
         assert!(billing_match.is_some(), "Absolute path should match");
     }
 
@@ -1280,8 +1534,7 @@ mod tests {
                 }
             ]
         }"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         // Entity under test-utils/ should match test-utils, NOT platform-core
         let mut file = IrFile::new(
@@ -1290,7 +1543,10 @@ mod tests {
             "hash1".to_string(),
             BuildStatus::Built,
         );
-        file.interfaces = vec![make_iface("TestHelper", "/project/packages/platform/test-utils/helpers.ts")];
+        file.interfaces = vec![make_iface(
+            "TestHelper",
+            "/project/packages/platform/test-utils/helpers.ts",
+        )];
 
         let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
         let result = match_entities(&index, &manifest);
@@ -1346,8 +1602,7 @@ mod tests {
                 "dependencies": []
             }]
         }"#;
-        let mut manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let mut manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let file = IrFile::new(
             PathBuf::from("/project/src/auth/login.ts"),
@@ -1402,8 +1657,7 @@ mod tests {
                 "dependencies": []
             }]
         }"#;
-        let mut manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let mut manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let file = IrFile::new(
             PathBuf::from("/project/src/auth/login.ts"),
@@ -1458,8 +1712,7 @@ mod tests {
                 "dependencies": []
             }]
         }"#;
-        let mut manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let mut manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let file = IrFile::new(
             PathBuf::from("/project/src/auth/login.ts"),
@@ -1518,8 +1771,7 @@ mod tests {
                 "dependencies": []
             }]
         }"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let mut file1 = IrFile::new(
             PathBuf::from("/project/src/services/scheduling.ts"),
@@ -1527,7 +1779,10 @@ mod tests {
             "hash1".to_string(),
             BuildStatus::Built,
         );
-        file1.interfaces = vec![make_iface("Scheduler", "/project/src/services/scheduling.ts")];
+        file1.interfaces = vec![make_iface(
+            "Scheduler",
+            "/project/src/services/scheduling.ts",
+        )];
 
         let mut file2 = IrFile::new(
             PathBuf::from("/project/src/services/schedulingUtils.ts"),
@@ -1547,7 +1802,10 @@ mod tests {
             "hash3".to_string(),
             BuildStatus::Built,
         );
-        file3.interfaces = vec![make_iface("BillingService", "/project/src/services/billing.ts")];
+        file3.interfaces = vec![make_iface(
+            "BillingService",
+            "/project/src/services/billing.ts",
+        )];
 
         let index = crate::index::build_index(
             PathBuf::from("/project"),
@@ -1591,8 +1849,7 @@ mod tests {
                 "dependencies": []
             }]
         }"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
 
         let mut file_a = IrFile::new(
             PathBuf::from("/project/packages/auth/src/handler.ts"),
@@ -1715,8 +1972,7 @@ mod tests {
                 "dependencies": []
             }]
         }"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
         assert!(validate_manifest_globs(&manifest).is_ok());
     }
 
@@ -1737,8 +1993,7 @@ mod tests {
                 "dependencies": []
             }]
         }"#;
-        let manifest = parse_manifest(json)
-            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
         let result = validate_manifest_globs(&manifest);
         assert!(result.is_err());
         if let Err(err) = result {

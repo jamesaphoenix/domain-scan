@@ -76,27 +76,113 @@ export interface OpenTab {
 }
 
 interface MonacoPreviewProps {
-  /** Full file content to display */
   source: string | null;
-  /** File path for the currently active tab */
   file: string | null;
-  /** Language hint from domain-scan */
   language: string | null;
-  /** Line to scroll to and highlight (1-based) */
   highlightLine: number | null;
-  /** End line of the entity span for range decoration */
   highlightEndLine: number | null;
-  /** Open tabs */
   tabs: OpenTab[];
-  /** Index of the active tab */
   activeTabIndex: number;
-  /** Called when user clicks a tab */
   onTabSelect: (index: number) => void;
-  /** Called when user closes a tab */
   onTabClose: (index: number) => void;
+  onCloseOtherTabs?: (keepIndex: number) => void;
+  onCloseAllTabs?: () => void;
+  onCloseTabsToRight?: (index: number) => void;
 }
 
 const MAX_LINES_WARNING = 10000;
+
+// ---------------------------------------------------------------------------
+// Tab context menu
+// ---------------------------------------------------------------------------
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  tabIndex: number;
+}
+
+function TabContextMenu({
+  state,
+  tabCount,
+  onClose,
+  onCloseTab,
+  onCloseOthers,
+  onCloseAll,
+  onCloseToRight,
+}: {
+  state: ContextMenuState;
+  tabCount: number;
+  onClose: () => void;
+  onCloseTab: () => void;
+  onCloseOthers: () => void;
+  onCloseAll: () => void;
+  onCloseToRight: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEsc);
+    };
+  }, [onClose]);
+
+  const items = [
+    { label: "Close", action: onCloseTab, enabled: true },
+    {
+      label: "Close Others",
+      action: onCloseOthers,
+      enabled: tabCount > 1,
+    },
+    {
+      label: "Close to the Right",
+      action: onCloseToRight,
+      enabled: state.tabIndex < tabCount - 1,
+    },
+    { label: "Close All", action: onCloseAll, enabled: tabCount > 0 },
+  ];
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-50 bg-gray-800 border border-gray-600 rounded-md shadow-xl py-1 min-w-[160px]"
+      style={{ left: state.x, top: state.y }}
+    >
+      {items.map((item) => (
+        <button
+          key={item.label}
+          className={`w-full text-left px-3 py-1.5 text-xs ${
+            item.enabled
+              ? "text-gray-200 hover:bg-gray-700"
+              : "text-gray-600 cursor-default"
+          }`}
+          disabled={!item.enabled}
+          onClick={() => {
+            item.action();
+            onClose();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export function MonacoPreview({
   source,
@@ -108,12 +194,19 @@ export function MonacoPreview({
   activeTabIndex,
   onTabSelect,
   onTabClose,
+  onCloseOtherTabs,
+  onCloseAllTabs,
+  onCloseTabsToRight,
 }: MonacoPreviewProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(
     null,
   );
   const [largeFileWarning, setLargeFileWarning] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(
+    null,
+  );
+  const tabBarRef = useRef<HTMLDivElement>(null);
 
   const handleEditorMount: OnMount = useCallback((ed) => {
     editorRef.current = ed;
@@ -125,10 +218,8 @@ export function MonacoPreview({
     const ed = editorRef.current;
     if (!ed || !highlightLine) return;
 
-    // Scroll to the highlight line
     ed.revealLineInCenter(highlightLine);
 
-    // Apply highlight decoration for the entity span
     const startLine = highlightLine;
     const endLine = highlightEndLine ?? highlightLine;
 
@@ -146,7 +237,7 @@ export function MonacoPreview({
             className: "monaco-entity-highlight",
             overviewRuler: {
               color: "#3b82f680",
-              position: 1, // editor.OverviewRulerLane.Center
+              position: 1,
             },
           },
         },
@@ -164,6 +255,35 @@ export function MonacoPreview({
     }
   }, [source]);
 
+  // Scroll active tab into view when it changes
+  useEffect(() => {
+    const container = tabBarRef.current;
+    if (!container) return;
+    const activeEl = container.children[activeTabIndex] as HTMLElement | undefined;
+    if (activeEl) {
+      activeEl.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    }
+  }, [activeTabIndex]);
+
+  const handleTabContextMenu = useCallback(
+    (e: React.MouseEvent, index: number) => {
+      e.preventDefault();
+      setContextMenu({ x: e.clientX, y: e.clientY, tabIndex: index });
+    },
+    [],
+  );
+
+  // Tab scroll buttons
+  const scrollTabs = useCallback((direction: "left" | "right") => {
+    const container = tabBarRef.current;
+    if (!container) return;
+    const scrollAmount = 200;
+    container.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
+    });
+  }, []);
+
   if (!source && tabs.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-gray-600 text-sm">
@@ -173,42 +293,91 @@ export function MonacoPreview({
   }
 
   const monacoLanguage = detectLanguage(language, file);
+  const hasOverflow =
+    tabBarRef.current
+      ? tabBarRef.current.scrollWidth > tabBarRef.current.clientWidth
+      : tabs.length > 6;
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tab bar */}
+      {/* Tab bar with scroll */}
       {tabs.length > 0 && (
-        <div className="flex items-center bg-gray-800/80 border-b border-gray-700 overflow-x-auto flex-shrink-0">
-          {tabs.map((tab, i) => (
-            <div
-              key={tab.file}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer border-r border-gray-700 min-w-0 ${
-                i === activeTabIndex
-                  ? "bg-gray-900 text-white"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-              }`}
-              onClick={() => onTabSelect(i)}
-              onMouseDown={(e) => {
-                // Middle-click to close
-                if (e.button === 1) {
-                  e.preventDefault();
-                  onTabClose(i);
-                }
-              }}
+        <div className="flex items-center bg-gray-800/80 border-b border-gray-700 flex-shrink-0">
+          {/* Scroll left button */}
+          {hasOverflow && (
+            <button
+              className="px-1.5 py-1.5 text-gray-500 hover:text-gray-300 flex-shrink-0"
+              onClick={() => scrollTabs("left")}
             >
-              <span className="truncate max-w-[160px]">{tab.label}</span>
-              <button
-                className="ml-1 text-gray-500 hover:text-gray-200 flex-shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onTabClose(i);
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 2L4 6l4 4" />
+              </svg>
+            </button>
+          )}
+
+          {/* Scrollable tab container */}
+          <div
+            ref={tabBarRef}
+            className="flex items-center overflow-x-auto flex-1 scrollbar-none"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {tabs.map((tab, i) => (
+              <div
+                key={tab.file}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs cursor-pointer
+                           border-r border-gray-700 flex-shrink-0 ${
+                  i === activeTabIndex
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+                }`}
+                onClick={() => onTabSelect(i)}
+                onContextMenu={(e) => handleTabContextMenu(e, i)}
+                onMouseDown={(e) => {
+                  if (e.button === 1) {
+                    e.preventDefault();
+                    onTabClose(i);
+                  }
                 }}
               >
-                &times;
-              </button>
-            </div>
-          ))}
+                <span className="truncate max-w-[160px]">{tab.label}</span>
+                <button
+                  className="ml-1 text-gray-500 hover:text-gray-200 flex-shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTabClose(i);
+                  }}
+                >
+                  &times;
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Scroll right button */}
+          {hasOverflow && (
+            <button
+              className="px-1.5 py-1.5 text-gray-500 hover:text-gray-300 flex-shrink-0"
+              onClick={() => scrollTabs("right")}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 2l4 4-4 4" />
+              </svg>
+            </button>
+          )}
         </div>
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <TabContextMenu
+          state={contextMenu}
+          tabCount={tabs.length}
+          onClose={() => setContextMenu(null)}
+          onCloseTab={() => onTabClose(contextMenu.tabIndex)}
+          onCloseOthers={() => onCloseOtherTabs?.(contextMenu.tabIndex)}
+          onCloseAll={() => onCloseAllTabs?.()}
+          onCloseToRight={() => onCloseTabsToRight?.(contextMenu.tabIndex)}
+        />
       )}
 
       {/* Large file warning */}

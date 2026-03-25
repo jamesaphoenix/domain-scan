@@ -1,13 +1,14 @@
 import { useState } from "react";
-import type { EntityKind, BuildStatus, Language } from "../types";
+import type { EntityKind, Language } from "../types";
 
 interface FilterBarProps {
   onSearch: (query: string) => void;
   onFilterKind: (kinds: EntityKind[] | undefined) => void;
-  onFilterBuildStatus: (status: BuildStatus | undefined) => void;
   onFilterLanguage: (languages: Language[] | undefined) => void;
   availableLanguages: Language[];
   searchInputRef: React.RefObject<HTMLInputElement | null>;
+  pathScope: { prefix: string; label?: string } | null;
+  onClearPathScope: () => void;
 }
 
 const ENTITY_KINDS: { value: EntityKind; label: string }[] = [
@@ -20,24 +21,17 @@ const ENTITY_KINDS: { value: EntityKind; label: string }[] = [
   { value: "type_alias", label: "Types" },
 ];
 
-const BUILD_STATUSES: { value: BuildStatus; label: string; color: string }[] = [
-  { value: "built", label: "Built", color: "bg-green-600" },
-  { value: "unbuilt", label: "Unbuilt", color: "bg-yellow-600" },
-  { value: "error", label: "Error", color: "bg-red-600" },
-  { value: "rebuild", label: "Rebuild", color: "bg-orange-600" },
-];
-
 export function FilterBar({
   onSearch,
   onFilterKind,
-  onFilterBuildStatus,
   onFilterLanguage,
   availableLanguages,
   searchInputRef,
+  pathScope,
+  onClearPathScope,
 }: FilterBarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeKinds, setActiveKinds] = useState<Set<EntityKind>>(new Set());
-  const [activeStatus, setActiveStatus] = useState<BuildStatus | null>(null);
   const [activeLanguage, setActiveLanguage] = useState<Language | null>(null);
 
   const handleSearch = (value: string) => {
@@ -59,12 +53,6 @@ export function FilterBar({
     });
   };
 
-  const toggleStatus = (status: BuildStatus) => {
-    const next = activeStatus === status ? null : status;
-    setActiveStatus(next);
-    onFilterBuildStatus(next ?? undefined);
-  };
-
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     if (val === "") {
@@ -79,6 +67,30 @@ export function FilterBar({
 
   return (
     <div className="space-y-2 p-2 border-t border-gray-700">
+      {pathScope && (
+        <div className="rounded border border-blue-500/30 bg-blue-500/10 px-2 py-1.5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium uppercase tracking-wide text-blue-300">
+                Tube Map Path Scope
+              </div>
+              <div className="truncate text-[11px] text-gray-200">
+                {pathScope.label ?? pathScope.prefix}
+              </div>
+              <div className="truncate text-[10px] text-gray-400">
+                {pathScope.prefix}
+              </div>
+            </div>
+            <button
+              onClick={onClearPathScope}
+              className="text-[10px] text-blue-300 hover:text-blue-200 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Search input */}
       <input
         ref={searchInputRef}
@@ -100,23 +112,6 @@ export function FilterBar({
                 : "bg-gray-800 text-gray-500 hover:text-gray-300"
             }`}
             onClick={() => toggleKind(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Build status filters */}
-      <div className="flex gap-1">
-        {BUILD_STATUSES.map(({ value, label, color }) => (
-          <button
-            key={value}
-            className={`px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-              activeStatus === value
-                ? `${color} text-white`
-                : "bg-gray-800 text-gray-500 hover:text-gray-300"
-            }`}
-            onClick={() => toggleStatus(value)}
           >
             {label}
           </button>

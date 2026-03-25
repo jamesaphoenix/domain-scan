@@ -72,11 +72,17 @@ fn test_rust_trait_kind() {
 #[test]
 fn test_rust_trait_visibility() {
     let ir = extract_fixture("traits.rs");
-    let event_handler = ir.interfaces.iter().find(|i| i.name == "EventHandler")
+    let event_handler = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "EventHandler")
         .expect("EventHandler not found");
     assert_eq!(event_handler.visibility, Visibility::Public);
 
-    let private = ir.interfaces.iter().find(|i| i.name == "PrivateTrait")
+    let private = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "PrivateTrait")
         .expect("PrivateTrait not found");
     assert_eq!(private.visibility, Visibility::Private);
 }
@@ -84,10 +90,17 @@ fn test_rust_trait_visibility() {
 #[test]
 fn test_rust_trait_methods() {
     let ir = extract_fixture("traits.rs");
-    let event_handler = ir.interfaces.iter().find(|i| i.name == "EventHandler")
+    let event_handler = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "EventHandler")
         .expect("EventHandler not found");
     assert_eq!(event_handler.methods.len(), 2);
-    let method_names: Vec<&str> = event_handler.methods.iter().map(|m| m.name.as_str()).collect();
+    let method_names: Vec<&str> = event_handler
+        .methods
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect();
     assert!(method_names.contains(&"handle"));
     assert!(method_names.contains(&"name"));
 }
@@ -95,7 +108,10 @@ fn test_rust_trait_methods() {
 #[test]
 fn test_rust_trait_generics() {
     let ir = extract_fixture("traits.rs");
-    let repo = ir.interfaces.iter().find(|i| i.name == "Repository")
+    let repo = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Repository")
         .expect("Repository not found");
     assert!(!repo.generics.is_empty(), "Repository should have generics");
 }
@@ -103,9 +119,15 @@ fn test_rust_trait_generics() {
 #[test]
 fn test_rust_trait_bounds() {
     let ir = extract_fixture("traits.rs");
-    let serializable = ir.interfaces.iter().find(|i| i.name == "Serializable")
+    let serializable = ir
+        .interfaces
+        .iter()
+        .find(|i| i.name == "Serializable")
         .expect("Serializable not found");
-    assert!(!serializable.extends.is_empty(), "Serializable should have trait bounds");
+    assert!(
+        !serializable.extends.is_empty(),
+        "Serializable should have trait bounds"
+    );
 }
 
 // =========================================================================
@@ -115,13 +137,20 @@ fn test_rust_trait_bounds() {
 #[test]
 fn test_rust_impls_count() {
     let ir = extract_fixture("impls.rs");
-    assert!(ir.implementations.len() >= 3, "Expected at least 3 impl blocks, got {}", ir.implementations.len());
+    assert!(
+        ir.implementations.len() >= 3,
+        "Expected at least 3 impl blocks, got {}",
+        ir.implementations.len()
+    );
 }
 
 #[test]
 fn test_rust_impl_trait_name() {
     let ir = extract_fixture("impls.rs");
-    let event_impl = ir.implementations.iter().find(|i| i.trait_name.as_deref() == Some("EventHandler"))
+    let event_impl = ir
+        .implementations
+        .iter()
+        .find(|i| i.trait_name.as_deref() == Some("EventHandler"))
         .expect("EventHandler impl not found");
     assert_eq!(event_impl.target, "MyService");
 }
@@ -129,7 +158,10 @@ fn test_rust_impl_trait_name() {
 #[test]
 fn test_rust_inherent_impl() {
     let ir = extract_fixture("impls.rs");
-    let inherent = ir.implementations.iter().find(|i| i.target == "MyService" && i.trait_name.is_none())
+    let inherent = ir
+        .implementations
+        .iter()
+        .find(|i| i.target == "MyService" && i.trait_name.is_none())
         .expect("Inherent MyService impl not found");
     assert!(!inherent.methods.is_empty());
 }
@@ -137,9 +169,15 @@ fn test_rust_inherent_impl() {
 #[test]
 fn test_rust_impl_method_async() {
     let ir = extract_fixture("impls.rs");
-    let inherent = ir.implementations.iter().find(|i| i.target == "MyService" && i.trait_name.is_none())
+    let inherent = ir
+        .implementations
+        .iter()
+        .find(|i| i.target == "MyService" && i.trait_name.is_none())
         .expect("Inherent impl not found");
-    let process = inherent.methods.iter().find(|m| m.name == "process")
+    let process = inherent
+        .methods
+        .iter()
+        .find(|m| m.name == "process")
         .expect("process method not found");
     assert!(process.is_async, "process should be async");
 }
@@ -168,11 +206,17 @@ fn test_rust_function_names() {
 #[test]
 fn test_rust_function_async() {
     let ir = extract_fixture("functions.rs");
-    let fetch = ir.functions.iter().find(|f| f.name == "fetch_data")
+    let fetch = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "fetch_data")
         .expect("fetch_data not found");
     assert!(fetch.is_async, "fetch_data should be async");
 
-    let add = ir.functions.iter().find(|f| f.name == "add")
+    let add = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "add")
         .expect("add not found");
     assert!(!add.is_async, "add should not be async");
 }
@@ -180,11 +224,17 @@ fn test_rust_function_async() {
 #[test]
 fn test_rust_function_visibility() {
     let ir = extract_fixture("functions.rs");
-    let add = ir.functions.iter().find(|f| f.name == "add")
+    let add = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "add")
         .expect("add not found");
     assert_eq!(add.visibility, Visibility::Public);
 
-    let private = ir.functions.iter().find(|f| f.name == "private_helper")
+    let private = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "private_helper")
         .expect("private_helper not found");
     assert_eq!(private.visibility, Visibility::Private);
 }
@@ -192,7 +242,10 @@ fn test_rust_function_visibility() {
 #[test]
 fn test_rust_function_parameters() {
     let ir = extract_fixture("functions.rs");
-    let add = ir.functions.iter().find(|f| f.name == "add")
+    let add = ir
+        .functions
+        .iter()
+        .find(|f| f.name == "add")
         .expect("add not found");
     assert_eq!(add.parameters.len(), 2);
     assert_eq!(add.parameters[0].name, "a");
@@ -206,8 +259,18 @@ fn test_rust_function_parameters() {
 #[test]
 fn test_rust_types_structs() {
     let ir = extract_fixture("types.rs");
-    let struct_names: Vec<&str> = ir.classes.iter()
-        .filter(|c| !c.decorators.is_empty() || !c.properties.is_empty() || c.name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false))
+    let struct_names: Vec<&str> = ir
+        .classes
+        .iter()
+        .filter(|c| {
+            !c.decorators.is_empty()
+                || !c.properties.is_empty()
+                || c.name
+                    .chars()
+                    .next()
+                    .map(|c| c.is_uppercase())
+                    .unwrap_or(false)
+        })
         .map(|c| c.name.as_str())
         .collect();
     assert!(struct_names.contains(&"User"));
@@ -217,7 +280,10 @@ fn test_rust_types_structs() {
 #[test]
 fn test_rust_types_enum() {
     let ir = extract_fixture("types.rs");
-    let status = ir.classes.iter().find(|c| c.name == "Status")
+    let status = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "Status")
         .expect("Status enum not found");
     assert_eq!(status.visibility, Visibility::Public);
 }
@@ -225,10 +291,16 @@ fn test_rust_types_enum() {
 #[test]
 fn test_rust_struct_fields() {
     let ir = extract_fixture("types.rs");
-    let user = ir.classes.iter().find(|c| c.name == "User")
+    let user = ir
+        .classes
+        .iter()
+        .find(|c| c.name == "User")
         .expect("User struct not found");
     assert_eq!(user.properties.len(), 4);
-    let id = user.properties.iter().find(|p| p.name == "id")
+    let id = user
+        .properties
+        .iter()
+        .find(|p| p.name == "id")
         .expect("id field not found");
     assert_eq!(id.type_annotation.as_deref(), Some("u64"));
     assert_eq!(id.visibility, Visibility::Public);
@@ -237,8 +309,15 @@ fn test_rust_struct_fields() {
 #[test]
 fn test_rust_type_aliases() {
     let ir = extract_fixture("types.rs");
-    assert!(ir.type_aliases.len() >= 2, "Expected at least 2 type aliases, got {}", ir.type_aliases.len());
-    let user_id = ir.type_aliases.iter().find(|t| t.name == "UserId")
+    assert!(
+        ir.type_aliases.len() >= 2,
+        "Expected at least 2 type aliases, got {}",
+        ir.type_aliases.len()
+    );
+    let user_id = ir
+        .type_aliases
+        .iter()
+        .find(|t| t.name == "UserId")
         .expect("UserId type alias not found");
     assert_eq!(user_id.target, "u64");
 }
@@ -268,7 +347,11 @@ fn test_rust_import_paths() {
 #[test]
 fn test_rust_schemas_serde() {
     let ir = extract_fixture("schemas.rs");
-    assert_eq!(ir.schemas.len(), 2, "Expected 2 serde schemas (UserDto and CreateUserRequest)");
+    assert_eq!(
+        ir.schemas.len(),
+        2,
+        "Expected 2 serde schemas (UserDto and CreateUserRequest)"
+    );
 }
 
 #[test]
@@ -282,10 +365,16 @@ fn test_rust_schema_names() {
 #[test]
 fn test_rust_schema_fields() {
     let ir = extract_fixture("schemas.rs");
-    let user_dto = ir.schemas.iter().find(|s| s.name == "UserDto")
+    let user_dto = ir
+        .schemas
+        .iter()
+        .find(|s| s.name == "UserDto")
         .expect("UserDto not found");
     assert_eq!(user_dto.fields.len(), 3);
-    let email = user_dto.fields.iter().find(|f| f.name == "email")
+    let email = user_dto
+        .fields
+        .iter()
+        .find(|f| f.name == "email")
         .expect("email field not found");
     assert!(email.is_optional);
     assert_eq!(user_dto.source_framework, "serde");
@@ -295,7 +384,10 @@ fn test_rust_schema_fields() {
 fn test_rust_schema_non_serde_excluded() {
     let ir = extract_fixture("schemas.rs");
     let names: Vec<&str> = ir.schemas.iter().map(|s| s.name.as_str()).collect();
-    assert!(!names.contains(&"InternalState"), "InternalState should not be a schema (no Serialize/Deserialize)");
+    assert!(
+        !names.contains(&"InternalState"),
+        "InternalState should not be a schema (no Serialize/Deserialize)"
+    );
 }
 
 // =========================================================================

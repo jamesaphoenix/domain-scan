@@ -2829,6 +2829,11 @@ metadata:
 - `Rebuild` entities show warning banner recommending LLM enrichment
 - All keyboard shortcuts work (j/k/Enter///p/e/q/Escape)
 - `cargo tauri build` produces a working app
+- "Open Directory" button in the top-left triggers `scan_directory` via the folder picker dialog and populates the entity tree
+
+### Known Bugs — Tauri App
+
+- [x] **Open Directory button does not work.** Clicking the "Open Directory" button in the top-left of the Tauri app has no effect. The `tauri-plugin-dialog` folder picker should open a native directory chooser, pass the selected path to the `scan_directory` IPC command, and populate the entity tree with results.
 
 ### Phase 10: Polish + Performance
 - [x] Benchmark: parse throughput (target: >500 files/sec on 8 cores)

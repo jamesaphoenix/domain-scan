@@ -41,7 +41,10 @@ fn test_csharp_interfaces_count() {
 fn test_csharp_interface_names() {
     let ir = extract_fixture("interfaces.cs");
     let names: Vec<&str> = ir.interfaces.iter().map(|i| i.name.as_str()).collect();
-    assert!(names.contains(&"IUserRepository"), "Missing IUserRepository");
+    assert!(
+        names.contains(&"IUserRepository"),
+        "Missing IUserRepository"
+    );
     assert!(
         names.contains(&"INotificationService"),
         "Missing INotificationService"
@@ -61,7 +64,11 @@ fn test_csharp_interface_methods() {
         .iter()
         .find(|i| i.name == "IUserRepository")
         .expect("IUserRepository not found");
-    assert_eq!(repo.methods.len(), 4, "IUserRepository should have 4 methods");
+    assert_eq!(
+        repo.methods.len(),
+        4,
+        "IUserRepository should have 4 methods"
+    );
     let method_names: Vec<&str> = repo.methods.iter().map(|m| m.name.as_str()).collect();
     assert!(method_names.contains(&"GetById"));
     assert!(method_names.contains(&"GetAll"));
@@ -218,7 +225,10 @@ fn test_csharp_class_properties() {
         .iter()
         .find(|c| c.name == "BaseEntity")
         .expect("BaseEntity not found");
-    assert!(base.properties.len() >= 3, "BaseEntity should have at least 3 properties");
+    assert!(
+        base.properties.len() >= 3,
+        "BaseEntity should have at least 3 properties"
+    );
     let prop_names: Vec<&str> = base.properties.iter().map(|p| p.name.as_str()).collect();
     assert!(prop_names.contains(&"Id"));
     assert!(prop_names.contains(&"CreatedAt"));
@@ -250,7 +260,11 @@ fn test_csharp_class_method_owner() {
 #[test]
 fn test_csharp_imports_count() {
     let ir = extract_fixture("imports.cs");
-    assert!(ir.imports.len() >= 6, "Expected at least 6 imports, got {}", ir.imports.len());
+    assert!(
+        ir.imports.len() >= 6,
+        "Expected at least 6 imports, got {}",
+        ir.imports.len()
+    );
 }
 
 #[test]
@@ -262,7 +276,9 @@ fn test_csharp_import_sources() {
         "Should have System import"
     );
     assert!(
-        sources.iter().any(|s| s.contains("Microsoft.AspNetCore.Mvc")),
+        sources
+            .iter()
+            .any(|s| s.contains("Microsoft.AspNetCore.Mvc")),
         "Should have AspNetCore.Mvc import"
     );
 }
@@ -281,8 +297,14 @@ fn test_csharp_services_count() {
 fn test_csharp_service_names() {
     let ir = extract_fixture("services.cs");
     let names: Vec<&str> = ir.services.iter().map(|s| s.name.as_str()).collect();
-    assert!(names.contains(&"UsersController"), "Missing UsersController");
-    assert!(names.contains(&"HealthController"), "Missing HealthController");
+    assert!(
+        names.contains(&"UsersController"),
+        "Missing UsersController"
+    );
+    assert!(
+        names.contains(&"HealthController"),
+        "Missing HealthController"
+    );
     assert!(names.contains(&"OrderService"), "Missing OrderService");
 }
 
@@ -347,7 +369,12 @@ fn test_csharp_service_methods() {
 fn test_csharp_schemas_count() {
     let ir = extract_fixture("schemas.cs");
     // 2 records + 2 EF entities = 4 (NotASchema filtered out)
-    assert_eq!(ir.schemas.len(), 4, "Expected 4 schemas, got {}", ir.schemas.len());
+    assert_eq!(
+        ir.schemas.len(),
+        4,
+        "Expected 4 schemas, got {}",
+        ir.schemas.len()
+    );
 }
 
 #[test]
@@ -358,7 +385,10 @@ fn test_csharp_schema_names() {
     assert!(names.contains(&"OrderDto"), "Missing OrderDto");
     assert!(names.contains(&"UserEntity"), "Missing UserEntity");
     assert!(names.contains(&"OrderEntity"), "Missing OrderEntity");
-    assert!(!names.contains(&"NotASchema"), "NotASchema should be filtered out");
+    assert!(
+        !names.contains(&"NotASchema"),
+        "NotASchema should be filtered out"
+    );
 }
 
 #[test]

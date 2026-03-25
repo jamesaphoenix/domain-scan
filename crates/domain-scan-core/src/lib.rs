@@ -21,10 +21,10 @@ pub mod output;
 pub mod parser;
 pub mod prompt;
 pub mod query_engine;
-pub mod schema;
 pub mod resolver;
-pub mod validate;
+pub mod schema;
 pub mod types;
+pub mod validate;
 pub mod walker;
 
 use sha2::{Digest, Sha256};

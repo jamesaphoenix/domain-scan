@@ -1,18 +1,12 @@
-import type { TreeNode, TreeChild, BuildStatus, EntityKind } from "../types";
+import type { TreeNode, TreeChild, EntityKind } from "../types";
 
 interface EntityTreeProps {
   nodes: TreeNode[];
   selectedIndex: number;
+  selectedChildIndex: number | null;
   onSelect: (index: number) => void;
-  onToggleExpand: (index: number) => void;
+  onSelectChild: (nodeIndex: number, childIndex: number) => void;
 }
-
-const BUILD_STATUS_COLORS: Record<BuildStatus, string> = {
-  built: "bg-green-500",
-  unbuilt: "bg-yellow-500",
-  error: "bg-red-500",
-  rebuild: "bg-orange-500",
-};
 
 const KIND_ICONS: Record<EntityKind, string> = {
   interface: "I",
@@ -36,15 +30,6 @@ const KIND_COLORS: Record<EntityKind, string> = {
   method: "text-gray-500",
 };
 
-function StatusDot({ status }: { status: BuildStatus }) {
-  return (
-    <span
-      className={`inline-block w-2 h-2 rounded-full ${BUILD_STATUS_COLORS[status]} flex-shrink-0`}
-      title={status}
-    />
-  );
-}
-
 function KindBadge({ kind }: { kind: EntityKind }) {
   return (
     <span
@@ -56,9 +41,24 @@ function KindBadge({ kind }: { kind: EntityKind }) {
   );
 }
 
-function ChildRow({ child }: { child: TreeChild }) {
+function ChildRow({
+  child,
+  selected,
+  onClick,
+}: {
+  child: TreeChild;
+  selected: boolean;
+  onClick: () => void;
+}) {
   return (
-    <div className="flex items-center gap-1.5 pl-8 py-0.5 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 cursor-default">
+    <div
+      className={`flex items-center gap-1.5 pl-8 py-0.5 text-xs cursor-pointer ${
+        selected
+          ? "bg-blue-900/30 text-blue-200"
+          : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+      }`}
+      onClick={onClick}
+    >
       <span className="text-gray-600 w-3 text-center">
         {child.kind === "method"
           ? "m"
@@ -77,6 +77,11 @@ function ChildRow({ child }: { child: TreeChild }) {
           <span className="text-gray-600 ml-1">: {child.return_type}</span>
         )}
       </span>
+      {child.line > 0 && (
+        <span className="ml-auto text-[10px] text-gray-600 flex-shrink-0">
+          :{child.line}
+        </span>
+      )}
     </div>
   );
 }
@@ -84,8 +89,9 @@ function ChildRow({ child }: { child: TreeChild }) {
 export function EntityTree({
   nodes,
   selectedIndex,
+  selectedChildIndex,
   onSelect,
-  onToggleExpand,
+  onSelectChild,
 }: EntityTreeProps) {
   if (nodes.length === 0) {
     return (
@@ -108,7 +114,6 @@ export function EntityTree({
             }`}
             onClick={() => {
               onSelect(index);
-              onToggleExpand(index);
             }}
           >
             {/* Expand indicator */}
@@ -120,7 +125,6 @@ export function EntityTree({
                 : " "}
             </span>
 
-            <StatusDot status={node.entity.build_status} />
             <KindBadge kind={node.entity.kind} />
 
             <span className="truncate font-medium">{node.entity.name}</span>
@@ -130,12 +134,14 @@ export function EntityTree({
             </span>
           </div>
 
-          {/* Children (methods, properties, routes) */}
+          {/* Children (methods, properties, routes, fields) */}
           {node.expanded &&
             node.children.map((child, ci) => (
               <ChildRow
                 key={`${child.name}-${ci}`}
                 child={child}
+                selected={index === selectedIndex && ci === selectedChildIndex}
+                onClick={() => onSelectChild(index, ci)}
               />
             ))}
         </div>

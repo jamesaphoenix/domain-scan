@@ -39,11 +39,11 @@ const REBUILD_CHANGE_THRESHOLD: usize = 10;
 /// Find well-known build artifact directories that exist under `root`.
 fn find_artifact_dirs(root: &Path) -> Vec<std::path::PathBuf> {
     let candidates = [
-        root.join("target"),           // Rust
-        root.join("node_modules"),     // TypeScript/JS
-        root.join("__pycache__"),      // Python (top-level)
-        root.join("build"),            // Java/Kotlin/Scala/general
-        root.join(".build"),           // Swift
+        root.join("target"),       // Rust
+        root.join("node_modules"), // TypeScript/JS
+        root.join("__pycache__"),  // Python (top-level)
+        root.join("build"),        // Java/Kotlin/Scala/general
+        root.join(".build"),       // Swift
     ];
     candidates.into_iter().filter(|p| p.exists()).collect()
 }
@@ -97,7 +97,10 @@ fn has_lock_conflicts(root: &Path) -> Result<bool, DomainScanError> {
 }
 
 /// Check if any source file is newer than the newest artifact directory.
-fn artifacts_stale(root: &Path, artifact_dirs: &[std::path::PathBuf]) -> Result<bool, DomainScanError> {
+fn artifacts_stale(
+    root: &Path,
+    artifact_dirs: &[std::path::PathBuf],
+) -> Result<bool, DomainScanError> {
     // Find the newest artifact directory mtime
     let newest_artifact_mtime = artifact_dirs
         .iter()
@@ -226,9 +229,8 @@ mod tests {
         // Create source file with old timestamp
         fs::create_dir_all(root.join("src"))?;
         fs::write(root.join("src/main.rs"), "fn main() {}")?;
-        let past = filetime::FileTime::from_system_time(
-            SystemTime::now() - Duration::from_secs(3600),
-        );
+        let past =
+            filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
         filetime::set_file_mtime(root.join("src/main.rs"), past)?;
 
         // Create fresh artifact directory
@@ -248,9 +250,8 @@ mod tests {
         // Create artifact directory with old timestamp
         fs::create_dir_all(root.join("target/debug"))?;
         fs::write(root.join("target/debug/binary"), "binary")?;
-        let past = filetime::FileTime::from_system_time(
-            SystemTime::now() - Duration::from_secs(3600),
-        );
+        let past =
+            filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
         filetime::set_file_mtime(root.join("target"), past)?;
 
         // Create source file (current time = newer than artifact)
@@ -306,9 +307,13 @@ mod tests {
             .output()?;
         let _ = std::process::Command::new("git")
             .args([
-                "-c", "user.email=test@test.com",
-                "-c", "user.name=Test",
-                "commit", "-m", "initial",
+                "-c",
+                "user.email=test@test.com",
+                "-c",
+                "user.name=Test",
+                "commit",
+                "-m",
+                "initial",
             ])
             .current_dir(root)
             .output()?;

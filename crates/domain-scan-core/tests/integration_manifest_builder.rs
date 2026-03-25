@@ -65,7 +65,11 @@ fn test_bootstrap_produces_valid_json() {
 
     let manifest = manifest_builder::bootstrap_manifest(&idx, &BootstrapOptions::default());
     let json = manifest_builder::serialize_manifest(&manifest);
-    assert!(json.is_ok(), "Serialization should succeed: {:?}", json.err());
+    assert!(
+        json.is_ok(),
+        "Serialization should succeed: {:?}",
+        json.err()
+    );
 
     let json_str = json.as_ref().expect("just checked");
     // Verify it parses back as a valid SystemManifest
@@ -221,7 +225,10 @@ fn test_heuristic_connections_from_imports() {
     // If there are multiple subsystems with cross-references, connections should exist.
     // This test verifies the connection inference doesn't crash and produces valid data.
     for conn in &manifest.connections {
-        assert!(!conn.from.is_empty(), "Connection 'from' should not be empty");
+        assert!(
+            !conn.from.is_empty(),
+            "Connection 'from' should not be empty"
+        );
         assert!(!conn.to.is_empty(), "Connection 'to' should not be empty");
         assert_ne!(conn.from, conn.to, "Self-connections should not exist");
     }
@@ -252,7 +259,10 @@ fn test_bootstrap_on_own_codebase() {
     // Should be valid JSON
     let json = manifest_builder::serialize_manifest(&manifest).expect("serialize");
     let reparsed: Result<SystemManifest, _> = serde_json::from_str(&json);
-    assert!(reparsed.is_ok(), "Self-bootstrap should produce valid manifest");
+    assert!(
+        reparsed.is_ok(),
+        "Self-bootstrap should produce valid manifest"
+    );
 }
 
 /// Test: write-back on a full SystemManifest preserves meta, domains, connections (A.10)
@@ -284,16 +294,34 @@ fn test_write_back_preserves_system_manifest() {
     let value: serde_json::Value =
         serde_json::from_str(&serialized).expect("parse serialized JSON");
     let obj = value.as_object().expect("should be JSON object");
-    assert!(obj.contains_key("meta"), "Must contain 'meta' after write-back");
-    assert!(obj.contains_key("domains"), "Must contain 'domains' after write-back");
-    assert!(obj.contains_key("subsystems"), "Must contain 'subsystems' after write-back");
-    assert!(obj.contains_key("connections"), "Must contain 'connections' after write-back");
+    assert!(
+        obj.contains_key("meta"),
+        "Must contain 'meta' after write-back"
+    );
+    assert!(
+        obj.contains_key("domains"),
+        "Must contain 'domains' after write-back"
+    );
+    assert!(
+        obj.contains_key("subsystems"),
+        "Must contain 'subsystems' after write-back"
+    );
+    assert!(
+        obj.contains_key("connections"),
+        "Must contain 'connections' after write-back"
+    );
 
     // Re-parse and verify meta/domains/connections survived
     let reparsed: manifest::SystemManifest =
         serde_json::from_str(&serialized).expect("re-parse SystemManifest");
-    assert_eq!(reparsed.meta, original_meta, "meta must survive write-back round-trip");
-    assert_eq!(reparsed.domains, original_domains, "domains must survive write-back round-trip");
+    assert_eq!(
+        reparsed.meta, original_meta,
+        "meta must survive write-back round-trip"
+    );
+    assert_eq!(
+        reparsed.domains, original_domains,
+        "domains must survive write-back round-trip"
+    );
     assert_eq!(
         reparsed.connections, original_connections,
         "connections must survive write-back round-trip"
@@ -318,7 +346,16 @@ fn test_schema_output_exists() {
     let value = parsed.expect("just checked");
     assert!(value.is_object(), "Should be a JSON object");
     assert!(value.get("meta").is_some(), "Should have 'meta' field");
-    assert!(value.get("domains").is_some(), "Should have 'domains' field");
-    assert!(value.get("subsystems").is_some(), "Should have 'subsystems' field");
-    assert!(value.get("connections").is_some(), "Should have 'connections' field");
+    assert!(
+        value.get("domains").is_some(),
+        "Should have 'domains' field"
+    );
+    assert!(
+        value.get("subsystems").is_some(),
+        "Should have 'subsystems' field"
+    );
+    assert!(
+        value.get("connections").is_some(),
+        "Should have 'connections' field"
+    );
 }
