@@ -878,8 +878,8 @@ No special patch API needed — the agent edits JSON files natively.
 - [x] `--dir <PATH>` for custom install directory
 - [x] Auto-add skills directory to `.gitignore`
 - [x] Add "AGENT SKILLS" section to `--help` output
-- [ ] Test: Claude Code can create a manifest from scratch using the skill
-- [ ] Test: Claude Code can refine an existing manifest via direct system.json edits
+- [x] Test: Claude Code can create a manifest from scratch using the skill
+- [x] Test: Claude Code can refine an existing manifest via direct system.json edits
 
 **Acceptance criteria (all G phases):**
 - `domain-scan init --bootstrap -o system.json` generates a usable starter manifest

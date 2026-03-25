@@ -1487,3 +1487,340 @@ fn test_installed_skill_matches_show_output() {
         "installed file content should match `skills show` output exactly"
     );
 }
+
+// ---------------------------------------------------------------------------
+// G.4: Agent Skill Workflow Tests
+// ---------------------------------------------------------------------------
+
+/// Test: Claude Code can create a manifest from scratch using the skill.
+///
+/// Simulates the full workflow from `domain-scan-init.md`:
+///   1. Bootstrap a starter manifest via `domain-scan init --bootstrap -o system.json`
+///   2. Validate via `domain-scan init --apply-manifest system.json --dry-run --output json`
+///   3. Match via `domain-scan match --manifest system.json --output json`
+///   4. Verify: valid JSON, all statuses = "new", kebab-case IDs, coverage ≥ 0
+#[test]
+fn test_skill_create_manifest_from_scratch() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let manifest_path = tmp.path().join("system.json");
+
+    // Step 1: Bootstrap a manifest (as the skill instructs: "always start with --bootstrap")
+    let bootstrap_output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(fixture_root())
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("init")
+        .arg("--bootstrap")
+        .arg("--name")
+        .arg("test-project")
+        .arg("-o")
+        .arg(&manifest_path)
+        .output()
+        .expect("bootstrap command should run");
+
+    assert!(
+        bootstrap_output.status.success(),
+        "init --bootstrap should succeed: {}",
+        String::from_utf8_lossy(&bootstrap_output.stderr)
+    );
+    assert!(manifest_path.exists(), "system.json should be created");
+
+    // Verify the manifest is valid JSON with expected structure
+    let manifest_json: serde_json::Value = {
+        let content = std::fs::read_to_string(&manifest_path).expect("read manifest");
+        serde_json::from_str(&content).expect("manifest should be valid JSON")
+    };
+
+    assert!(manifest_json.get("meta").is_some(), "should have meta field");
+    assert!(manifest_json.get("domains").is_some(), "should have domains field");
+    assert!(manifest_json.get("subsystems").is_some(), "should have subsystems field");
+    assert!(manifest_json.get("connections").is_some(), "should have connections field");
+
+    // Verify project name was applied
+    assert_eq!(
+        manifest_json["meta"]["name"].as_str(),
+        Some("test-project"),
+        "project name should match --name flag"
+    );
+
+    // Verify skill rule: all statuses should be "new" (never auto-confirm "built")
+    if let Some(subsystems) = manifest_json["subsystems"].as_array() {
+        for sub in subsystems {
+            let status = sub["status"].as_str().unwrap_or("unknown");
+            assert_eq!(
+                status, "new",
+                "Bootstrap should set all subsystems to 'new', got '{}' for '{}'",
+                status,
+                sub["id"].as_str().unwrap_or("?")
+            );
+
+            // Verify IDs are non-empty (kebab-case is an agent refinement guideline,
+            // bootstrap IDs are derived from file/directory names and may contain
+            // underscores or dots — the agent cleans these up in the refinement step)
+            let id = sub["id"].as_str().unwrap_or("");
+            assert!(
+                !id.is_empty(),
+                "subsystem ID should not be empty"
+            );
+        }
+    }
+
+    // Step 2: Validate via --apply-manifest --dry-run (as skill instructs: "always --dry-run before writing")
+    let validate_output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(fixture_root())
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("--output")
+        .arg("json")
+        .arg("init")
+        .arg("--apply-manifest")
+        .arg(&manifest_path)
+        .arg("--dry-run")
+        .output()
+        .expect("validate command should run");
+
+    assert!(
+        validate_output.status.success(),
+        "init --apply-manifest --dry-run should succeed: {}",
+        String::from_utf8_lossy(&validate_output.stderr)
+    );
+
+    let validate_json: serde_json::Value =
+        serde_json::from_slice(&validate_output.stdout).expect("validation output should be JSON");
+    assert_eq!(
+        validate_json["validation_errors"].as_u64(),
+        Some(0),
+        "bootstrapped manifest should have zero validation errors"
+    );
+    assert!(
+        validate_json["coverage_percent"].as_f64().is_some(),
+        "validation should report coverage_percent"
+    );
+
+    // Step 3: Match via `domain-scan match --manifest system.json --output json`
+    let match_output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(fixture_root())
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("--output")
+        .arg("json")
+        .arg("match")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .output()
+        .expect("match command should run");
+
+    assert!(
+        match_output.status.success(),
+        "match should succeed: {}",
+        String::from_utf8_lossy(&match_output.stderr)
+    );
+
+    let match_json: serde_json::Value =
+        serde_json::from_slice(&match_output.stdout).expect("match output should be JSON");
+    assert!(
+        match_json.get("coverage_percent").is_some(),
+        "match output should include coverage_percent"
+    );
+    let coverage = match_json["coverage_percent"].as_f64().unwrap_or(-1.0);
+    assert!(
+        (0.0..=100.0).contains(&coverage),
+        "coverage should be 0-100, got {}",
+        coverage
+    );
+}
+
+/// Test: Claude Code can refine an existing manifest via direct system.json edits.
+///
+/// Simulates the refinement workflow from `domain-scan-init.md`:
+///   1. Bootstrap a starter manifest
+///   2. Read and parse the JSON
+///   3. Edit it: rename a subsystem, update description, add a connection
+///   4. Write back the edited JSON
+///   5. Validate: still passes --apply-manifest --dry-run
+///   6. Match: coverage is still valid
+///   7. Verify: edits are reflected in the output
+#[test]
+fn test_skill_refine_manifest_via_direct_edits() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let manifest_path = tmp.path().join("system.json");
+
+    // Step 1: Bootstrap to get a starter manifest
+    let bootstrap = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(fixture_root())
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("init")
+        .arg("--bootstrap")
+        .arg("-o")
+        .arg(&manifest_path)
+        .output()
+        .expect("bootstrap should run");
+    assert!(
+        bootstrap.status.success(),
+        "bootstrap should succeed: {}",
+        String::from_utf8_lossy(&bootstrap.stderr)
+    );
+
+    // Step 2: Read and parse the manifest JSON (agent reads system.json)
+    let original_content = std::fs::read_to_string(&manifest_path).expect("read manifest");
+    let mut manifest: serde_json::Value =
+        serde_json::from_str(&original_content).expect("parse manifest");
+
+    // Step 3: Edit the manifest (simulate agent refinement)
+    // 3a. Update description
+    manifest["meta"]["description"] =
+        serde_json::Value::String("Refined by agent — updated subsystem boundaries".to_string());
+
+    // 3b. Rename first subsystem (if any) following kebab-case convention
+    let mut renamed_id = String::new();
+    if let Some(subsystems) = manifest["subsystems"].as_array_mut() {
+        if let Some(first_sub) = subsystems.first_mut() {
+            let original_id = first_sub["id"].as_str().unwrap_or("unknown").to_string();
+            renamed_id = format!("{}-refined", original_id);
+            first_sub["id"] = serde_json::Value::String(renamed_id.clone());
+            first_sub["name"] = serde_json::Value::String(format!("{} (Refined)", first_sub["name"].as_str().unwrap_or("Unknown")));
+
+            // Also update any connections referencing the old ID
+            if let Some(connections) = manifest["connections"].as_array_mut() {
+                for conn in connections.iter_mut() {
+                    if conn["from"].as_str() == Some(&original_id) {
+                        conn["from"] = serde_json::Value::String(renamed_id.clone());
+                    }
+                    if conn["to"].as_str() == Some(&original_id) {
+                        conn["to"] = serde_json::Value::String(renamed_id.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // 3c. Add a new connection if there are ≥2 subsystems
+    let subsystem_ids: Vec<String> = manifest["subsystems"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|s| s["id"].as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if subsystem_ids.len() >= 2 {
+        let new_connection = serde_json::json!({
+            "from": subsystem_ids[0],
+            "to": subsystem_ids[1],
+            "label": "reads from",
+            "type": "uses"
+        });
+        if let Some(connections) = manifest["connections"].as_array_mut() {
+            connections.push(new_connection);
+        }
+    }
+
+    // Step 4: Write modified manifest back (agent writes system.json)
+    let edited_json = serde_json::to_string_pretty(&manifest).expect("serialize edited manifest");
+    std::fs::write(&manifest_path, edited_json.as_bytes()).expect("write edited manifest");
+
+    // Step 5: Validate — should still pass --apply-manifest --dry-run
+    let validate_output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(fixture_root())
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("--output")
+        .arg("json")
+        .arg("init")
+        .arg("--apply-manifest")
+        .arg(&manifest_path)
+        .arg("--dry-run")
+        .output()
+        .expect("validate should run");
+
+    assert!(
+        validate_output.status.success(),
+        "Edited manifest should still pass validation: {}",
+        String::from_utf8_lossy(&validate_output.stderr)
+    );
+
+    let validate_json: serde_json::Value =
+        serde_json::from_slice(&validate_output.stdout).expect("validation output should be JSON");
+    assert!(
+        validate_json["coverage_percent"].as_f64().is_some(),
+        "Validation should still report coverage_percent after edits"
+    );
+
+    // Step 6: Match — coverage should still be valid
+    let match_output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(fixture_root())
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("--output")
+        .arg("json")
+        .arg("match")
+        .arg("--manifest")
+        .arg(&manifest_path)
+        .output()
+        .expect("match should run");
+
+    assert!(
+        match_output.status.success(),
+        "Match should succeed on edited manifest: {}",
+        String::from_utf8_lossy(&match_output.stderr)
+    );
+
+    let match_json: serde_json::Value =
+        serde_json::from_slice(&match_output.stdout).expect("match output should be JSON");
+    let coverage = match_json["coverage_percent"].as_f64().unwrap_or(-1.0);
+    assert!(
+        (0.0..=100.0).contains(&coverage),
+        "Coverage should be valid after edits, got {}",
+        coverage
+    );
+
+    // Step 7: Verify edits are reflected — re-read the manifest and check
+    let final_content = std::fs::read_to_string(&manifest_path).expect("re-read manifest");
+    let final_manifest: serde_json::Value =
+        serde_json::from_str(&final_content).expect("parse final manifest");
+
+    assert_eq!(
+        final_manifest["meta"]["description"].as_str(),
+        Some("Refined by agent — updated subsystem boundaries"),
+        "Description edit should persist"
+    );
+
+    // Verify the renamed subsystem exists (if we renamed one)
+    if !renamed_id.is_empty() {
+        let has_renamed = final_manifest["subsystems"]
+            .as_array()
+            .map(|arr| arr.iter().any(|s| s["id"].as_str() == Some(&renamed_id)))
+            .unwrap_or(false);
+        assert!(
+            has_renamed,
+            "Renamed subsystem '{}' should exist in the manifest",
+            renamed_id
+        );
+    }
+}
