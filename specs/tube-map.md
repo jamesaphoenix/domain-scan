@@ -599,10 +599,10 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.9 Error Recovery
 
-- [ ] Test: Tauri IPC command fails (e.g., file deleted mid-scan) → structured error shown, app stays functional
-- [ ] Test: manifest file deleted after loading → next `match_manifest` call returns error, tube map shows "reload manifest" CTA
-- [ ] Test: corrupt cache directory → scan falls back to no-cache mode, completes successfully
-- [ ] Test: extremely long subsystem names (500+ chars) → node renders without overflow, tooltip shows full name
+- [x] Test: Tauri IPC command fails (e.g., file deleted mid-scan) → structured error shown, app stays functional
+- [x] Test: manifest file deleted after loading → next `match_manifest` call returns error, tube map shows "reload manifest" CTA
+- [x] Test: corrupt cache directory → scan falls back to no-cache mode, completes successfully
+- [x] Test: extremely long subsystem names (500+ chars) → node renders without overflow, tooltip shows full name
 
 #### F.10 Manifest Builder — CLI Integration Tests
 
