@@ -288,11 +288,12 @@ mod tests {
     fn test_schema_init_registered() {
         let schema = schema_for_command("init");
         assert!(schema.is_some(), "schema_for_command(\"init\") should return Some");
-        let schema = schema.unwrap();
-        assert_eq!(schema.command, "init");
-        assert!(!schema.description.is_empty());
-        assert!(schema.input.is_object());
-        assert!(schema.output.is_object());
+        if let Some(schema) = schema {
+            assert_eq!(schema.command, "init");
+            assert!(!schema.description.is_empty());
+            assert!(schema.input.is_object());
+            assert!(schema.output.is_object());
+        }
     }
 
     #[test]

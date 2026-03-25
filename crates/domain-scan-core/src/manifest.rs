@@ -1689,12 +1689,13 @@ mod tests {
     fn test_validate_glob_pattern_invalid() {
         let result = validate_glob_pattern("[unclosed");
         assert!(result.is_err());
-        let err = result.unwrap_err();
-        let err_msg = err.to_string();
-        assert!(
-            err_msg.contains("Invalid glob pattern"),
-            "Error should mention 'Invalid glob pattern', got: {err_msg}"
-        );
+        if let Err(err) = result {
+            let err_msg = err.to_string();
+            assert!(
+                err_msg.contains("Invalid glob pattern"),
+                "Error should mention 'Invalid glob pattern', got: {err_msg}"
+            );
+        }
     }
 
     #[test]
@@ -1740,10 +1741,12 @@ mod tests {
             .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
         let result = validate_manifest_globs(&manifest);
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(
-            err_msg.contains("Invalid glob pattern"),
-            "Error should be structured DomainScanError, got: {err_msg}"
-        );
+        if let Err(err) = result {
+            let err_msg = err.to_string();
+            assert!(
+                err_msg.contains("Invalid glob pattern"),
+                "Error should be structured DomainScanError, got: {err_msg}"
+            );
+        }
     }
 }
