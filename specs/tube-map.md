@@ -556,16 +556,16 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.5 E2E: Tube Map Interactions
 
-- [ ] Test: pan canvas with mouse drag → viewport moves
-- [ ] Test: zoom with scroll wheel → zoom level changes, StatusBar updates
-- [ ] Test: click station node → details panel shows subsystem info
-- [ ] Test: click station with children → drill-in view opens, breadcrumbs update
-- [ ] Test: click breadcrumb → navigates back, tube map restores
-- [ ] Test: click domain in legend → filters to that domain only, compact layout triggers
-- [ ] Test: type in search bar → stations filter by name, layout re-compacts
-- [ ] Test: clear search → all stations reappear at canonical positions
-- [ ] Test: click "trace" on a station → dependency chain highlighted, non-chain nodes dimmed
-- [ ] Test: press Escape during trace → trace clears, all nodes restore opacity
+- [x] Test: pan canvas with mouse drag → viewport moves
+- [x] Test: zoom with scroll wheel → zoom level changes, StatusBar updates
+- [x] Test: click station node → details panel shows subsystem info
+- [x] Test: click station with children → drill-in view opens, breadcrumbs update
+- [x] Test: click breadcrumb → navigates back, tube map restores
+- [x] Test: click domain in legend → filters to that domain only, compact layout triggers
+- [x] Test: type in search bar → stations filter by name, layout re-compacts
+- [x] Test: clear search → all stations reappear at canonical positions
+- [x] Test: click "trace" on a station → dependency chain highlighted, non-chain nodes dimmed
+- [x] Test: press Escape during trace → trace clears, all nodes restore opacity
 
 #### F.6 E2E: Keyboard Shortcuts (Tube Map Tab)
 

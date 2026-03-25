@@ -6,3 +6,5 @@
 node_modules/
 crates/domain-scan-tauri/ui/dist/
 .domain-scan-cache/
+playwright-report/
+test-results/
