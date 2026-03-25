@@ -166,6 +166,124 @@ export const MOCK_OCTOSPARK_TUBE_MAP: TubeMapData = (() => {
   };
 })();
 
+/** TubeMapData matching large.json: 20 domains, 200 subsystems, 500 connections */
+export const MOCK_LARGE_TUBE_MAP: TubeMapData = (() => {
+  const domainCount = 20;
+  const subsystemsPerDomain = 10;
+  const colors = [
+    "#3b82f6", "#22c55e", "#f97316", "#a855f7", "#ef4444",
+    "#eab308", "#06b6d4", "#ec4899", "#14b8a6", "#f59e0b",
+    "#6366f1", "#84cc16", "#d946ef", "#0ea5e9", "#f43f5e",
+    "#10b981", "#8b5cf6", "#fb923c", "#64748b", "#a3e635",
+  ];
+  const domains: TubeMapData["domains"] = {};
+  for (let d = 0; d < domainCount; d++) {
+    domains[`domain-${d}`] = { label: `Domain ${d}`, color: colors[d] };
+  }
+  const subsystems: TubeMapSubsystem[] = [];
+  for (let d = 0; d < domainCount; d++) {
+    for (let s = 0; s < subsystemsPerDomain; s++) {
+      const idx = d * subsystemsPerDomain + s;
+      subsystems.push(makeSubsystem({
+        id: `subsystem-${idx}`,
+        name: `Subsystem ${idx}`,
+        domain: `domain-${d}`,
+        matched_entity_count: Math.floor(Math.random() * 5),
+        interface_count: Math.floor(Math.random() * 3),
+        operation_count: Math.floor(Math.random() * 4),
+        dependency_count: Math.floor(Math.random() * 3),
+      }));
+    }
+  }
+  // Generate 500 connections (cross-domain and intra-domain)
+  const connections: TubeMapData["connections"] = [];
+  for (let i = 0; i < 500; i++) {
+    const fromIdx = i % 200;
+    const toIdx = (fromIdx + 1 + (i * 7) % 199) % 200;
+    if (fromIdx !== toIdx) {
+      connections.push({
+        from: `subsystem-${fromIdx}`,
+        to: `subsystem-${toIdx}`,
+        label: `dep-${i}`,
+        type: "depends_on",
+      });
+    }
+  }
+  return {
+    meta: { name: "Large Stress Test", version: "1.0", description: "Stress test: 20 domains, 200 subsystems, 500 connections" },
+    domains,
+    subsystems,
+    connections,
+    coverage_percent: 60,
+    unmatched_count: 40,
+  };
+})();
+
+/** TubeMapData matching circular-deps.json: 2 domains, 6 subsystems with circular dependencies */
+export const MOCK_CIRCULAR_DEPS_TUBE_MAP: TubeMapData = {
+  meta: { name: "Circular Dependencies", version: "1.0", description: "Subsystems with mutual circular dependencies" },
+  domains: {
+    backend: { label: "Backend", color: "#3b82f6" },
+    frontend: { label: "Frontend", color: "#22c55e" },
+  },
+  subsystems: [
+    makeSubsystem({ id: "service-a", name: "Service A", domain: "backend", description: "Service A depends on B" }),
+    makeSubsystem({ id: "service-b", name: "Service B", domain: "backend", description: "Service B depends on A (circular)" }),
+    makeSubsystem({ id: "service-c", name: "Service C", domain: "backend", status: "rebuild", description: "3-way cycle" }),
+    makeSubsystem({ id: "service-d", name: "Service D", domain: "backend", description: "Part of 3-way cycle" }),
+    makeSubsystem({ id: "service-e", name: "Service E", domain: "backend", status: "new", description: "Completes 3-way cycle" }),
+    makeSubsystem({ id: "ui-app", name: "UI App", domain: "frontend", description: "Frontend depends on backend" }),
+  ],
+  connections: [
+    { from: "service-a", to: "service-b", label: "calls service B", type: "depends_on" },
+    { from: "service-b", to: "service-a", label: "calls service A back (circular)", type: "depends_on" },
+    { from: "service-c", to: "service-d", label: "calls D", type: "depends_on" },
+    { from: "service-d", to: "service-e", label: "calls E", type: "depends_on" },
+    { from: "service-e", to: "service-c", label: "calls C (completes cycle)", type: "depends_on" },
+    { from: "ui-app", to: "service-a", label: "fetches from A", type: "uses" },
+    { from: "ui-app", to: "service-c", label: "fetches from C", type: "uses" },
+  ],
+  coverage_percent: 0,
+  unmatched_count: 0,
+};
+
+/** TubeMapData matching no-domains.json: 3 subsystems with no domains defined */
+export const MOCK_NO_DOMAINS_TUBE_MAP: TubeMapData = {
+  meta: { name: "No Domains App", version: "1.0", description: "Manifest with subsystems but no domains field" },
+  domains: {},
+  subsystems: [
+    makeSubsystem({ id: "auth", name: "Authentication", domain: "unknown-domain", description: "Auth without a declared domain" }),
+    makeSubsystem({ id: "billing", name: "Billing", domain: "also-unknown", status: "new", description: "Billing without a declared domain" }),
+    makeSubsystem({ id: "notifications", name: "Notifications", domain: "", status: "rebuild", description: "Notifications with empty domain" }),
+  ],
+  connections: [
+    { from: "billing", to: "auth", label: "validates user", type: "depends_on" },
+    { from: "notifications", to: "auth", label: "resolves recipient", type: "depends_on" },
+  ],
+  coverage_percent: 0,
+  unmatched_count: 0,
+};
+
+/** TubeMapData matching orphan-subsystems.json: 4 subsystems, only 1 has a valid domain */
+export const MOCK_ORPHAN_SUBSYSTEMS_TUBE_MAP: TubeMapData = {
+  meta: { name: "Orphan Subsystems App", version: "1.0", description: "Subsystems whose domain doesn't exist in domains map" },
+  domains: {
+    core: { label: "Core", color: "#3b82f6" },
+  },
+  subsystems: [
+    makeSubsystem({ id: "auth", name: "Authentication", domain: "core", description: "Belongs to a valid domain" }),
+    makeSubsystem({ id: "payments", name: "Payments", domain: "billing-domain", description: "References a domain that doesn't exist" }),
+    makeSubsystem({ id: "analytics", name: "Analytics", domain: "data-science", status: "new", description: "Another orphan domain reference" }),
+    makeSubsystem({ id: "mailer", name: "Email Service", domain: "", status: "rebuild", description: "Empty domain string — should go to unassigned" }),
+  ],
+  connections: [
+    { from: "payments", to: "auth", label: "validates identity", type: "depends_on" },
+    { from: "mailer", to: "auth", label: "resolves recipient", type: "depends_on" },
+  ],
+  coverage_percent: 0,
+  unmatched_count: 0,
+};
+
 /** TubeMapData matching empty.json: valid manifest with 0 subsystems */
 export const MOCK_EMPTY_TUBE_MAP: TubeMapData = {
   meta: { name: "Empty App", version: "1.0", description: "Valid manifest with zero subsystems" },

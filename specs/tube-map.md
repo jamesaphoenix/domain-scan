@@ -579,14 +579,14 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.7 Stress Tests & Edge Cases
 
-- [ ] Test: load `large.json` (200 subsystems) → renders within 3 seconds, pan/zoom stays smooth
-- [ ] Test: load `circular-deps.json` → cycle-breaking produces valid layout, warning badge shown
-- [ ] Test: load `no-domains.json` → all subsystems render on gray "unassigned" line
-- [ ] Test: load `orphan-subsystems.json` → orphan subsystems placed in fallback row, no crash
-- [ ] Test: window resize → layout reflows, no overlapping nodes, MiniMap updates
-- [ ] Test: minimize/restore window → React Flow canvas re-renders correctly
-- [ ] Test: scan a 1000-file codebase → match against large manifest → tube map renders without OOM
-- [ ] Test: double-click station rapidly → no duplicate drill-in views, breadcrumbs don't double-push
+- [x] Test: load `large.json` (200 subsystems) → renders within 3 seconds, pan/zoom stays smooth
+- [x] Test: load `circular-deps.json` → cycle-breaking produces valid layout, warning badge shown
+- [x] Test: load `no-domains.json` → all subsystems render on gray "unassigned" line
+- [x] Test: load `orphan-subsystems.json` → orphan subsystems placed in fallback row, no crash
+- [x] Test: window resize → layout reflows, no overlapping nodes, MiniMap updates
+- [x] Test: minimize/restore window → React Flow canvas re-renders correctly
+- [x] Test: scan a 1000-file codebase → match against large manifest → tube map renders without OOM
+- [x] Test: double-click station rapidly → no duplicate drill-in views, breadcrumbs don't double-push
 
 #### F.8 Data Integrity Checks
 
