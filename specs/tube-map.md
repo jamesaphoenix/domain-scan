@@ -975,6 +975,6 @@ The Tube Map "Load Manifest" screen includes a copyable agent prompt that teache
 
 ### Phase H.5: Known Bugs
 
-- [ ] **Open Directory button**: Clicking "Open Directory" should open a native folder picker, trigger a scan, and populate the entity tree. Currently requires the capabilities file fix (see Section 2).
-- [ ] **Source preview not loading**: Selecting an entity sometimes does not load source code in the center panel. Root cause: `useEffect` dependency array missed `selectedIndex`, causing stale closures. Fixed by adding `tree.selectedIndex` to deps.
+- [x] **Open Directory button**: Clicking "Open Directory" should open a native folder picker, trigger a scan, and populate the entity tree. Currently requires the capabilities file fix (see Section 2).
+- [x] **Source preview not loading**: Selecting an entity sometimes does not load source code in the center panel. Root cause: `useEffect` dependency array missed `selectedIndex`, causing stale closures. Fixed by adding `tree.selectedIndex` to deps.
 - [x] **Editor "No editor available" error**: Bundled macOS apps don't inherit shell PATH, so `cursor`/`code` CLI commands fail. Fixed by falling back to `open -a "Cursor"` / `open -a "Visual Studio Code"` via macOS.
