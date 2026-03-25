@@ -314,6 +314,40 @@ export interface SubsystemDetail {
   matched_entities: EntitySummary[];
 }
 
+// ---------------------------------------------------------------------------
+// System Manifest types (for wizard / bootstrap)
+// ---------------------------------------------------------------------------
+
+export type ManifestStatus = "built" | "rebuild" | "new" | "boilerplate";
+
+export interface ManifestSubsystem {
+  id: string;
+  name: string;
+  domain: string;
+  status: ManifestStatus;
+  filePath: string;
+  interfaces: string[];
+  operations: string[];
+  tables: string[];
+  events: string[];
+  children: ManifestSubsystem[];
+  dependencies: string[];
+}
+
+export interface ManifestConnection {
+  from: string;
+  to: string;
+  label: string;
+  type: ConnectionType;
+}
+
+export interface SystemManifest {
+  meta: ManifestMeta;
+  domains: Record<string, DomainDef>;
+  subsystems: ManifestSubsystem[];
+  connections: ManifestConnection[];
+}
+
 // Tree node for entity tree display
 export interface TreeNode {
   entity: EntitySummary;

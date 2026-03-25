@@ -9,6 +9,7 @@ use domain_scan_core::ir::{
 use domain_scan_core::manifest::{
     Connection, DomainDef, ManifestMeta, ManifestSubsystem, SystemManifest,
 };
+use domain_scan_core::manifest_builder::{self, BootstrapOptions};
 use domain_scan_core::prompt::PromptConfig;
 use domain_scan_core::{cache, index, manifest, parser, prompt, query_engine, walker};
 use serde::{Deserialize, Serialize};
@@ -456,42 +457,64 @@ pub fn get_build_status(
 }
 
 /// Open a file in the user's editor.
+/// Uses macOS `open -a` to launch by app name, avoiding PATH issues in bundled apps.
 #[tauri::command]
 pub fn open_in_editor(
     editor: String,
     file: String,
     line: usize,
 ) -> Result<(), CommandError> {
-    let args: Vec<String> = match editor.as_str() {
-        "code" | "vscode" => vec![
-            "--goto".to_string(),
-            format!("{file}:{line}"),
-        ],
-        "cursor" => vec![
-            "--goto".to_string(),
-            format!("{file}:{line}"),
-        ],
-        "zed" => vec![
-            format!("{file}:{line}"),
-        ],
+    // First, try the CLI command directly (works when CLI tools are in PATH)
+    let cli_result = try_open_via_cli(&editor, &file, line);
+    if cli_result.is_ok() {
+        return Ok(());
+    }
+
+    // Fallback: use macOS `open -a` with the app bundle name
+    let app_name = match editor.as_str() {
+        "cursor" => "Cursor",
+        "code" | "vscode" => "Visual Studio Code",
+        "zed" => "Zed",
         _ => {
-            return Err(CommandError::Scan(format!(
-                "Unsupported editor: {editor}. Use code, cursor, or zed."
+            return Err(CommandError::Io(format!(
+                "Unsupported editor: {editor}. Use cursor, code, or zed."
             )));
         }
     };
 
-    let cmd = match editor.as_str() {
-        "code" | "vscode" => "code",
-        "cursor" => "cursor",
-        "zed" => "zed",
-        other => other,
+    // For VS Code / Cursor, use `open -a <App> --args --goto file:line`
+    // For Zed, use `open -a Zed file:line`
+    let mut cmd = std::process::Command::new("open");
+    cmd.arg("-a").arg(app_name);
+
+    match editor.as_str() {
+        "code" | "vscode" | "cursor" => {
+            cmd.arg("--args").arg("--goto").arg(format!("{file}:{line}"));
+        }
+        "zed" => {
+            cmd.arg(format!("{file}:{line}"));
+        }
+        _ => {}
+    }
+
+    cmd.spawn()
+        .map_err(|e| CommandError::Io(format!("Failed to open {app_name}: {e}")))?;
+
+    Ok(())
+}
+
+fn try_open_via_cli(editor: &str, file: &str, line: usize) -> Result<(), CommandError> {
+    let (cmd, args): (&str, Vec<String>) = match editor {
+        "code" | "vscode" => ("code", vec!["--goto".to_string(), format!("{file}:{line}")]),
+        "cursor" => ("cursor", vec!["--goto".to_string(), format!("{file}:{line}")]),
+        "zed" => ("zed", vec![format!("{file}:{line}")]),
+        _ => return Err(CommandError::Io("unsupported".to_string())),
     };
 
     std::process::Command::new(cmd)
         .args(&args)
         .spawn()
-        .map_err(|e| CommandError::Io(format!("Failed to open {editor}: {e}")))?;
+        .map_err(|e| CommandError::Io(e.to_string()))?;
 
     Ok(())
 }
@@ -665,6 +688,49 @@ pub fn get_subsystem_detail(
     };
 
     Ok(build_subsystem_detail(subsystem, &matched_entities, match_lock.as_ref()))
+}
+
+/// Bootstrap a manifest from scan data using heuristic inference.
+/// Requires a scan to be loaded. Returns a draft SystemManifest.
+#[tauri::command]
+pub fn bootstrap_manifest(
+    project_name: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<SystemManifest, CommandError> {
+    let idx_lock = state
+        .current_index
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    let idx = idx_lock.as_ref().ok_or(CommandError::NoIndexLoaded)?;
+
+    let options = BootstrapOptions {
+        project_name,
+        min_entities: 1,
+    };
+
+    Ok(manifest_builder::bootstrap_manifest(idx, &options))
+}
+
+/// Save a manifest to disk. Accepts the full SystemManifest JSON and a file path.
+#[tauri::command]
+pub fn save_manifest(
+    manifest_json: SystemManifest,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    let json = manifest_builder::serialize_manifest(&manifest_json)
+        .map_err(|e| CommandError::Export(e.to_string()))?;
+
+    std::fs::write(&path, &json)?;
+
+    // Also load the saved manifest into AppState so tube map can use it immediately
+    let mut manifest_lock = state
+        .current_manifest
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    *manifest_lock = Some(manifest_json);
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { SubsystemNode } from "./SubsystemNode";
 import { DependencyEdge } from "./DependencyEdge";
 import { ManifestLoader } from "./ManifestLoader";
+import { ManifestWizard } from "./ManifestWizard";
 import { TubeMapSearchBar } from "./TubeMapSearchBar";
 import { Legend } from "./Legend";
 import { Breadcrumbs } from "./Breadcrumbs";
@@ -27,6 +28,7 @@ import { TubeLineStripes } from "./TubeLineStripes";
 import { useTubeMapState } from "../hooks/useTubeMapState";
 import { useTubeLayout } from "../hooks/useTubeLayout";
 import { useToast } from "../hooks/useToast";
+import type { TubeMapData } from "../types";
 
 const nodeTypes = { subsystem: SubsystemNode };
 const edgeTypes = { dependency: DependencyEdge };
@@ -39,6 +41,7 @@ function TubeMapInner() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [zoom, setZoom] = useState(1);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const reactFlowInstance = useReactFlow();
@@ -254,6 +257,41 @@ function TubeMapInner() {
     domainKeys,
   ]);
 
+  const handleWizardComplete = useCallback(
+    async (manifestPath: string) => {
+      setShowWizard(false);
+      // The manifest is already loaded into AppState by save_manifest.
+      // Run matching if a scan is loaded, then fetch tube map data.
+      try {
+        try {
+          await invoke("match_manifest");
+        } catch {
+          // No scan loaded — matching skipped
+        }
+        const data = await invoke<TubeMapData>("get_tube_map_data");
+        state.setTubeMapDataDirectly(data);
+        const fileName = manifestPath.split("/").pop() ?? manifestPath;
+        addToast(
+          `Manifest loaded: ${fileName} (${data.subsystems.length} subsystems)`,
+          "success",
+        );
+      } catch (e) {
+        addToast(`Failed to load saved manifest: ${String(e)}`, "error");
+      }
+    },
+    [state, addToast],
+  );
+
+  // If wizard is active, show it
+  if (showWizard) {
+    return (
+      <ManifestWizard
+        onComplete={handleWizardComplete}
+        onCancel={() => setShowWizard(false)}
+      />
+    );
+  }
+
   // If no manifest loaded, show loader
   if (!tubeMapData) {
     return (
@@ -261,6 +299,7 @@ function TubeMapInner() {
         onLoadManifest={state.loadManifest}
         loading={state.loading}
         error={state.error}
+        onStartWizard={() => setShowWizard(true)}
       />
     );
   }

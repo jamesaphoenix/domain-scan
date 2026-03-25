@@ -29,6 +29,7 @@ export interface UseTubeMapStateReturn {
   matchManifest: () => Promise<void>;
   setFocusedSubsystemId: (id: string | null) => void;
   setDependencyDirection: (dir: DependencyDirection) => void;
+  setTubeMapDataDirectly: (data: TubeMapData) => void;
   drillIn: (subsystemId: string, name: string) => void;
   navigateBreadcrumb: (index: number) => void;
   getSubsystemDetail: (id: string) => Promise<SubsystemDetail>;
@@ -106,6 +107,14 @@ export function useTubeMapState(): UseTubeMapStateReturn {
       setLoading(false);
     }
   }, [manifestPath, addToast]);
+
+  const setTubeMapDataDirectly = useCallback(
+    (data: TubeMapData) => {
+      setTubeMapData(data);
+      setBreadcrumbs([{ id: "root", name: data.meta.name }]);
+    },
+    [],
+  );
 
   const drillIn = useCallback(
     (subsystemId: string, name: string) => {
@@ -224,6 +233,7 @@ export function useTubeMapState(): UseTubeMapStateReturn {
     matchManifest,
     setFocusedSubsystemId,
     setDependencyDirection,
+    setTubeMapDataDirectly,
     drillIn,
     navigateBreadcrumb,
     getSubsystemDetail,

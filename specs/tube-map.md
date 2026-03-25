@@ -830,25 +830,25 @@ The agent then refines the bootstrap output (better names, better groupings, con
 
 ### Phase G.1: Smart Defaults (Heuristic) + `--bootstrap`
 
-- [ ] Implement `infer_domains_from_directories(index)` — directory grouping heuristic
-- [ ] Implement `infer_subsystems_from_imports(index, domain)` — import clustering
-- [ ] Implement `infer_connections_from_imports(index, subsystems)` — cross-subsystem import counting
-- [ ] Test: scan domain-scan's own codebase → heuristics produce reasonable domains/subsystems
-- [ ] Test: scan octospark fixtures → heuristics approximate the hand-crafted system.json
+- [x] Implement `infer_domains_from_directories(index)` — directory grouping heuristic
+- [x] Implement `infer_subsystems_from_imports(index, domain)` — import clustering
+- [x] Implement `infer_connections_from_imports(index, subsystems)` — cross-subsystem import counting
+- [x] Test: scan domain-scan's own codebase → heuristics produce reasonable domains/subsystems
+- [x] Test: scan octospark fixtures → heuristics approximate the hand-crafted system.json
 
 ### Phase G.2: CLI `domain-scan init`
 
-- [ ] Add `init` subcommand with `--bootstrap`, `--validate`, `-o` flags
-- [ ] `--bootstrap` generates starter manifest from heuristic defaults
-- [ ] `--validate <PATH>` checks a system.json is well-formed:
+- [x] Add `init` subcommand with `--bootstrap`, `--apply-manifest`, `-o` flags
+- [x] `--bootstrap` generates starter manifest from heuristic defaults
+- [x] `--apply-manifest <PATH>` checks a system.json is well-formed:
   - All subsystem IDs unique
   - All `domain` fields reference a key in `domains` map
   - All `connections.from`/`connections.to` reference valid subsystem IDs
   - All `dependencies` reference valid subsystem IDs
   - No orphan domains (defined but no subsystems use them)
   - Outputs structured JSON: `{ valid: bool, errors: [...], warnings: [...] }`
-- [ ] `domain-scan schema init` dumps the system.json JSON Schema (so agents can validate before writing)
-- [ ] CLI integration tests with assert_cmd
+- [x] `domain-scan schema init` dumps the system.json JSON Schema (so agents can validate before writing)
+- [x] CLI integration tests with assert_cmd
 
 The agent's workflow for editing manifests is just:
 1. Read `system.json` → edit it directly (split, merge, rename, move entities)
@@ -858,13 +858,13 @@ No special patch API needed — the agent edits JSON files natively.
 
 ### Phase G.3: Tauri Wizard UI
 
-- [ ] Create `ManifestWizard.tsx` — step navigation, progress indicator
-- [ ] Create `WizardStepDomains.tsx` — directory census + domain proposal cards
-- [ ] Create `WizardStepSubsystems.tsx` — per-domain entity mapping
-- [ ] Create `WizardStepConnections.tsx` — connection list with type/label editing
-- [ ] Create `WizardStepReview.tsx` — final review + save + tube map preview
-- [ ] Wire wizard into tube map tab (replaces "Load Manifest" CTA)
-- [ ] On "Save Manifest" → immediately load into tube map view
+- [x] Create `ManifestWizard.tsx` — step navigation, progress indicator
+- [x] Create `WizardStepDomains.tsx` — directory census + domain proposal cards
+- [x] Create `WizardStepSubsystems.tsx` — per-domain entity mapping
+- [x] Create `WizardStepConnections.tsx` — connection list with type/label editing
+- [x] Create `WizardStepReview.tsx` — final review + save + tube map preview
+- [x] Wire wizard into tube map tab (replaces "Load Manifest" CTA)
+- [x] On "Save Manifest" → immediately load into tube map view
 
 ### Phase G.4: Agent Skill Files + Bootstrapping
 

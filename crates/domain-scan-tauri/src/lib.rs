@@ -31,6 +31,8 @@ pub fn run() {
             commands::get_tube_map_data,
             commands::get_subsystem_entities,
             commands::get_subsystem_detail,
+            commands::bootstrap_manifest,
+            commands::save_manifest,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {
