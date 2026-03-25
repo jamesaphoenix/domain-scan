@@ -23,6 +23,11 @@ mod tui;
 ///
 /// Find every interface, service, method, trait, protocol, and type boundary
 /// in any codebase. Fast, deterministic, language-agnostic.
+///
+/// AGENT SKILLS: Run `domain-scan skills list` to discover embedded agent
+/// skill files. Install them with `domain-scan skills install --claude-code`
+/// (or --codex, --dir). Skills teach AI agents how to use domain-scan
+/// effectively — scan workflows, manifest building, tube map interaction.
 #[derive(Parser)]
 #[command(name = "domain-scan", version, about)]
 struct Cli {
@@ -264,6 +269,12 @@ enum Commands {
         #[arg(long)]
         all: bool,
     },
+
+    /// Manage embedded agent skill files
+    Skills {
+        #[command(subcommand)]
+        action: SkillsAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -281,6 +292,31 @@ enum CacheAction {
         /// Preview what would be pruned without actually deleting
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SkillsAction {
+    /// List all embedded skill names
+    List,
+    /// Print a specific skill to stdout
+    Show {
+        /// Skill name (e.g. domain-scan-init)
+        name: String,
+    },
+    /// Print all skills concatenated (for context injection)
+    Dump,
+    /// Install skill files to a project directory
+    Install {
+        /// Install to .claude/skills/ in the project root (for Claude Code)
+        #[arg(long)]
+        claude_code: bool,
+        /// Install to .codex/skills/ in the project root (for Codex)
+        #[arg(long)]
+        codex: bool,
+        /// Install to a custom directory
+        #[arg(long)]
+        dir: Option<PathBuf>,
     },
 }
 
@@ -790,7 +826,8 @@ fn validate_string_inputs(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         | Commands::Stats
         | Commands::Match { .. }
         | Commands::Cache { .. }
-        | Commands::Init { .. } => {}
+        | Commands::Init { .. }
+        | Commands::Skills { .. } => {}
     }
 
     Ok(())
@@ -1055,6 +1092,7 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             ref command,
             all,
         } => cmd_schema(&cli, command.clone(), *all),
+        Commands::Skills { ref action } => cmd_skills(&cli, action),
     }
 }
 
@@ -2392,6 +2430,155 @@ fn cmd_schema(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Embedded agent skill files
+// ---------------------------------------------------------------------------
+
+const EMBEDDED_SKILLS: &[(&str, &str)] = &[
+    ("domain-scan-cli", include_str!("../../../skills/domain-scan-cli.md")),
+    ("domain-scan-scan", include_str!("../../../skills/domain-scan-scan.md")),
+    ("domain-scan-query", include_str!("../../../skills/domain-scan-query.md")),
+    ("domain-scan-validate", include_str!("../../../skills/domain-scan-validate.md")),
+    ("domain-scan-match", include_str!("../../../skills/domain-scan-match.md")),
+    ("domain-scan-prompt", include_str!("../../../skills/domain-scan-prompt.md")),
+    ("domain-scan-cache", include_str!("../../../skills/domain-scan-cache.md")),
+    ("domain-scan-safety", include_str!("../../../skills/domain-scan-safety.md")),
+    ("domain-scan-schema", include_str!("../../../skills/domain-scan-schema.md")),
+    ("domain-scan-init", include_str!("../../../skills/domain-scan-init.md")),
+    ("domain-scan-tube-map", include_str!("../../../skills/domain-scan-tube-map.md")),
+];
+
+// ---------------------------------------------------------------------------
+// Subcommand: skills
+// ---------------------------------------------------------------------------
+
+fn cmd_skills(cli: &Cli, action: &SkillsAction) -> Result<(), Box<dyn std::error::Error>> {
+    match action {
+        SkillsAction::List => {
+            let names: Vec<&str> = EMBEDDED_SKILLS.iter().map(|(name, _)| *name).collect();
+            let json = serde_json::to_string_pretty(&names)?;
+            emit(cli, &json)
+        }
+        SkillsAction::Show { name } => {
+            let skill = EMBEDDED_SKILLS
+                .iter()
+                .find(|(n, _)| *n == name.as_str())
+                .map(|(_, content)| *content);
+            match skill {
+                Some(content) => emit(cli, content),
+                None => {
+                    let names: Vec<&str> =
+                        EMBEDDED_SKILLS.iter().map(|(n, _)| *n).collect();
+                    Err(format!(
+                        "Unknown skill: '{}'. Available skills: {}",
+                        name,
+                        names.join(", ")
+                    )
+                    .into())
+                }
+            }
+        }
+        SkillsAction::Dump => {
+            let mut output = String::new();
+            for (name, content) in EMBEDDED_SKILLS {
+                output.push_str(&format!("# === {} ===\n\n", name));
+                output.push_str(content);
+                output.push_str("\n\n");
+            }
+            emit(cli, &output)
+        }
+        SkillsAction::Install {
+            claude_code,
+            codex,
+            dir,
+        } => cmd_skills_install(cli, *claude_code, *codex, dir.clone()),
+    }
+}
+
+fn cmd_skills_install(
+    cli: &Cli,
+    claude_code: bool,
+    codex: bool,
+    custom_dir: Option<PathBuf>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut targets: Vec<PathBuf> = Vec::new();
+
+    if claude_code {
+        targets.push(cli.root.join(".claude").join("skills"));
+    }
+    if codex {
+        targets.push(cli.root.join(".codex").join("skills"));
+    }
+    if let Some(ref dir) = custom_dir {
+        targets.push(dir.clone());
+    }
+
+    if targets.is_empty() {
+        return Err(
+            "Specify at least one install target: --claude-code, --codex, or --dir <PATH>".into(),
+        );
+    }
+
+    for target_dir in &targets {
+        std::fs::create_dir_all(target_dir).map_err(|e| {
+            format!(
+                "Failed to create directory {}: {e}",
+                target_dir.display()
+            )
+        })?;
+
+        for (name, content) in EMBEDDED_SKILLS {
+            let file_path = target_dir.join(format!("{name}.md"));
+            std::fs::write(&file_path, content).map_err(|e| {
+                format!("Failed to write {}: {e}", file_path.display())
+            })?;
+        }
+
+        if !cli.quiet {
+            eprintln!(
+                "Installed {} skills to {}",
+                EMBEDDED_SKILLS.len(),
+                target_dir.display()
+            );
+        }
+
+        // Auto-add to .gitignore
+        update_gitignore(&cli.root, target_dir)?;
+    }
+
+    Ok(())
+}
+
+/// Add the skills directory to .gitignore if not already present.
+fn update_gitignore(root: &Path, skills_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let gitignore_path = root.join(".gitignore");
+    let relative = skills_dir
+        .strip_prefix(root)
+        .unwrap_or(skills_dir);
+    let entry = format!("{}/", relative.display());
+
+    let existing = std::fs::read_to_string(&gitignore_path).unwrap_or_default();
+
+    // Check if already present (exact line match)
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed == entry || trimmed == entry.trim_end_matches('/') {
+            return Ok(());
+        }
+    }
+
+    // Append to .gitignore
+    let mut content = existing;
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push_str(&entry);
+    content.push('\n');
+    std::fs::write(&gitignore_path, content)?;
+
+    Ok(())
+}
 
 fn interface_kind_str(kind: &domain_scan_core::ir::InterfaceKind) -> &'static str {
     use domain_scan_core::ir::InterfaceKind;

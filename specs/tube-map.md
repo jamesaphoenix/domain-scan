@@ -630,16 +630,16 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.12 Skill Bootstrapping Tests
 
-- [ ] Test: `domain-scan skills list` → outputs all embedded skill names
-- [ ] Test: `domain-scan skills show domain-scan-init` → outputs valid YAML frontmatter + markdown
-- [ ] Test: `domain-scan skills dump` → concatenated output contains all skills
-- [ ] Test: `domain-scan skills install --claude-code` → creates `.claude/skills/domain-scan-init.md` in project root
-- [ ] Test: `domain-scan skills install --codex` → creates `.codex/skills/domain-scan-init.md` in project root
-- [ ] Test: `domain-scan skills install --dir custom/path/` → creates `custom/path/domain-scan-init.md`
-- [ ] Test: running install twice → files overwritten, no duplicates
-- [ ] Test: `.gitignore` updated to include skills directory after install
-- [ ] Test: `domain-scan --help` output contains "AGENT SKILLS" section
-- [ ] Test: installed skill file content matches embedded `skills show` output exactly
+- [x] Test: `domain-scan skills list` → outputs all embedded skill names
+- [x] Test: `domain-scan skills show domain-scan-init` → outputs valid YAML frontmatter + markdown
+- [x] Test: `domain-scan skills dump` → concatenated output contains all skills
+- [x] Test: `domain-scan skills install --claude-code` → creates `.claude/skills/domain-scan-init.md` in project root
+- [x] Test: `domain-scan skills install --codex` → creates `.codex/skills/domain-scan-init.md` in project root
+- [x] Test: `domain-scan skills install --dir custom/path/` → creates `custom/path/domain-scan-init.md`
+- [x] Test: running install twice → files overwritten, no duplicates
+- [x] Test: `.gitignore` updated to include skills directory after install
+- [x] Test: `domain-scan --help` output contains "AGENT SKILLS" section
+- [x] Test: installed skill file content matches embedded `skills show` output exactly
 
 **Acceptance criteria:**
 - All E2E tests pass in CI (GitHub Actions with `cargo tauri build` + Playwright)
@@ -868,16 +868,16 @@ No special patch API needed — the agent edits JSON files natively.
 
 ### Phase G.4: Agent Skill Files + Bootstrapping
 
-- [ ] Create `skills/domain-scan-init.md` with patch guidelines
-- [ ] Create `skills/domain-scan-tube-map.md`
-- [ ] Update `skills/domain-scan-scan.md` — add init workflow reference
-- [ ] Embed skill files in CLI binary via `include_str!`
-- [ ] Add `domain-scan skills list|show|dump|install` subcommand
-- [ ] `--claude-code` installs to `.claude/skills/` in project root
-- [ ] `--codex` installs to `.codex/skills/` in project root
-- [ ] `--dir <PATH>` for custom install directory
-- [ ] Auto-add skills directory to `.gitignore`
-- [ ] Add "AGENT SKILLS" section to `--help` output
+- [x] Create `skills/domain-scan-init.md` with patch guidelines
+- [x] Create `skills/domain-scan-tube-map.md`
+- [x] Update `skills/domain-scan-scan.md` — add init workflow reference
+- [x] Embed skill files in CLI binary via `include_str!`
+- [x] Add `domain-scan skills list|show|dump|install` subcommand
+- [x] `--claude-code` installs to `.claude/skills/` in project root
+- [x] `--codex` installs to `.codex/skills/` in project root
+- [x] `--dir <PATH>` for custom install directory
+- [x] Auto-add skills directory to `.gitignore`
+- [x] Add "AGENT SKILLS" section to `--help` output
 - [ ] Test: Claude Code can create a manifest from scratch using the skill
 - [ ] Test: Claude Code can refine an existing manifest via direct system.json edits
 

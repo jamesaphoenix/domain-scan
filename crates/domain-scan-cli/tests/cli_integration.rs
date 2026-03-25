@@ -1196,3 +1196,294 @@ fn test_cache_clear_dry_run_does_not_delete() {
     // but the command should succeed
     let _ = cache_dir; // silence unused var
 }
+
+// ---------------------------------------------------------------------------
+// F.12: Skill Bootstrapping Tests
+// ---------------------------------------------------------------------------
+
+fn skills_cmd() -> Command {
+    let mut cmd = Command::cargo_bin("domain-scan").expect("binary should exist");
+    cmd.arg("-q");
+    cmd
+}
+
+#[test]
+fn test_skills_list_outputs_all_skill_names() {
+    let output = skills_cmd()
+        .arg("skills")
+        .arg("list")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "skills list should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let names: Vec<String> =
+        serde_json::from_str(&stdout).expect("output should be valid JSON array");
+    assert!(names.len() >= 11, "should have at least 11 skills, got {}", names.len());
+    assert!(names.contains(&"domain-scan-cli".to_string()));
+    assert!(names.contains(&"domain-scan-init".to_string()));
+    assert!(names.contains(&"domain-scan-tube-map".to_string()));
+    assert!(names.contains(&"domain-scan-scan".to_string()));
+    assert!(names.contains(&"domain-scan-match".to_string()));
+}
+
+#[test]
+fn test_skills_show_outputs_valid_yaml_frontmatter_and_markdown() {
+    let output = skills_cmd()
+        .arg("skills")
+        .arg("show")
+        .arg("domain-scan-init")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "skills show should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Check YAML frontmatter
+    assert!(stdout.starts_with("---\n"), "should start with YAML frontmatter");
+    assert!(stdout.contains("name: domain-scan-init"), "should contain skill name");
+    assert!(stdout.contains("version:"), "should contain version");
+    assert!(stdout.contains("description:"), "should contain description");
+    // Check markdown content
+    assert!(stdout.contains("# "), "should contain markdown headers");
+}
+
+#[test]
+fn test_skills_dump_contains_all_skills() {
+    let output = skills_cmd()
+        .arg("skills")
+        .arg("dump")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "skills dump should succeed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Each skill is separated by a header line
+    assert!(stdout.contains("# === domain-scan-cli ==="));
+    assert!(stdout.contains("# === domain-scan-init ==="));
+    assert!(stdout.contains("# === domain-scan-tube-map ==="));
+    assert!(stdout.contains("# === domain-scan-scan ==="));
+    assert!(stdout.contains("# === domain-scan-match ==="));
+    // Dump should contain the actual content of each skill
+    assert!(stdout.contains("name: domain-scan-cli"));
+    assert!(stdout.contains("name: domain-scan-init"));
+    assert!(stdout.contains("name: domain-scan-tube-map"));
+}
+
+#[test]
+fn test_skills_install_claude_code() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let root = tmp.path();
+
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--claude-code")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "install --claude-code should succeed");
+
+    let skills_dir = root.join(".claude").join("skills");
+    assert!(skills_dir.exists(), ".claude/skills/ should be created");
+
+    let init_skill = skills_dir.join("domain-scan-init.md");
+    assert!(init_skill.exists(), "domain-scan-init.md should exist");
+
+    // Verify all skill files are installed
+    let entries: Vec<_> = std::fs::read_dir(&skills_dir)
+        .expect("should read skills dir")
+        .filter_map(|e| e.ok())
+        .collect();
+    assert!(entries.len() >= 11, "should have at least 11 skill files, got {}", entries.len());
+}
+
+#[test]
+fn test_skills_install_codex() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let root = tmp.path();
+
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--codex")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "install --codex should succeed");
+
+    let skills_dir = root.join(".codex").join("skills");
+    assert!(skills_dir.exists(), ".codex/skills/ should be created");
+
+    let init_skill = skills_dir.join("domain-scan-init.md");
+    assert!(init_skill.exists(), "domain-scan-init.md should exist");
+}
+
+#[test]
+fn test_skills_install_custom_dir() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let root = tmp.path();
+    let custom_dir = root.join("custom").join("path");
+
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--dir")
+        .arg(&custom_dir)
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "install --dir should succeed");
+    assert!(custom_dir.exists(), "custom directory should be created");
+
+    let init_skill = custom_dir.join("domain-scan-init.md");
+    assert!(init_skill.exists(), "domain-scan-init.md should exist");
+}
+
+#[test]
+fn test_skills_install_twice_overwrites_no_duplicates() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let root = tmp.path();
+
+    // Install once
+    let output1 = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--claude-code")
+        .output()
+        .expect("command should run");
+    assert!(output1.status.success());
+
+    let skills_dir = root.join(".claude").join("skills");
+    let count1 = std::fs::read_dir(&skills_dir)
+        .expect("should read dir")
+        .count();
+
+    // Install again
+    let output2 = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--claude-code")
+        .output()
+        .expect("command should run");
+    assert!(output2.status.success());
+
+    let count2 = std::fs::read_dir(&skills_dir)
+        .expect("should read dir")
+        .count();
+
+    assert_eq!(count1, count2, "install twice should not create duplicates");
+}
+
+#[test]
+fn test_skills_install_updates_gitignore() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let root = tmp.path();
+
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--claude-code")
+        .output()
+        .expect("command should run");
+    assert!(output.status.success());
+
+    let gitignore = root.join(".gitignore");
+    assert!(gitignore.exists(), ".gitignore should be created");
+
+    let content = std::fs::read_to_string(&gitignore).expect("should read .gitignore");
+    assert!(
+        content.contains(".claude/skills/"),
+        ".gitignore should contain .claude/skills/"
+    );
+
+    // Install again — .gitignore should not have duplicates
+    let output2 = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--claude-code")
+        .output()
+        .expect("command should run");
+    assert!(output2.status.success());
+
+    let content2 = std::fs::read_to_string(&gitignore).expect("should read .gitignore");
+    let count = content2.matches(".claude/skills/").count();
+    assert_eq!(count, 1, ".gitignore should not have duplicate entries");
+}
+
+#[test]
+fn test_help_contains_agent_skills_section() {
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--help")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("AGENT SKILLS"),
+        "--help output should contain AGENT SKILLS section"
+    );
+}
+
+#[test]
+fn test_installed_skill_matches_show_output() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let root = tmp.path();
+
+    // Get the show output for domain-scan-init
+    let show_output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("-q")
+        .arg("skills")
+        .arg("show")
+        .arg("domain-scan-init")
+        .output()
+        .expect("command should run");
+    assert!(show_output.status.success());
+    let show_content = String::from_utf8_lossy(&show_output.stdout);
+
+    // Install skills
+    let install_output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--root")
+        .arg(root)
+        .arg("skills")
+        .arg("install")
+        .arg("--claude-code")
+        .output()
+        .expect("command should run");
+    assert!(install_output.status.success());
+
+    // Read installed file
+    let installed_path = root.join(".claude").join("skills").join("domain-scan-init.md");
+    let installed_content =
+        std::fs::read_to_string(&installed_path).expect("should read installed file");
+
+    assert_eq!(
+        show_content.as_ref(),
+        installed_content.as_str(),
+        "installed file content should match `skills show` output exactly"
+    );
+}
