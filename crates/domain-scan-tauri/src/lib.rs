@@ -1,6 +1,7 @@
 pub mod commands;
 
 use commands::AppState;
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,6 +14,8 @@ pub fn run() {
             current_root: Mutex::new(None),
             current_manifest: Mutex::new(None),
             current_match_result: Mutex::new(None),
+            file_source_cache: Mutex::new(HashMap::new()),
+            entity_lookup: Mutex::new(HashMap::new()),
         })
         .invoke_handler(tauri::generate_handler![
             commands::scan_directory,

@@ -24,6 +24,19 @@ pub struct AppState {
     pub current_root: Mutex<Option<PathBuf>>,
     pub current_manifest: Mutex<Option<SystemManifest>>,
     pub current_match_result: Mutex<Option<MatchResult>>,
+    /// Cache file contents to avoid repeated disk reads (path → content).
+    pub file_source_cache: Mutex<HashMap<PathBuf, String>>,
+    /// Entity lookup index: (name, file_path) → (file_index, entity_kind_index).
+    /// Built after scan for O(1) entity detail lookups instead of linear scan.
+    pub entity_lookup: Mutex<HashMap<(String, PathBuf), EntityLookupEntry>>,
+}
+
+/// Cached position of an entity within the ScanIndex for O(1) detail retrieval.
+#[derive(Debug, Clone)]
+pub struct EntityLookupEntry {
+    pub file_index: usize,
+    pub kind: EntityKind,
+    pub kind_index: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +217,53 @@ pub async fn scan_directory(
     let scan_index = run_scan_pipeline(root_path.clone())?;
     let stats = scan_index.stats.clone();
 
+    // Build entity lookup index for O(1) detail retrieval
+    let mut lookup = HashMap::new();
+    for (fi, ir_file) in scan_index.files.iter().enumerate() {
+        for (ki, iface) in ir_file.interfaces.iter().enumerate() {
+            lookup.insert(
+                (iface.name.clone(), ir_file.path.clone()),
+                EntityLookupEntry { file_index: fi, kind: EntityKind::Interface, kind_index: ki },
+            );
+        }
+        for (ki, svc) in ir_file.services.iter().enumerate() {
+            lookup.insert(
+                (svc.name.clone(), ir_file.path.clone()),
+                EntityLookupEntry { file_index: fi, kind: EntityKind::Service, kind_index: ki },
+            );
+        }
+        for (ki, cls) in ir_file.classes.iter().enumerate() {
+            lookup.insert(
+                (cls.name.clone(), ir_file.path.clone()),
+                EntityLookupEntry { file_index: fi, kind: EntityKind::Class, kind_index: ki },
+            );
+        }
+        for (ki, func) in ir_file.functions.iter().enumerate() {
+            lookup.insert(
+                (func.name.clone(), ir_file.path.clone()),
+                EntityLookupEntry { file_index: fi, kind: EntityKind::Function, kind_index: ki },
+            );
+        }
+        for (ki, schema) in ir_file.schemas.iter().enumerate() {
+            lookup.insert(
+                (schema.name.clone(), ir_file.path.clone()),
+                EntityLookupEntry { file_index: fi, kind: EntityKind::Schema, kind_index: ki },
+            );
+        }
+        for (ki, imp) in ir_file.implementations.iter().enumerate() {
+            lookup.insert(
+                (imp.target.clone(), ir_file.path.clone()),
+                EntityLookupEntry { file_index: fi, kind: EntityKind::Impl, kind_index: ki },
+            );
+        }
+        for (ki, alias) in ir_file.type_aliases.iter().enumerate() {
+            lookup.insert(
+                (alias.name.clone(), ir_file.path.clone()),
+                EntityLookupEntry { file_index: fi, kind: EntityKind::TypeAlias, kind_index: ki },
+            );
+        }
+    }
+
     let mut idx_lock = state
         .current_index
         .lock()
@@ -215,6 +275,19 @@ pub async fn scan_directory(
         .lock()
         .map_err(|e| CommandError::Scan(e.to_string()))?;
     *root_lock = Some(root_path);
+
+    // Store entity lookup and clear stale caches
+    let mut lookup_lock = state
+        .entity_lookup
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    *lookup_lock = lookup;
+
+    let mut cache_lock = state
+        .file_source_cache
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    cache_lock.clear();
 
     Ok(stats)
 }
@@ -246,6 +319,7 @@ pub fn filter_entities(
 }
 
 /// Get full details for a specific entity.
+/// Uses the pre-built entity lookup index for O(1) retrieval.
 #[tauri::command]
 pub fn get_entity_detail(
     name: String,
@@ -258,55 +332,26 @@ pub fn get_entity_detail(
         .map_err(|e| CommandError::Scan(e.to_string()))?;
     let idx = idx_lock.as_ref().ok_or(CommandError::NoIndexLoaded)?;
 
-    let file_path = Path::new(&file);
+    let file_path = PathBuf::from(&file);
 
-    // Search through files to find the entity by name and file path
-    for ir_file in &idx.files {
-        if ir_file.path != file_path {
-            continue;
-        }
-        // Check interfaces
-        for iface in &ir_file.interfaces {
-            if iface.name == name {
-                return Ok(Entity::Interface(iface.clone()));
-            }
-        }
-        // Check services
-        for svc in &ir_file.services {
-            if svc.name == name {
-                return Ok(Entity::Service(svc.clone()));
-            }
-        }
-        // Check classes
-        for cls in &ir_file.classes {
-            if cls.name == name {
-                return Ok(Entity::Class(cls.clone()));
-            }
-        }
-        // Check functions
-        for func in &ir_file.functions {
-            if func.name == name {
-                return Ok(Entity::Function(func.clone()));
-            }
-        }
-        // Check schemas
-        for schema in &ir_file.schemas {
-            if schema.name == name {
-                return Ok(Entity::Schema(schema.clone()));
-            }
-        }
-        // Check implementations
-        for imp in &ir_file.implementations {
-            if imp.target == name {
-                return Ok(Entity::Impl(imp.clone()));
-            }
-        }
-        // Check type aliases
-        for alias in &ir_file.type_aliases {
-            if alias.name == name {
-                return Ok(Entity::TypeAlias(alias.clone()));
-            }
-        }
+    // Fast path: use the lookup index
+    let lookup_lock = state
+        .entity_lookup
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+
+    if let Some(entry) = lookup_lock.get(&(name.clone(), file_path)) {
+        let ir_file = &idx.files[entry.file_index];
+        return match entry.kind {
+            EntityKind::Interface => Ok(Entity::Interface(ir_file.interfaces[entry.kind_index].clone())),
+            EntityKind::Service => Ok(Entity::Service(ir_file.services[entry.kind_index].clone())),
+            EntityKind::Class => Ok(Entity::Class(ir_file.classes[entry.kind_index].clone())),
+            EntityKind::Function => Ok(Entity::Function(ir_file.functions[entry.kind_index].clone())),
+            EntityKind::Schema => Ok(Entity::Schema(ir_file.schemas[entry.kind_index].clone())),
+            EntityKind::Impl => Ok(Entity::Impl(ir_file.implementations[entry.kind_index].clone())),
+            EntityKind::TypeAlias => Ok(Entity::TypeAlias(ir_file.type_aliases[entry.kind_index].clone())),
+            _ => Err(CommandError::EntityNotFound(format!("{name} in {file}"))),
+        };
     }
 
     Err(CommandError::EntityNotFound(format!(
@@ -334,16 +379,44 @@ pub fn get_entity_source(
 }
 
 /// Get the full source content of a file.
-/// Used by the Monaco editor to display the entire file with entity highlighting.
+/// Uses an in-memory cache to avoid repeated disk reads on tab switches.
 #[tauri::command]
 pub fn get_file_source(
     file: String,
+    state: State<'_, AppState>,
 ) -> Result<String, CommandError> {
-    let path = Path::new(&file);
+    let path = PathBuf::from(&file);
+
+    // Check cache first
+    {
+        let cache = state
+            .file_source_cache
+            .lock()
+            .map_err(|e| CommandError::Scan(e.to_string()))?;
+        if let Some(content) = cache.get(&path) {
+            return Ok(content.clone());
+        }
+    }
+
     if !path.is_file() {
         return Err(CommandError::Io(format!("Not a file: {file}")));
     }
-    let content = std::fs::read_to_string(path)?;
+    let content = std::fs::read_to_string(&path)?;
+
+    // Store in cache (cap at 50 files to bound memory)
+    let mut cache = state
+        .file_source_cache
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    if cache.len() >= 50 {
+        // Evict oldest entry (arbitrary — HashMap doesn't track order, just clear half)
+        let keys: Vec<PathBuf> = cache.keys().take(25).cloned().collect();
+        for k in keys {
+            cache.remove(&k);
+        }
+    }
+    cache.insert(path, content.clone());
+
     Ok(content)
 }
 
@@ -719,7 +792,7 @@ pub fn bootstrap_manifest(
 
     let options = BootstrapOptions {
         project_name,
-        min_entities: 1,
+        min_entities: 3,
     };
 
     Ok(manifest_builder::bootstrap_manifest(idx, &options))

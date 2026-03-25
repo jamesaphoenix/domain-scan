@@ -33,7 +33,7 @@ impl Default for BootstrapOptions {
     fn default() -> Self {
         Self {
             project_name: None,
-            min_entities: 1,
+            min_entities: 3,
         }
     }
 }
@@ -349,15 +349,26 @@ fn make_unique_id(base: &str, seen: &mut HashSet<String>) -> String {
 // Connection inference
 // ---------------------------------------------------------------------------
 
+/// Maximum number of connections to emit from bootstrap.
+/// Prevents the tube map from becoming an unreadable hairball.
+const MAX_BOOTSTRAP_CONNECTIONS: usize = 50;
+
+/// Maximum outgoing edges per subsystem. Subsystems that import everything
+/// (e.g. barrel files, test harnesses) get their noisiest edges trimmed.
+const MAX_EDGES_PER_SUBSYSTEM: usize = 8;
+
 /// Infer connections from cross-directory imports.
 ///
 /// For each import in a file, we check if the import source path resolves to
 /// a file in a different subsystem. If so, we add a `depends_on` connection.
+/// Results are capped to avoid noisy graphs.
 fn infer_connections(
     index: &ScanIndex,
     subsystems: &[ManifestSubsystem],
 ) -> Vec<Connection> {
     let mut edges: BTreeSet<(String, String)> = BTreeSet::new();
+    // Track how many times each edge is seen (weight = import count)
+    let mut edge_weights: BTreeMap<(String, String), usize> = BTreeMap::new();
     let root = &index.root;
 
     for file in &index.files {
@@ -369,18 +380,41 @@ fn infer_connections(
         };
 
         for import in &file.imports {
-            // Try to resolve the import source to a subsystem
             let to_id = resolve_import_to_subsystem(&import.source, &file.path, subsystems, root);
             if let Some(to_id) = to_id {
                 if to_id != from_id {
-                    edges.insert((from_id.clone(), to_id));
+                    let key = (from_id.clone(), to_id);
+                    edges.insert(key.clone());
+                    *edge_weights.entry(key).or_insert(0) += 1;
                 }
             }
         }
     }
 
-    edges
-        .into_iter()
+    // Per-subsystem outgoing edge cap: keep only the heaviest edges
+    let mut outgoing_count: BTreeMap<String, usize> = BTreeMap::new();
+    // Sort edges by weight descending so we keep the most significant ones
+    let mut weighted_edges: Vec<_> = edges.into_iter().collect::<Vec<_>>();
+    weighted_edges.sort_by(|a, b| {
+        let wa = edge_weights.get(a).copied().unwrap_or(0);
+        let wb = edge_weights.get(b).copied().unwrap_or(0);
+        wb.cmp(&wa)
+    });
+
+    let mut kept: Vec<(String, String)> = Vec::new();
+    for (from, to) in &weighted_edges {
+        let count = outgoing_count.get(from.as_str()).copied().unwrap_or(0);
+        if count >= MAX_EDGES_PER_SUBSYSTEM {
+            continue;
+        }
+        *outgoing_count.entry(from.clone()).or_insert(0) += 1;
+        kept.push((from.clone(), to.clone()));
+        if kept.len() >= MAX_BOOTSTRAP_CONNECTIONS {
+            break;
+        }
+    }
+
+    kept.into_iter()
         .map(|(from, to)| {
             let label = format!("{from} → {to}");
             Connection {
@@ -581,7 +615,10 @@ mod tests {
         let files = vec![
             make_ir_file("/project/src/auth/handler.ts", Vec::new()),
             make_ir_file("/project/src/auth/middleware.ts", Vec::new()),
+            make_ir_file("/project/src/auth/types.ts", Vec::new()),
             make_ir_file("/project/src/billing/invoice.ts", Vec::new()),
+            make_ir_file("/project/src/billing/payment.ts", Vec::new()),
+            make_ir_file("/project/src/billing/stripe.ts", Vec::new()),
         ];
         let index = make_scan_index("/project", files);
         let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
@@ -598,7 +635,11 @@ mod tests {
                 "/project/src/billing/invoice.ts",
                 vec![make_import("../auth/handler")],
             ),
+            make_ir_file("/project/src/billing/payment.ts", Vec::new()),
+            make_ir_file("/project/src/billing/stripe.ts", Vec::new()),
             make_ir_file("/project/src/auth/handler.ts", Vec::new()),
+            make_ir_file("/project/src/auth/middleware.ts", Vec::new()),
+            make_ir_file("/project/src/auth/types.ts", Vec::new()),
         ];
         let index = make_scan_index("/project", files);
         let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
