@@ -15,16 +15,16 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            name: domain-scan-aarch64-apple-darwin
+            name: domain-scan-darwin-aarch64
           - os: macos-latest
             target: x86_64-apple-darwin
-            name: domain-scan-x86_64-apple-darwin
+            name: domain-scan-darwin-x86_64
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: domain-scan-x86_64-unknown-linux-gnu
+            name: domain-scan-linux-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: domain-scan-x86_64-pc-windows-msvc
+            name: domain-scan-windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -41,14 +41,14 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.name }}.tar.gz domain-scan-cli
+          tar czf ../../../${{ matrix.name }}.tar.gz domain-scan
           cd ../../..
 
       - name: Archive binary (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path target/${{ matrix.target }}/release/domain-scan-cli.exe -DestinationPath ${{ matrix.name }}.zip
+          Compress-Archive -Path target/${{ matrix.target }}/release/domain-scan.exe -DestinationPath ${{ matrix.name }}.zip
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
