@@ -1,5 +1,5 @@
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -10,7 +10,7 @@ use domain_scan_core::ir::{
 };
 use domain_scan_core::output::{self, OutputFormat};
 use domain_scan_core::prompt::PromptConfig;
-use domain_scan_core::{cache, index, manifest, parser, prompt, query_engine, validate, walker};
+use domain_scan_core::{cache, index, manifest, manifest_builder, parser, prompt, query_engine, validate, walker};
 use serde::Deserialize;
 
 mod tui;
@@ -240,9 +240,25 @@ enum Commands {
         include_scan: bool,
     },
 
+    /// Initialize a system manifest by scanning the codebase and inferring domains/subsystems
+    Init {
+        /// Use heuristic bootstrapping to infer domains, subsystems, and connections
+        #[arg(long)]
+        bootstrap: bool,
+        /// Apply (load + validate) an existing manifest file
+        #[arg(long)]
+        apply_manifest: Option<PathBuf>,
+        /// Preview what would be written without actually writing
+        #[arg(long)]
+        dry_run: bool,
+        /// Project name for the generated manifest
+        #[arg(long)]
+        name: Option<String>,
+    },
+
     /// Dump the JSON schema for a subcommand's input/output types
     Schema {
-        /// Subcommand name (e.g. scan, interfaces, services, methods, schemas, impls, search, stats, validate, match, prompt)
+        /// Subcommand name (e.g. scan, interfaces, services, methods, schemas, impls, search, stats, validate, match, prompt, init)
         command: Option<String>,
         /// Dump all schemas in a single JSON object keyed by subcommand name
         #[arg(long)]
@@ -770,7 +786,11 @@ fn validate_string_inputs(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Schema { command, .. } => {
             check(command, "command")?;
         }
-        Commands::Scan | Commands::Stats | Commands::Match { .. } | Commands::Cache { .. } => {}
+        Commands::Scan
+        | Commands::Stats
+        | Commands::Match { .. }
+        | Commands::Cache { .. }
+        | Commands::Init { .. } => {}
     }
 
     Ok(())
@@ -1008,6 +1028,12 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Commands::Cache { ref action } => cmd_cache(&cli, action),
+        Commands::Init {
+            bootstrap,
+            ref apply_manifest,
+            dry_run,
+            ref name,
+        } => cmd_init(&cli, format, *bootstrap, apply_manifest.clone(), *dry_run, name.clone()),
         Commands::Prompt {
             agents,
             ref focus,
@@ -2377,6 +2403,198 @@ fn interface_kind_str(kind: &domain_scan_core::ir::InterfaceKind) -> &'static st
         InterfaceKind::PureVirtual => "virtual",
         InterfaceKind::Module => "module",
     }
+}
+
+// ---------------------------------------------------------------------------
+// Subcommand: init
+// ---------------------------------------------------------------------------
+
+fn cmd_init(
+    cli: &Cli,
+    format: OutputFormat,
+    bootstrap: bool,
+    apply_manifest: Option<PathBuf>,
+    dry_run: bool,
+    project_name: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(ref manifest_path) = apply_manifest {
+        // --apply-manifest: load, validate, and optionally write
+        return cmd_init_apply(cli, format, manifest_path, dry_run);
+    }
+
+    if !bootstrap {
+        return Err(
+            "init requires --bootstrap or --apply-manifest. \
+             Use --bootstrap to infer domains/subsystems from the codebase, \
+             or --apply-manifest <path> to validate an existing manifest."
+                .into(),
+        );
+    }
+
+    // --bootstrap: scan codebase, infer manifest
+    let scan_index = run_scan(cli)?;
+
+    let options = manifest_builder::BootstrapOptions {
+        project_name,
+        ..Default::default()
+    };
+
+    let system_manifest = manifest_builder::bootstrap_manifest(&scan_index, &options);
+    let json_output = manifest_builder::serialize_manifest(&system_manifest)?;
+
+    if dry_run {
+        // Show what would be written
+        let output_path = cli.out.as_deref().unwrap_or(std::path::Path::new("system.json"));
+        if !cli.quiet {
+            eprintln!(
+                "Dry run: would write manifest with {} domains, {} subsystems, {} connections to {}",
+                system_manifest.domains.len(),
+                system_manifest.subsystems.len(),
+                system_manifest.connections.len(),
+                output_path.display(),
+            );
+        }
+
+        // Optionally run match to show coverage
+        let simple_manifest = system_manifest.as_manifest();
+        let match_result = manifest::match_entities(&scan_index, &simple_manifest);
+        if !cli.quiet {
+            eprintln!(
+                "Coverage: {:.1}% ({} matched, {} unmatched)",
+                match_result.coverage_percent,
+                match_result.matched.len(),
+                match_result.unmatched.len(),
+            );
+        }
+
+        // In dry-run mode, output the manifest to stdout for inspection
+        match format {
+            OutputFormat::Json => return emit_json(cli, &system_manifest, format, None),
+            OutputFormat::Table | OutputFormat::Compact => {
+                let summary = format!(
+                    "Domains: {}\nSubsystems: {}\nConnections: {}\nCoverage: {:.1}%\n",
+                    system_manifest.domains.len(),
+                    system_manifest.subsystems.len(),
+                    system_manifest.connections.len(),
+                    match_result.coverage_percent,
+                );
+                emit(cli, &summary)?;
+            }
+        }
+        return Ok(());
+    }
+
+    // Write the manifest to file
+    if let Some(ref out_path) = cli.out {
+        std::fs::write(out_path, json_output.as_bytes()).map_err(|e| {
+            format!("failed to write manifest to {}: {e}", out_path.display())
+        })?;
+        if !cli.quiet {
+            eprintln!(
+                "Wrote manifest with {} domains, {} subsystems, {} connections to {}",
+                system_manifest.domains.len(),
+                system_manifest.subsystems.len(),
+                system_manifest.connections.len(),
+                out_path.display(),
+            );
+        }
+    } else {
+        // No -o flag: write to stdout
+        print!("{json_output}");
+    }
+
+    Ok(())
+}
+
+fn cmd_init_apply(
+    cli: &Cli,
+    format: OutputFormat,
+    manifest_path: &Path,
+    dry_run: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Parse the manifest
+    let system_manifest = manifest::parse_system_manifest_file(manifest_path)?;
+
+    // Validate
+    let simple_manifest = system_manifest.as_manifest();
+    let violations = manifest::validate_manifest(&simple_manifest);
+
+    // Run scan and match
+    let scan_index = run_scan(cli)?;
+    let match_result = manifest::match_entities(&scan_index, &simple_manifest);
+
+    if dry_run {
+        // Show validation + coverage without writing
+        let result = serde_json::json!({
+            "manifest_path": manifest_path.display().to_string(),
+            "domains": system_manifest.domains.len(),
+            "subsystems": system_manifest.subsystems.len(),
+            "connections": system_manifest.connections.len(),
+            "validation_errors": violations.len(),
+            "coverage_percent": match_result.coverage_percent,
+            "matched": match_result.matched.len(),
+            "unmatched": match_result.unmatched.len(),
+        });
+
+        match format {
+            OutputFormat::Json => {
+                let json = serde_json::to_string_pretty(&result)?;
+                emit(cli, &json)?;
+            }
+            OutputFormat::Table | OutputFormat::Compact => {
+                let mut out = format!(
+                    "Manifest: {}\n\
+                     Domains: {} | Subsystems: {} | Connections: {}\n\
+                     Validation errors: {}\n\
+                     Coverage: {:.1}% ({} matched, {} unmatched)\n",
+                    manifest_path.display(),
+                    system_manifest.domains.len(),
+                    system_manifest.subsystems.len(),
+                    system_manifest.connections.len(),
+                    violations.len(),
+                    match_result.coverage_percent,
+                    match_result.matched.len(),
+                    match_result.unmatched.len(),
+                );
+                if !violations.is_empty() {
+                    out.push_str("\nValidation errors:\n");
+                    for v in &violations {
+                        out.push_str(&format!(
+                            "  {} / {}: '{}' (expected {})\n",
+                            v.subsystem_id, v.field, v.value, v.expected,
+                        ));
+                    }
+                }
+                emit(cli, &out)?;
+            }
+        }
+        return Ok(());
+    }
+
+    // --apply-manifest without --dry-run: write the file back (re-serialized)
+    let serialized = serde_json::to_string_pretty(&system_manifest)?;
+    if let Some(ref out_path) = cli.out {
+        std::fs::write(out_path, serialized.as_bytes()).map_err(|e| {
+            format!("failed to write manifest to {}: {e}", out_path.display())
+        })?;
+    } else {
+        // Overwrite original file
+        std::fs::write(manifest_path, serialized.as_bytes()).map_err(|e| {
+            format!("failed to write manifest to {}: {e}", manifest_path.display())
+        })?;
+    }
+
+    if !cli.quiet {
+        eprintln!(
+            "Applied manifest: {} domains, {} subsystems, {} connections. Coverage: {:.1}%",
+            system_manifest.domains.len(),
+            system_manifest.subsystems.len(),
+            system_manifest.connections.len(),
+            match_result.coverage_percent,
+        );
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

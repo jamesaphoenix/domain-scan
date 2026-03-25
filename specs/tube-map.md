@@ -606,16 +606,16 @@ Automated end-to-end tests using Playwright + Tauri's WebDriver bridge, plus tar
 
 #### F.10 Manifest Builder — CLI Integration Tests
 
-- [ ] Test: `domain-scan init --bootstrap -o system.json` on fixture codebase → produces valid JSON matching system.json schema
-- [ ] Test: `domain-scan init --bootstrap` on empty directory → produces manifest with zero subsystems, no crash
-- [ ] Test: `domain-scan init --apply-manifest system.json --dry-run` → shows coverage %, validation errors, writes nothing
-- [ ] Test: `domain-scan init --apply-manifest system.json` → writes file, re-reading it produces identical SystemManifest
-- [ ] Test: `domain-scan init --apply-manifest malformed.json` → structured error, no file written
-- [ ] Test: `domain-scan schema init` → output is valid JSON Schema, validates octospark system.json
-- [ ] Test: bootstrap → match pipeline: `--bootstrap` output piped to `match --manifest` → coverage > 0%
-- [ ] Test: heuristic domains match directory structure (each top-level src/ dir → one domain candidate)
-- [ ] Test: heuristic connections inferred from cross-directory imports (if A imports B → connection exists)
-- [ ] Test: bootstrap on domain-scan's own codebase → produces ≥2 domains (core, cli at minimum)
+- [x] Test: `domain-scan init --bootstrap -o system.json` on fixture codebase → produces valid JSON matching system.json schema
+- [x] Test: `domain-scan init --bootstrap` on empty directory → produces manifest with zero subsystems, no crash
+- [x] Test: `domain-scan init --apply-manifest system.json --dry-run` → shows coverage %, validation errors, writes nothing
+- [x] Test: `domain-scan init --apply-manifest system.json` → writes file, re-reading it produces identical SystemManifest
+- [x] Test: `domain-scan init --apply-manifest malformed.json` → structured error, no file written
+- [x] Test: `domain-scan schema init` → output is valid JSON Schema, validates octospark system.json
+- [x] Test: bootstrap → match pipeline: `--bootstrap` output piped to `match --manifest` → coverage > 0%
+- [x] Test: heuristic domains match directory structure (each top-level src/ dir → one domain candidate)
+- [x] Test: heuristic connections inferred from cross-directory imports (if A imports B → connection exists)
+- [x] Test: bootstrap on domain-scan's own codebase → produces ≥2 domains (core, cli at minimum)
 
 #### F.11 Manifest Builder — Tauri Wizard Integration Tests
 
@@ -888,3 +888,93 @@ No special patch API needed — the agent edits JSON files natively.
 - `domain-scan skills install --claude-code` writes skills to `.claude/skills/` in project root
 - An agent can go from `git clone` to a rendered tube map in under 10 minutes
 - The skill file teaches the agent what good manifests look like
+
+---
+
+## 14. Entities/Types Tab — UI Improvements
+
+Fixes and enhancements to the Entities/Types tab based on real-world usage.
+
+### Phase H.1: Monaco Editor for Source Preview
+
+Replace the plain `<pre>` source preview with a Monaco editor (same engine as VS Code) for syntax highlighting, line numbers, and code navigation.
+
+- [ ] `npm install @monaco-editor/react` in `ui/`
+- [ ] Create `MonacoPreview.tsx` — read-only Monaco editor component
+  - Read-only mode (no editing)
+  - Auto-detect language from file extension
+  - Dark theme matching the app (`vs-dark` or custom theme)
+  - Scroll to the entity's start line on selection
+  - Show the full file content (not just the entity span) with the entity highlighted
+- [ ] Replace `SourcePreview.tsx` usage in `App.tsx` with `MonacoPreview`
+- [ ] Update `get_entity_source` IPC command to return full file content (not just byte range)
+  - Add new IPC command `get_file_source(file: String) → String` that returns the entire file
+  - Keep byte range for highlighting the entity span within the full file
+- [ ] Handle large files gracefully (>10k lines — lazy loading or truncation warning)
+- [ ] Minimap enabled for quick navigation within long files
+- [ ] **Tab bar for open files** — VSCode-style tab strip above the editor
+  - Selecting an entity opens its file as a tab (or switches to existing tab if already open)
+  - Tabs show the file name (with parent directory for disambiguation, e.g. `auth/provider.ts`)
+  - Click a tab to switch to that file; middle-click or × button to close
+  - Active tab highlighted; inactive tabs dimmed
+  - Maximum ~10 open tabs — oldest auto-closed when limit exceeded (LRU)
+  - Selecting a different entity in the same file does NOT open a duplicate tab — just scrolls
+  - Tabs persist across entity selections (switching entities doesn't close other tabs)
+
+**Acceptance criteria:**
+- Selecting an entity opens the full file in Monaco with syntax highlighting
+- The entity's span is highlighted/scrolled to
+- Language detection works for TypeScript, Rust, Go, Python, Java, etc.
+- No performance degradation for files up to 10k lines
+- Multiple files can be open as tabs simultaneously
+- Clicking a tab switches the editor to that file
+- Closing a tab removes it without affecting other open tabs
+
+### Phase H.2: Monaco Editor E2E Tests
+
+- [ ] Test: select entity → Monaco editor renders with syntax highlighting (not plain text)
+- [ ] Test: select entity → editor scrolls to the entity's start line
+- [ ] Test: select different entity in same file → editor stays open, scrolls to new position
+- [ ] Test: select entity in different file → editor loads new file content
+- [ ] Test: Monaco shows correct language mode (TypeScript for .ts, Rust for .rs, etc.)
+- [ ] Test: editor is read-only (typing does not modify content)
+- [ ] Test: selecting entity shows source (center panel is not empty / "Select an entity")
+- [ ] Test: rapid entity switching (10 entities in 2 seconds) → no crash, editor updates correctly
+- [ ] Test: large file (1000+ lines) → editor renders without freezing
+- [ ] Test: minimap visible and reflects file structure
+
+### Phase H.3: Export All — Top-Right Status Bar
+
+Move the Export action from the per-entity details panel to a global "Export All" button in the status bar.
+
+- [x] Remove export dropdown + button from `DetailsPanel.tsx`
+- [x] Add "Export All" button to the status bar (next to scan stats)
+- [ ] Export All exports all currently visible/filtered entities (respects active filters)
+- [ ] Export output opens in center panel with Copy + Close buttons
+- [ ] Support JSON, CSV, Markdown formats via dropdown next to the button
+
+**Acceptance criteria:**
+- "Export All" button appears in the top-right status bar after a scan
+- Clicking it exports all entities matching current filters
+- Export respects kind filters (e.g., if "Interfaces" is active, only interfaces exported)
+
+### Phase H.4: Agent Manifest Bootstrap Prompt
+
+The Tube Map "Load Manifest" screen includes a copyable agent prompt that teaches AI agents how to create a `system.json` manifest from scratch using domain-scan CLI commands.
+
+- [x] Replace static `cat > system.json` template with structured agent instructions
+- [ ] Agent prompt includes: scan commands, schema reference, validation commands
+- [ ] Agent prompt references `domain-scan match --write-back` for iterative refinement
+- [ ] Copy button copies the full prompt (not just a preview)
+- [ ] Add "What is a manifest?" expandable section explaining the purpose
+
+**Acceptance criteria:**
+- Copying the prompt and pasting it into Claude Code / Codex produces a valid system.json
+- The prompt uses only commands that exist today (no references to unimplemented `init --bootstrap`)
+- The generated manifest passes `domain-scan validate --manifest system.json`
+
+### Phase H.5: Known Bugs
+
+- [ ] **Open Directory button**: Clicking "Open Directory" should open a native folder picker, trigger a scan, and populate the entity tree. Currently requires the capabilities file fix (see Section 2).
+- [ ] **Source preview not loading**: Selecting an entity sometimes does not load source code in the center panel. Root cause: `useEffect` dependency array missed `selectedIndex`, causing stale closures. Fixed by adding `tree.selectedIndex` to deps.
+- [x] **Editor "No editor available" error**: Bundled macOS apps don't inherit shell PATH, so `cursor`/`code` CLI commands fail. Fixed by falling back to `open -a "Cursor"` / `open -a "Visual Studio Code"` via macOS.

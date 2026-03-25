@@ -16,6 +16,7 @@ pub mod input_validation;
 pub mod ir;
 pub mod lang;
 pub mod manifest;
+pub mod manifest_builder;
 pub mod output;
 pub mod parser;
 pub mod prompt;
