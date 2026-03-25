@@ -949,9 +949,9 @@ Move the Export action from the per-entity details panel to a global "Export All
 
 - [x] Remove export dropdown + button from `DetailsPanel.tsx`
 - [x] Add "Export All" button to the status bar (next to scan stats)
-- [ ] Export All exports all currently visible/filtered entities (respects active filters)
-- [ ] Export output opens in center panel with Copy + Close buttons
-- [ ] Support JSON, CSV, Markdown formats via dropdown next to the button
+- [x] Export All exports all currently visible/filtered entities (respects active filters)
+- [x] Export output opens in center panel with Copy + Close buttons
+- [x] Support JSON, CSV, Markdown formats via dropdown next to the button
 
 **Acceptance criteria:**
 - "Export All" button appears in the top-right status bar after a scan

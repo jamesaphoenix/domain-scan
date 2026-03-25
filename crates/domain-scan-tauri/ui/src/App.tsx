@@ -27,6 +27,7 @@ function App() {
   const [currentFilters, setCurrentFilters] = useState<FilterParams>({});
   const [promptOutput, setPromptOutput] = useState<string | null>(null);
   const [exportOutput, setExportOutput] = useState<string | null>(null);
+  const [exportFormat, setExportFormat] = useState<"json" | "csv" | "markdown">("json");
 
   const MAX_OPEN_TABS = 10;
 
@@ -285,7 +286,7 @@ function App() {
         }
       },
       onExport: () => {
-        handleExport("json");
+        handleExport(exportFormat);
       },
     },
     activeTab,
@@ -330,12 +331,23 @@ function App() {
                 {scan.stats.total_schemas} schemas |{" "}
                 {scan.stats.parse_duration_ms}ms
               </span>
-              <button
-                className="text-xs text-blue-400 hover:text-blue-300"
-                onClick={() => handleExport("json")}
-              >
-                Export All
-              </button>
+              <div className="flex items-center gap-1">
+                <select
+                  className="bg-gray-700 text-gray-300 text-xs border border-gray-600 rounded px-1 py-0.5"
+                  value={exportFormat}
+                  onChange={(e) => setExportFormat(e.target.value as "json" | "csv" | "markdown")}
+                >
+                  <option value="json">JSON</option>
+                  <option value="csv">CSV</option>
+                  <option value="markdown">Markdown</option>
+                </select>
+                <button
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                  onClick={() => handleExport(exportFormat)}
+                >
+                  Export All
+                </button>
+              </div>
             </>
           )}
         </div>
