@@ -899,20 +899,20 @@ Fixes and enhancements to the Entities/Types tab based on real-world usage.
 
 Replace the plain `<pre>` source preview with a Monaco editor (same engine as VS Code) for syntax highlighting, line numbers, and code navigation.
 
-- [ ] `npm install @monaco-editor/react` in `ui/`
-- [ ] Create `MonacoPreview.tsx` — read-only Monaco editor component
+- [x] `npm install @monaco-editor/react` in `ui/`
+- [x] Create `MonacoPreview.tsx` — read-only Monaco editor component
   - Read-only mode (no editing)
   - Auto-detect language from file extension
   - Dark theme matching the app (`vs-dark` or custom theme)
   - Scroll to the entity's start line on selection
   - Show the full file content (not just the entity span) with the entity highlighted
-- [ ] Replace `SourcePreview.tsx` usage in `App.tsx` with `MonacoPreview`
-- [ ] Update `get_entity_source` IPC command to return full file content (not just byte range)
+- [x] Replace `SourcePreview.tsx` usage in `App.tsx` with `MonacoPreview`
+- [x] Update `get_entity_source` IPC command to return full file content (not just byte range)
   - Add new IPC command `get_file_source(file: String) → String` that returns the entire file
   - Keep byte range for highlighting the entity span within the full file
-- [ ] Handle large files gracefully (>10k lines — lazy loading or truncation warning)
-- [ ] Minimap enabled for quick navigation within long files
-- [ ] **Tab bar for open files** — VSCode-style tab strip above the editor
+- [x] Handle large files gracefully (>10k lines — lazy loading or truncation warning)
+- [x] Minimap enabled for quick navigation within long files
+- [x] **Tab bar for open files** — VSCode-style tab strip above the editor
   - Selecting an entity opens its file as a tab (or switches to existing tab if already open)
   - Tabs show the file name (with parent directory for disambiguation, e.g. `auth/provider.ts`)
   - Click a tab to switch to that file; middle-click or × button to close

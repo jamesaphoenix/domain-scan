@@ -22,6 +22,7 @@ export interface UseScanReturn {
     startByte: number,
     endByte: number,
   ) => Promise<string>;
+  getFileSource: (file: string) => Promise<string>;
   generatePrompt: (entityIds: string[], agents: number) => Promise<string>;
   exportEntities: (
     format: string,
@@ -100,6 +101,13 @@ export function useScan(): UseScanReturn {
     [],
   );
 
+  const getFileSource = useCallback(
+    async (file: string): Promise<string> => {
+      return invoke<string>("get_file_source", { file });
+    },
+    [],
+  );
+
   const generatePrompt = useCallback(
     async (entityIds: string[], agents: number): Promise<string> => {
       return invoke<string>("generate_prompt", {
@@ -142,6 +150,7 @@ export function useScan(): UseScanReturn {
     searchEntities,
     getEntityDetail,
     getEntitySource,
+    getFileSource,
     generatePrompt,
     exportEntities,
     getBuildStatus,

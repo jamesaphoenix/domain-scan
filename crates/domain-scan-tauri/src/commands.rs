@@ -333,6 +333,20 @@ pub fn get_entity_source(
         .map_err(|e| CommandError::Scan(e.to_string()))
 }
 
+/// Get the full source content of a file.
+/// Used by the Monaco editor to display the entire file with entity highlighting.
+#[tauri::command]
+pub fn get_file_source(
+    file: String,
+) -> Result<String, CommandError> {
+    let path = Path::new(&file);
+    if !path.is_file() {
+        return Err(CommandError::Io(format!("Not a file: {file}")));
+    }
+    let content = std::fs::read_to_string(path)?;
+    Ok(content)
+}
+
 /// Search entities by name (fuzzy).
 #[tauri::command]
 pub fn search_entities(

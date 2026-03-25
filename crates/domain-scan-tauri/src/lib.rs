@@ -20,6 +20,7 @@ pub fn run() {
             commands::filter_entities,
             commands::get_entity_detail,
             commands::get_entity_source,
+            commands::get_file_source,
             commands::search_entities,
             commands::generate_prompt,
             commands::export_entities,

@@ -4,7 +4,7 @@ import { useScan } from "./hooks/useScan";
 import { useTreeState, extractChildren } from "./hooks/useTreeState";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { EntityTree } from "./components/EntityTree";
-import { SourcePreview } from "./components/SourcePreview";
+import { MonacoPreview, type OpenTab } from "./components/MonacoPreview";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { FilterBar } from "./components/FilterBar";
 import { TabBar, type Tab } from "./components/TabBar";
@@ -20,10 +20,15 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>("entities");
   const [selectedDetail, setSelectedDetail] = useState<Entity | null>(null);
   const [sourceCode, setSourceCode] = useState<string | null>(null);
-  const [sourceStartLine, setSourceStartLine] = useState(1);
+  const [highlightLine, setHighlightLine] = useState<number | null>(null);
+  const [highlightEndLine, setHighlightEndLine] = useState<number | null>(null);
+  const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
+  const [activeTabIdx, setActiveTabIdx] = useState(0);
   const [currentFilters, setCurrentFilters] = useState<FilterParams>({});
   const [promptOutput, setPromptOutput] = useState<string | null>(null);
   const [exportOutput, setExportOutput] = useState<string | null>(null);
+
+  const MAX_OPEN_TABS = 10;
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -32,12 +37,24 @@ function App() {
     tree.setEntities(scan.entities);
   }, [scan.entities]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load entity detail + source when selection changes
+  // Helper: build a tab label from a file path (parent/filename for disambiguation)
+  const makeTabLabel = useCallback((filePath: string): string => {
+    const parts = filePath.split("/");
+    if (parts.length >= 2) {
+      return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+    }
+    return parts[parts.length - 1] ?? filePath;
+  }, []);
+
+  // Load entity detail + source when selection changes.
+  // Also populates children so tree expand works on first click.
   useEffect(() => {
     const entity = tree.selectedEntity;
     if (!entity) {
       setSelectedDetail(null);
       setSourceCode(null);
+      setHighlightLine(null);
+      setHighlightEndLine(null);
       return;
     }
 
@@ -49,27 +66,57 @@ function App() {
         if (cancelled) return;
         setSelectedDetail(detail);
 
-        // Load children for tree expansion
+        // Populate children so the tree can expand them
         const children = extractChildren(detail);
         const idx = tree.nodes.findIndex(
           (n) =>
             n.entity.name === entity.name && n.entity.file === entity.file,
         );
         if (idx >= 0) {
-          tree.updateNodeChildren(idx, children);
+          // Set children AND expand in one atomic state update
+          tree.updateNodeChildren(idx, children, children.length > 0);
         }
 
-        // Load source code
+        // Load full file content for Monaco editor
         const span = getSpanFromDetail(detail);
-        if (span) {
-          const src = await scan.getEntitySource(
-            entity.file,
-            span.byte_range[0],
-            span.byte_range[1],
+        const filePath = entity.file;
+
+        // Check if file is already open in a tab
+        const existingTabIdx = openTabs.findIndex((t) => t.file === filePath);
+
+        if (existingTabIdx >= 0) {
+          // Tab already open — just switch to it and update highlight
+          setActiveTabIdx(existingTabIdx);
+        } else {
+          // Open a new tab (enforce LRU limit)
+          const newTab: OpenTab = {
+            file: filePath,
+            label: makeTabLabel(filePath),
+          };
+          setOpenTabs((prev) => {
+            const next = [...prev, newTab];
+            if (next.length > MAX_OPEN_TABS) {
+              // Remove oldest (first) tab
+              return next.slice(1);
+            }
+            return next;
+          });
+          // Set active to the new tab (last index, or capped)
+          setActiveTabIdx(
+            Math.min(openTabs.length, MAX_OPEN_TABS - 1),
           );
-          if (!cancelled) {
-            setSourceCode(src);
-            setSourceStartLine(span.start_line);
+        }
+
+        // Load full file source
+        const src = await scan.getFileSource(filePath);
+        if (!cancelled) {
+          setSourceCode(src);
+          if (span) {
+            setHighlightLine(span.start_line);
+            setHighlightEndLine(span.end_line);
+          } else {
+            setHighlightLine(entity.line);
+            setHighlightEndLine(null);
           }
         }
       } catch {
@@ -77,6 +124,8 @@ function App() {
         if (!cancelled) {
           setSelectedDetail(null);
           setSourceCode(null);
+          setHighlightLine(null);
+          setHighlightEndLine(null);
         }
       }
     })();
@@ -84,7 +133,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [tree.selectedEntity?.name, tree.selectedEntity?.file]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tree.selectedIndex, tree.selectedEntity?.name, tree.selectedEntity?.file]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Apply filters
   const applyFilters = useCallback(
@@ -145,6 +194,54 @@ function App() {
       }
     },
     [scan, currentFilters],
+  );
+
+  // Tab management
+  const handleTabSelect = useCallback(
+    (index: number) => {
+      setActiveTabIdx(index);
+      const tab = openTabs[index];
+      if (tab) {
+        // Load the file content for the selected tab
+        scan.getFileSource(tab.file).then((src) => {
+          setSourceCode(src);
+        }).catch(() => {
+          // File may have been deleted
+        });
+      }
+    },
+    [openTabs, scan],
+  );
+
+  const handleTabClose = useCallback(
+    (index: number) => {
+      setOpenTabs((prev) => {
+        const next = prev.filter((_, i) => i !== index);
+        // Adjust active tab index
+        setActiveTabIdx((prevIdx) => {
+          if (next.length === 0) {
+            setSourceCode(null);
+            setHighlightLine(null);
+            setHighlightEndLine(null);
+            return 0;
+          }
+          if (prevIdx >= next.length) return next.length - 1;
+          if (index < prevIdx) return prevIdx - 1;
+          if (index === prevIdx && prevIdx < next.length) {
+            // Load the content of the tab that takes this position
+            const tab = next[prevIdx];
+            if (tab) {
+              scan.getFileSource(tab.file).then((src) => {
+                setSourceCode(src);
+              }).catch(() => {});
+            }
+          }
+          return prevIdx;
+        });
+        return next;
+      });
+    },
+    [scan],
   );
 
   // Open in editor
@@ -226,12 +323,20 @@ function App() {
             </span>
           )}
           {scan.stats && !scan.scanning && (
-            <span className="text-gray-400 text-xs">
-              {scan.stats.total_files} files | {scan.stats.total_interfaces}{" "}
-              interfaces | {scan.stats.total_services} services |{" "}
-              {scan.stats.total_schemas} schemas |{" "}
-              {scan.stats.parse_duration_ms}ms
-            </span>
+            <>
+              <span className="text-gray-400 text-xs">
+                {scan.stats.total_files} files | {scan.stats.total_interfaces}{" "}
+                interfaces | {scan.stats.total_services} services |{" "}
+                {scan.stats.total_schemas} schemas |{" "}
+                {scan.stats.parse_duration_ms}ms
+              </span>
+              <button
+                className="text-xs text-blue-400 hover:text-blue-300"
+                onClick={() => handleExport("json")}
+              >
+                Export All
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -248,19 +353,19 @@ function App() {
               <EntityTree
                 nodes={tree.nodes}
                 selectedIndex={tree.selectedIndex}
-                onSelect={tree.select}
-                onToggleExpand={(index) => {
-                  tree.select(index);
-                  tree.toggleExpand(index);
+                onSelect={(index) => {
+                  // If re-clicking the same node, toggle collapse
+                  if (index === tree.selectedIndex) {
+                    tree.toggleExpand(index);
+                  } else {
+                    tree.select(index);
+                  }
                 }}
               />
             </div>
             <FilterBar
               onSearch={handleSearch}
               onFilterKind={(kinds) => applyFilters({ kind: kinds })}
-              onFilterBuildStatus={(status) =>
-                applyFilters({ build_status: status })
-              }
               onFilterLanguage={(langs) => applyFilters({ languages: langs })}
               availableLanguages={availableLanguages}
               searchInputRef={searchInputRef}
@@ -318,11 +423,16 @@ function App() {
                 </pre>
               </div>
             ) : (
-              <SourcePreview
+              <MonacoPreview
                 source={sourceCode}
-                startLine={sourceStartLine}
-                language={tree.selectedEntity?.language ?? null}
                 file={tree.selectedEntity?.file ?? null}
+                language={tree.selectedEntity?.language ?? null}
+                highlightLine={highlightLine}
+                highlightEndLine={highlightEndLine}
+                tabs={openTabs}
+                activeTabIndex={activeTabIdx}
+                onTabSelect={handleTabSelect}
+                onTabClose={handleTabClose}
               />
             )}
           </div>
@@ -332,8 +442,6 @@ function App() {
             <DetailsPanel
               entity={tree.selectedEntity}
               detail={selectedDetail}
-              onGeneratePrompt={handleGeneratePrompt}
-              onExport={handleExport}
               onOpenInEditor={handleOpenInEditor}
             />
           </div>
@@ -348,7 +456,7 @@ function App() {
 /** Extract Span from any Entity variant */
 function getSpanFromDetail(
   detail: Entity,
-): { start_line: number; byte_range: [number, number] } | null {
+): { start_line: number; end_line: number; byte_range: [number, number] } | null {
   if ("Interface" in detail) return detail.Interface.span;
   if ("Service" in detail) return detail.Service.span;
   if ("Class" in detail) return detail.Class.span;
