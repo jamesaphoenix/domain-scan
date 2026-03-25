@@ -18,6 +18,7 @@ interface PlatformReleaseInfo {
   assets: ReleaseAsset[];
   matching_asset: ReleaseAsset | null;
   cargo_install_cmd: string;
+  scanned_root: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +103,18 @@ architecture.
 Your job: install the CLI, install agent skills, scan the codebase, and then
 create a high-quality system.json from scratch — iterating until coverage
 exceeds 90%. You will use 5-10 parallel sub-agents depending on codebase size.
+${info?.scanned_root ? `
+## Project directory
 
+All commands below MUST be run from this absolute path:
+
+\`\`\`
+${info.scanned_root}
+\`\`\`
+
+Write \`system.json\` to: \`${info.scanned_root}/system.json\`
+Run all \`domain-scan\` commands with: \`--root ${info.scanned_root}\`
+` : ""}
 ---
 
 ${installSection}
@@ -226,55 +238,45 @@ The manifest has this structure:
 
 ---
 
-## Step 5 — Create the manifest from scratch
+## Step 5 — Bootstrap the manifest
 
-Do NOT use \`domain-scan init --bootstrap\` for the initial creation. Instead,
-build the manifest manually by analyzing the scan output. This produces a
-higher-quality result than heuristic inference.
+Always start with \`--bootstrap\`. It uses directory structure and import analysis
+to produce a reasonable starter manifest:
 
-### 5a. Identify domains (3-7 max)
+\`\`\`bash
+domain-scan init --bootstrap --name "<project-name>" -o system.json
+\`\`\`
 
-Look at the top-level directory structure and the entity kinds:
-- Group related subsystems into domains by **business concern**, not file location
+Review the output — check domains, subsystems, and connections. Then refine:
+
+### 5a. Refine domains (3-7 max)
+
+- Group related subsystems by **business concern**, not file location
 - Good domains: "auth", "billing", "media", "api", "data-pipeline", "notifications"
 - Bad domains: "utils", "shared", "common", "lib", "src" (these are not domains)
 - Each domain gets a unique color. Use this palette:
   \`#3b82f6 #8b5cf6 #22c55e #f97316 #ef4444 #eab308 #06b6d4 #ec4899\`
 
-### 5b. Identify subsystems (3-8 per domain)
+### 5b. Refine subsystems (3-8 per domain)
 
-For each domain, identify concrete modules:
-- Each subsystem MUST map to a **real directory** in the codebase (domain-scan
-  matches entities to subsystems by file path prefix — if the directory is wrong,
-  nothing matches)
-- Use the scan output to verify: does \`domain-scan scan . --output json\` show
-  files under that path?
+- Each subsystem MUST map to a **real directory** in the codebase
+- Use the scan output to verify paths: \`domain-scan scan . --output json\`
 - Subsystem IDs must be kebab-case: "auth-jwt", "billing-stripe", "api-rest"
-- If a directory has < 3 entities, merge it into a parent subsystem rather than
-  creating a tiny one
+- Merge tiny subsystems (< 3 entities) into a parent
 
 ### 5c. Populate entity arrays
 
-For each subsystem, populate these arrays from the scan output:
-- **interfaces**: PascalCase interface/trait/protocol names extracted by domain-scan
-- **operations**: camelCase method/function names (the key operations, not every helper)
-- **tables**: snake_case schema/table/model names (Drizzle tables, Prisma models, etc.)
-- **events**: event names if applicable (pub/sub, webhooks, etc.)
-
-IMPORTANT: Only include entities that domain-scan actually extracted. Run:
+Use \`--write-back\` (Step 7) to auto-populate from matched results. To verify
+entity names manually:
 \`\`\`bash
 domain-scan interfaces . --output json --fields name,file
 \`\`\`
-to get the real names. Do not guess or hallucinate entity names.
+Do not guess or hallucinate entity names.
 
 ### 5d. Define connections
 
-Connections represent real dependencies between subsystems:
 - Use the import graph: if subsystem A imports from subsystem B, add a connection
-- Label connections with a verb phrase: "authenticates-via", "persists-to",
-  "sends-events-to", "reads-from"
-- Type is almost always "depends_on" (use "uses" or "triggers" sparingly)
-- Do NOT add connections for every transitive dependency — only direct, meaningful ones
+- Label with a verb phrase: "authenticates-via", "persists-to", "reads-from"
 - Cap at 3-5 connections per subsystem to keep the tube map readable
 
 ### 5e. Write system.json
@@ -367,7 +369,7 @@ When working in parallel, assign each sub-agent a domain or set of domains:
 9. **Cap connections** — max 3-5 outgoing connections per subsystem
 10. **Validate after every edit** — run \`domain-scan init --apply-manifest system.json --dry-run\`
     after every change to system.json
-11. **Write system.json to the repository root** — not /tmp, not a subdirectory
+11. **Write system.json to the project root**${info?.scanned_root ? ` — \`${info.scanned_root}/system.json\`` : " — not /tmp, not a subdirectory"}
 12. **Install skills for BOTH Claude Code and Codex** — the user may use either`;
 }
 

@@ -38,6 +38,11 @@ struct Cli {
     #[arg(long, global = true, default_value = ".")]
     root: PathBuf,
 
+    /// Root directory (positional alternative to --root).
+    /// Use `domain-scan scan .` instead of `domain-scan scan --root .`.
+    #[arg(global = true, value_name = "PATH")]
+    path: Option<PathBuf>,
+
     /// Config file path (default: .domain-scan.toml)
     #[arg(long, global = true)]
     config: Option<PathBuf>,
@@ -834,6 +839,14 @@ fn validate_string_inputs(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+    // Merge positional PATH with --root. Positional takes precedence when
+    // the user writes `domain-scan scan /some/path` instead of `--root`.
+    if let Some(ref path) = cli.path {
+        // Only override if --root was left at its default value (".").
+        // If both are explicitly set, the positional wins (it's more specific).
+        cli.root = path.clone();
+    }
+
     // Validate all string inputs through input_validation before any processing
     validate_string_inputs(&cli)?;
 
@@ -2225,9 +2238,18 @@ fn cmd_match(
 
     // --write-back (with optional --dry-run)
     if write_back {
-        let mut updated_manifest = manifest_data.clone();
-        manifest::write_back(&mut updated_manifest, &result, &scan_index);
-        let serialized = manifest::serialize_manifest(&updated_manifest)?;
+        // Try SystemManifest first (preserves meta/domains/connections)
+        let serialized = if let Ok(mut sys_manifest) =
+            manifest::parse_system_manifest_file(&manifest_path)
+        {
+            manifest::write_back_system(&mut sys_manifest, &result, &scan_index);
+            manifest::serialize_system_manifest(&sys_manifest)?
+        } else {
+            // Fallback: plain Manifest (subsystems only)
+            let mut updated_manifest = manifest_data.clone();
+            manifest::write_back(&mut updated_manifest, &result, &scan_index);
+            manifest::serialize_manifest(&updated_manifest)?
+        };
 
         if dry_run {
             // Show what would be written as structured JSON
@@ -2787,6 +2809,7 @@ fn cmd_init_apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     #[test]
     fn resolve_format_explicit_json() {
@@ -2813,5 +2836,46 @@ mod tests {
         } else {
             assert_eq!(format, OutputFormat::Json);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // B.9: Positional PATH argument accepted
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn positional_path_accepted() {
+        // `domain-scan scan /some/path` should parse successfully
+        let cli = Cli::try_parse_from(["domain-scan", "scan", "/some/path"]);
+        assert!(cli.is_ok(), "Positional path should be accepted");
+        let cli = cli.expect("parse should succeed");
+        assert_eq!(cli.path, Some(PathBuf::from("/some/path")));
+    }
+
+    #[test]
+    fn positional_dot_accepted() {
+        // `domain-scan scan .` should parse successfully
+        let cli = Cli::try_parse_from(["domain-scan", "scan", "."]);
+        assert!(cli.is_ok(), "Positional '.' should be accepted");
+        let cli = cli.expect("parse should succeed");
+        assert_eq!(cli.path, Some(PathBuf::from(".")));
+    }
+
+    #[test]
+    fn default_root_without_positional() {
+        // `domain-scan scan` should still default root to "."
+        let cli = Cli::try_parse_from(["domain-scan", "scan"]);
+        assert!(cli.is_ok());
+        let cli = cli.expect("parse should succeed");
+        assert_eq!(cli.root, PathBuf::from("."));
+        assert_eq!(cli.path, None);
+    }
+
+    #[test]
+    fn explicit_root_flag_still_works() {
+        // `domain-scan scan --root /some/path` should still work
+        let cli = Cli::try_parse_from(["domain-scan", "scan", "--root", "/some/path"]);
+        assert!(cli.is_ok());
+        let cli = cli.expect("parse should succeed");
+        assert_eq!(cli.root, PathBuf::from("/some/path"));
     }
 }

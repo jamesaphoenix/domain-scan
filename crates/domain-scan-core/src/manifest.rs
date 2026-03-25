@@ -470,21 +470,20 @@ fn is_dot_notation(s: &str) -> bool {
 /// - Additive only. Never removes entries.
 /// - Human-authored fields are never touched.
 /// - Duplicates are never introduced.
-/// - Status upgraded from new/boilerplate to built if BuildStatus::Built detected.
+/// - Status is never changed (human-controlled).
 pub fn write_back(
     manifest: &mut Manifest,
     match_result: &MatchResult,
-    index: &ScanIndex,
+    _index: &ScanIndex,
 ) {
     for m in &match_result.matched {
-        write_back_to_subsystem(&mut manifest.subsystems, m, index);
+        write_back_to_subsystem(&mut manifest.subsystems, m);
     }
 }
 
 fn write_back_to_subsystem(
     subsystems: &mut [ManifestSubsystem],
     matched: &MatchedEntity,
-    index: &ScanIndex,
 ) {
     for sub in subsystems.iter_mut() {
         if sub.id == matched.subsystem_id {
@@ -509,22 +508,12 @@ fn write_back_to_subsystem(
                 _ => {}
             }
 
-            // Upgrade status if built
-            if matched.entity.build_status == BuildStatus::Built
-                && (sub.status == ManifestStatus::New || sub.status == ManifestStatus::Boilerplate)
-            {
-                // Check if at least one file in this subsystem is Built
-                let has_built = index.files.iter().any(|f| {
-                    f.path.starts_with(&sub.file_path) && f.build_status == BuildStatus::Built
-                });
-                if has_built {
-                    sub.status = ManifestStatus::Built;
-                }
-            }
+            // Status is human-controlled: never auto-upgrade.
+            // Only the user can promote a subsystem to "built".
             return;
         }
         // Recurse into children
-        write_back_to_subsystem(&mut sub.children, matched, index);
+        write_back_to_subsystem(&mut sub.children, matched);
     }
 }
 
@@ -543,10 +532,10 @@ pub fn serialize_system_manifest(manifest: &SystemManifest) -> Result<String, Do
 pub fn write_back_system(
     manifest: &mut SystemManifest,
     match_result: &MatchResult,
-    index: &ScanIndex,
+    _index: &ScanIndex,
 ) {
     for m in &match_result.matched {
-        write_back_to_subsystem(&mut manifest.subsystems, m, index);
+        write_back_to_subsystem(&mut manifest.subsystems, m);
     }
 }
 
@@ -1287,6 +1276,179 @@ mod tests {
         assert_eq!(
             result.matched[0].subsystem_id, "auth-jwt",
             "Child subsystem auth-jwt should win over parent auth"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // B.7: Write-back does not change subsystem status
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_write_back_no_status_upgrade_new() {
+        // status: "new" must stay "new" even when all entities are Built
+        let json = r#"{
+            "subsystems": [{
+                "id": "auth",
+                "name": "Auth",
+                "domain": "core",
+                "status": "new",
+                "filePath": "/project/src/auth/",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let mut manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let file = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+
+        let match_result = MatchResult {
+            matched: vec![MatchedEntity {
+                entity: EntitySummary {
+                    name: "LoginService".to_string(),
+                    kind: EntityKind::Interface,
+                    file: PathBuf::from("/project/src/auth/login.ts"),
+                    line: 1,
+                    language: Language::TypeScript,
+                    build_status: BuildStatus::Built,
+                    confidence: Confidence::High,
+                },
+                subsystem_id: "auth".to_string(),
+                subsystem_name: "Auth".to_string(),
+                match_strategy: MatchStrategy::FilePath,
+            }],
+            unmatched: vec![],
+            total_entities: 1,
+            coverage_percent: 100.0,
+        };
+
+        write_back(&mut manifest, &match_result, &index);
+        assert_eq!(
+            manifest.subsystems[0].status,
+            ManifestStatus::New,
+            "Write-back must not upgrade status from 'new'"
+        );
+    }
+
+    #[test]
+    fn test_write_back_no_status_upgrade_boilerplate() {
+        let json = r#"{
+            "subsystems": [{
+                "id": "auth",
+                "name": "Auth",
+                "domain": "core",
+                "status": "boilerplate",
+                "filePath": "/project/src/auth/",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let mut manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let file = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+
+        let match_result = MatchResult {
+            matched: vec![MatchedEntity {
+                entity: EntitySummary {
+                    name: "LoginService".to_string(),
+                    kind: EntityKind::Interface,
+                    file: PathBuf::from("/project/src/auth/login.ts"),
+                    line: 1,
+                    language: Language::TypeScript,
+                    build_status: BuildStatus::Built,
+                    confidence: Confidence::High,
+                },
+                subsystem_id: "auth".to_string(),
+                subsystem_name: "Auth".to_string(),
+                match_strategy: MatchStrategy::FilePath,
+            }],
+            unmatched: vec![],
+            total_entities: 1,
+            coverage_percent: 100.0,
+        };
+
+        write_back(&mut manifest, &match_result, &index);
+        assert_eq!(
+            manifest.subsystems[0].status,
+            ManifestStatus::Boilerplate,
+            "Write-back must not upgrade status from 'boilerplate'"
+        );
+    }
+
+    #[test]
+    fn test_write_back_no_status_downgrade_built() {
+        let json = r#"{
+            "subsystems": [{
+                "id": "auth",
+                "name": "Auth",
+                "domain": "core",
+                "status": "built",
+                "filePath": "/project/src/auth/",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let mut manifest = parse_manifest(json)
+            .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let file = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+
+        let match_result = MatchResult {
+            matched: vec![MatchedEntity {
+                entity: EntitySummary {
+                    name: "LoginService".to_string(),
+                    kind: EntityKind::Interface,
+                    file: PathBuf::from("/project/src/auth/login.ts"),
+                    line: 1,
+                    language: Language::TypeScript,
+                    build_status: BuildStatus::Built,
+                    confidence: Confidence::High,
+                },
+                subsystem_id: "auth".to_string(),
+                subsystem_name: "Auth".to_string(),
+                match_strategy: MatchStrategy::FilePath,
+            }],
+            unmatched: vec![],
+            total_entities: 1,
+            coverage_percent: 100.0,
+        };
+
+        write_back(&mut manifest, &match_result, &index);
+        assert_eq!(
+            manifest.subsystems[0].status,
+            ManifestStatus::Built,
+            "Write-back must not downgrade status from 'built'"
         );
     }
 }

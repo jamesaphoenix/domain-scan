@@ -33,7 +33,7 @@ impl Default for BootstrapOptions {
     fn default() -> Self {
         Self {
             project_name: None,
-            min_entities: 3,
+            min_entities: 1,
         }
     }
 }
@@ -158,9 +158,12 @@ fn group_files_by_directory(index: &ScanIndex, root: &Path) -> DirGroups {
             }
             _ => {
                 // e.g. src/auth/handler.rs → domain="src", subsystem="auth"
-                // OR crates/core/src/lib.rs → domain="crates/core", subsystem="src"
-                // Heuristic: if first component is "crates" or "packages", use
-                // the second component as domain.
+                // OR crates/core/src/lib.rs → domain="core", subsystem="core"
+                // OR packages/auth/src/handler.ts → domain="auth", subsystem="auth"
+                // Heuristic: if first component is a workspace dir ("crates",
+                // "packages", etc.) or a source root ("src", "lib", "app"),
+                // use the second component as domain and derive subsystem
+                // from the next meaningful (non-source-root) component.
                 let first = components[0];
                 if is_workspace_dir(first)
                     || first == "src"
@@ -168,8 +171,20 @@ fn group_files_by_directory(index: &ScanIndex, root: &Path) -> DirGroups {
                     || first == "app"
                 {
                     let domain = components[1].to_string();
+                    // Skip "src"/"lib"/"app" intermediary dirs to avoid
+                    // grouping everything under a meaningless "src" subsystem.
                     let subsys = if components.len() > 3 {
-                        components[2].to_string()
+                        let third = components[2];
+                        if is_source_root(third) && components.len() > 4 {
+                            // e.g. packages/auth/src/handlers/... → subsystem="handlers"
+                            components[3].to_string()
+                        } else if is_source_root(third) {
+                            // e.g. packages/auth/src/handler.ts → subsystem="auth" (use domain)
+                            components[1].to_string()
+                        } else {
+                            // e.g. packages/auth/handlers/... → subsystem="handlers"
+                            third.to_string()
+                        }
                     } else {
                         components[1].to_string()
                     };
@@ -199,6 +214,12 @@ fn is_workspace_dir(name: &str) -> bool {
         name,
         "crates" | "packages" | "apps" | "modules" | "services" | "libs" | "workspaces"
     )
+}
+
+/// Check if a directory name is a source root that should be skipped during
+/// subsystem inference (e.g. `packages/auth/src/...` → skip `src`).
+fn is_source_root(name: &str) -> bool {
+    matches!(name, "src" | "lib" | "app")
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +301,32 @@ fn infer_subsystems(
                 children: Vec::new(),
                 dependencies: Vec::new(),
             });
+        }
+    }
+
+    // Fallback: if no subsystems passed the threshold, create one per domain.
+    // This prevents bootstrap from producing empty output for monorepos where
+    // every individual group is below min_entities.
+    if subsystems.is_empty() {
+        for (domain, subsys_map) in groups {
+            let all_files: Vec<PathBuf> = subsys_map.values().flatten().cloned().collect();
+            if !all_files.is_empty() {
+                let file_path = compute_common_prefix(&all_files, root);
+                let id = make_unique_id(domain, &mut seen_ids);
+                subsystems.push(ManifestSubsystem {
+                    id,
+                    name: humanize_name(domain),
+                    domain: domain.clone(),
+                    status: ManifestStatus::New,
+                    file_path,
+                    interfaces: Vec::new(),
+                    operations: Vec::new(),
+                    tables: Vec::new(),
+                    events: Vec::new(),
+                    children: Vec::new(),
+                    dependencies: Vec::new(),
+                });
+            }
         }
     }
 
@@ -722,5 +769,95 @@ mod tests {
         let json_str = json.as_ref().map_or("", |s| s.as_str());
         let reparsed = crate::manifest::parse_system_manifest(json_str);
         assert!(reparsed.is_ok(), "Re-parsed manifest should be valid SystemManifest: {:?}", reparsed.err());
+    }
+
+    // -----------------------------------------------------------------------
+    // B.2: BootstrapOptions default min_entities is 1
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_bootstrap_min_entities_default() {
+        assert_eq!(BootstrapOptions::default().min_entities, 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // B.3/B.8: Bootstrap on monorepo fixture produces non-empty subsystems
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_bootstrap_monorepo_layout() {
+        // Simulate packages/a/src/..., packages/b/src/..., apps/web/src/...
+        let files = vec![
+            make_ir_file("/project/packages/auth/src/handler.ts", Vec::new()),
+            make_ir_file("/project/packages/auth/src/middleware.ts", Vec::new()),
+            make_ir_file("/project/packages/billing/src/invoice.ts", Vec::new()),
+            make_ir_file("/project/packages/billing/src/payment.ts", Vec::new()),
+            make_ir_file("/project/apps/web/src/index.ts", Vec::new()),
+            make_ir_file("/project/apps/web/src/routes.ts", Vec::new()),
+        ];
+        let index = make_scan_index("/project", files);
+        let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
+
+        assert!(
+            !manifest.subsystems.is_empty(),
+            "Bootstrap on monorepo must produce non-empty subsystems"
+        );
+        // Should have at least one subsystem per package/app
+        let ids: Vec<&str> = manifest.subsystems.iter().map(|s| s.id.as_str()).collect();
+        assert!(
+            ids.iter().any(|id| id.contains("auth")),
+            "Expected auth subsystem, got: {ids:?}"
+        );
+        assert!(
+            ids.iter().any(|id| id.contains("billing")),
+            "Expected billing subsystem, got: {ids:?}"
+        );
+        assert!(
+            ids.iter().any(|id| id.contains("web")),
+            "Expected web subsystem, got: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn test_bootstrap_skips_src_intermediary() {
+        // packages/auth/src/handler.ts should NOT produce a subsystem named "src"
+        let files = vec![
+            make_ir_file("/project/packages/auth/src/handler.ts", Vec::new()),
+            make_ir_file("/project/packages/auth/src/types.ts", Vec::new()),
+        ];
+        let index = make_scan_index("/project", files);
+        let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
+
+        for sub in &manifest.subsystems {
+            assert_ne!(
+                sub.name, "Src",
+                "Subsystem name should not be 'Src' — intermediary dirs must be skipped"
+            );
+            assert_ne!(
+                sub.id, "auth-src",
+                "Subsystem id should not be 'auth-src' — intermediary dirs must be skipped"
+            );
+        }
+    }
+
+    #[test]
+    fn test_bootstrap_fallback_to_domains() {
+        // When min_entities is very high, no individual group passes —
+        // fallback should create one subsystem per domain.
+        let files = vec![
+            make_ir_file("/project/packages/auth/src/handler.ts", Vec::new()),
+            make_ir_file("/project/packages/billing/src/invoice.ts", Vec::new()),
+        ];
+        let index = make_scan_index("/project", files);
+        let options = BootstrapOptions {
+            project_name: None,
+            min_entities: 100, // very high threshold
+        };
+        let manifest = bootstrap_manifest(&index, &options);
+
+        assert!(
+            !manifest.subsystems.is_empty(),
+            "Fallback should create at least one subsystem per domain"
+        );
     }
 }

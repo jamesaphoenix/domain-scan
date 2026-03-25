@@ -485,15 +485,15 @@ Focus: `manifest.rs` and `main.rs`.
 
 Focus: `manifest.rs`, `manifest_builder.rs`, `main.rs`, skill files.
 
-- [ ] B.1 Remove status auto-upgrade block from `write_back_to_subsystem()` (manifest.rs:506-517)
-- [ ] B.2 Lower `BootstrapOptions::default().min_entities` from 3 to 1
-- [ ] B.3 Improve `group_files_by_directory()` to skip `src`/`lib`/`app` intermediary dirs
-- [ ] B.4 Add fallback in `infer_subsystems()`: one subsystem per domain if all groups too small
-- [ ] B.5 Add optional positional `[PATH]` argument to `Cli` struct, merge with `--root`
-- [ ] B.6 Align ManifestLoader.tsx prompt to recommend `--bootstrap`
-- [ ] B.7 Test: write-back does not change subsystem status
-- [ ] B.8 Test: bootstrap on monorepo fixture produces non-empty subsystems
-- [ ] B.9 Test: `scan .` positional argument accepted
+- [x] B.1 Remove status auto-upgrade block from `write_back_to_subsystem()` (manifest.rs:506-517)
+- [x] B.2 Lower `BootstrapOptions::default().min_entities` from 3 to 1
+- [x] B.3 Improve `group_files_by_directory()` to skip `src`/`lib`/`app` intermediary dirs
+- [x] B.4 Add fallback in `infer_subsystems()`: one subsystem per domain if all groups too small
+- [x] B.5 Add optional positional `[PATH]` argument to `Cli` struct, merge with `--root`
+- [x] B.6 Align ManifestLoader.tsx prompt to recommend `--bootstrap`
+- [x] B.7 Test: write-back does not change subsystem status
+- [x] B.8 Test: bootstrap on monorepo fixture produces non-empty subsystems
+- [x] B.9 Test: `scan .` positional argument accepted
 
 ### Phase C: P2 Polish
 
