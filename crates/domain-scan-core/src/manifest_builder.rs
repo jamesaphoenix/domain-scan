@@ -10,6 +10,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
 
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
 use crate::ir::ScanIndex;
 use crate::manifest::{
     Connection, ConnectionType, DomainDef, ManifestMeta, ManifestStatus, ManifestSubsystem,
@@ -21,7 +24,7 @@ use crate::manifest::{
 // ---------------------------------------------------------------------------
 
 /// Options for controlling bootstrap heuristics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BootstrapOptions {
     /// Project name (used in `meta.name`). Derived from root dir if empty.
     pub project_name: Option<String>,

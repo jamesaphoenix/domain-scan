@@ -14,6 +14,8 @@ use crate::ir::{
     EntitySummary, FilterParams, ImplDef, InterfaceDef, MatchResult, MethodDef, ScanConfig,
     ScanIndex, ScanStats, SchemaDef, ServiceDef, ValidationResult,
 };
+use crate::manifest::SystemManifest;
+use crate::manifest_builder::BootstrapOptions;
 use crate::prompt::PromptConfig;
 
 /// A subcommand's input and output schemas bundled together.
@@ -157,6 +159,16 @@ pub fn prompt_schema() -> CommandSchema {
     }
 }
 
+/// Generate the schema for the `init` subcommand.
+pub fn init_schema() -> CommandSchema {
+    CommandSchema {
+        command: "init".to_string(),
+        description: "Bootstrap a system manifest from scan data".to_string(),
+        input: root_to_value(schema_for!(BootstrapOptions)),
+        output: root_to_value(schema_for!(SystemManifest)),
+    }
+}
+
 /// Get the schema for a specific subcommand by name.
 /// Returns `None` if the command name is not recognized.
 pub fn schema_for_command(command: &str) -> Option<CommandSchema> {
@@ -172,6 +184,7 @@ pub fn schema_for_command(command: &str) -> Option<CommandSchema> {
         "validate" => Some(validate_schema()),
         "match" => Some(match_schema()),
         "prompt" => Some(prompt_schema()),
+        "init" => Some(init_schema()),
         _ => None,
     }
 }
@@ -190,6 +203,7 @@ pub fn all_command_names() -> &'static [&'static str] {
         "validate",
         "match",
         "prompt",
+        "init",
     ]
 }
 
@@ -268,5 +282,35 @@ mod tests {
         let schema = prompt_schema();
         let output = &schema.output;
         assert_eq!(output.get("type"), Some(&serde_json::Value::String("string".to_string())));
+    }
+
+    #[test]
+    fn test_schema_init_registered() {
+        let schema = schema_for_command("init");
+        assert!(schema.is_some(), "schema_for_command(\"init\") should return Some");
+        let schema = schema.unwrap();
+        assert_eq!(schema.command, "init");
+        assert!(!schema.description.is_empty());
+        assert!(schema.input.is_object());
+        assert!(schema.output.is_object());
+    }
+
+    #[test]
+    fn test_all_command_names_includes_init() {
+        let names = all_command_names();
+        assert!(
+            names.contains(&"init"),
+            "all_command_names() should contain \"init\""
+        );
+    }
+
+    #[test]
+    fn test_init_schema_returns_valid_json() -> Result<(), serde_json::Error> {
+        let schema = init_schema();
+        let json = serde_json::to_string_pretty(&schema)?;
+        let parsed: serde_json::Value = serde_json::from_str(&json)?;
+        assert!(parsed.is_object());
+        assert_eq!(parsed.get("command"), Some(&serde_json::Value::String("init".to_string())));
+        Ok(())
     }
 }

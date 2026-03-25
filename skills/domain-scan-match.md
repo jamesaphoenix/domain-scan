@@ -56,6 +56,12 @@ domain-scan match --json '{"manifest": "system.json", "unmatched_only": true, "f
 - Use `--fail-on-unmatched` in CI to ensure complete subsystem coverage.
 - For `built` modules, matches are deterministic and authoritative. For `unbuilt`/`rebuild` modules, treat matches as proposals requiring human review.
 
+## Write-back format preservation
+
+`--write-back` auto-detects whether the manifest is a full `SystemManifest` (with
+meta/domains/connections) or a plain `Manifest` (subsystems only). It preserves all
+existing fields. Requires domain-scan >= 0.3.0.
+
 ## Match strategies (in priority order)
 
 1. **file_path** — Entity's file path is a prefix of subsystem's `filePath`. Deepest match wins.

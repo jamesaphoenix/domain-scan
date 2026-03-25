@@ -360,8 +360,8 @@ let effective_root = cli.path.clone().unwrap_or_else(|| cli.root.clone());
 Where `init_schema()` returns `BootstrapOptions` as input and `SystemManifest` as output.
 
 **Acceptance criteria:**
-- [ ] `domain-scan schema init` returns valid JSON Schema
-- [ ] `domain-scan schema --all` includes `init`
+- [x] `domain-scan schema init` returns valid JSON Schema
+- [x] `domain-scan schema --all` includes `init`
 
 ### 4.2 Bug 9: Version mismatch (binary reports 0.1.0, release is v0.3.0)
 
@@ -372,8 +372,8 @@ Where `init_schema()` returns `BootstrapOptions` as input and `SystemManifest` a
 **Fix:** Bump `[workspace.package] version` to `"0.3.0"` (or the current release tag). Add a CI check that validates the Cargo.toml version matches the git tag on release.
 
 **Acceptance criteria:**
-- [ ] `domain-scan --version` matches the release tag
-- [ ] All crate `Cargo.toml` files inherit the workspace version
+- [x] `domain-scan --version` matches the release tag
+- [x] All crate `Cargo.toml` files inherit the workspace version
 
 ### 4.3 Bug 10: Install path requires sudo
 
@@ -388,9 +388,9 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 **Acceptance criteria:**
-- [ ] Install instructions do not use `sudo`
-- [ ] Default install location is `~/.local/bin/`
-- [ ] PATH export hint included
+- [x] Install instructions do not use `sudo`
+- [x] Default install location is `~/.local/bin/`
+- [x] PATH export hint included
 
 ### 4.4 Bug 11: No warning about write-back data loss
 
@@ -407,7 +407,7 @@ existing fields. Requires domain-scan >= 0.3.0.
 ```
 
 **Acceptance criteria:**
-- [ ] Skill file documents write-back format preservation
+- [x] Skill file documents write-back format preservation
 
 ---
 
@@ -499,11 +499,11 @@ Focus: `manifest.rs`, `manifest_builder.rs`, `main.rs`, skill files.
 
 Focus: `schema.rs`, `Cargo.toml`, skill files.
 
-- [ ] C.1 Add `init_schema()` to `schema.rs`, register in `schema_for_command()` and `all_command_names()`
-- [ ] C.2 Bump `[workspace.package] version` to match release tag
-- [ ] C.3 Change install instructions from `sudo /usr/local/bin` to `~/.local/bin`
-- [ ] C.4 Add write-back format note to `domain-scan-match.md` skill file
-- [ ] C.5 Test: `domain-scan schema init` returns valid JSON
+- [x] C.1 Add `init_schema()` to `schema.rs`, register in `schema_for_command()` and `all_command_names()`
+- [x] C.2 Bump `[workspace.package] version` to match release tag
+- [x] C.3 Change install instructions from `sudo /usr/local/bin` to `~/.local/bin`
+- [x] C.4 Add write-back format note to `domain-scan-match.md` skill file
+- [x] C.5 Test: `domain-scan schema init` returns valid JSON
 
 ### Phase D: P3 Features
 

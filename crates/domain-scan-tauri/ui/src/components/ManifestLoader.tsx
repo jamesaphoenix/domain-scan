@@ -40,10 +40,12 @@ A pre-built binary is available for your platform. Download and install it:
 # Download ${a.name} (${tag}, ${(a.size / 1024 / 1024).toFixed(1)} MB)
 curl -sL "${a.download_url}" -o /tmp/domain-scan.tar.gz
 
-# Extract and install
+# Extract and install to ~/.local/bin (no sudo required)
 tar -xzf /tmp/domain-scan.tar.gz -C /tmp
 chmod +x /tmp/domain-scan
-sudo mv /tmp/domain-scan /usr/local/bin/domain-scan
+mkdir -p ~/.local/bin
+mv /tmp/domain-scan ~/.local/bin/domain-scan
+export PATH="$HOME/.local/bin:$PATH"
 
 # Verify
 domain-scan --version
@@ -77,7 +79,7 @@ Check for a pre-built binary at:
   https://github.com/jamesaphoenix/domain-scan/releases/latest
 
 Download the archive matching your OS and architecture, extract it, and move
-the \`domain-scan\` binary to somewhere on your PATH (e.g. /usr/local/bin/).
+the \`domain-scan\` binary to somewhere on your PATH (e.g. ~/.local/bin/).
 
 If no binary matches, build from source:
 

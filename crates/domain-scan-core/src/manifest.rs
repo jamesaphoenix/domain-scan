@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::ir::{
@@ -24,13 +25,13 @@ use crate::DomainScanError;
 // ---------------------------------------------------------------------------
 
 /// A manifest describing the expected subsystem structure.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct Manifest {
     pub subsystems: Vec<ManifestSubsystem>,
 }
 
 /// Extended manifest with meta, domains, and connections (system.json format).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct SystemManifest {
     pub meta: ManifestMeta,
     #[serde(default)]
@@ -50,7 +51,7 @@ impl SystemManifest {
 }
 
 /// Metadata about the system.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ManifestMeta {
     pub name: String,
     #[serde(default)]
@@ -60,14 +61,14 @@ pub struct ManifestMeta {
 }
 
 /// A domain definition with label and color.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct DomainDef {
     pub label: String,
     pub color: String,
 }
 
 /// A connection between two subsystems.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct Connection {
     pub from: String,
     pub to: String,
@@ -77,7 +78,7 @@ pub struct Connection {
 }
 
 /// The type of connection between subsystems.
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ConnectionType {
     DependsOn,
@@ -86,7 +87,7 @@ pub enum ConnectionType {
 }
 
 /// A subsystem in the manifest (recursive via `children`).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, JsonSchema)]
 pub struct ManifestSubsystem {
     pub id: String,
     pub name: String,
@@ -111,7 +112,7 @@ pub struct ManifestSubsystem {
 }
 
 /// Status values from the manifest, mapped to BuildStatus.
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ManifestStatus {
     Built,
