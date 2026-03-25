@@ -37,6 +37,7 @@ pub fn run() {
             commands::get_subsystem_detail,
             commands::bootstrap_manifest,
             commands::save_manifest,
+            commands::get_platform_release_info,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|e| {

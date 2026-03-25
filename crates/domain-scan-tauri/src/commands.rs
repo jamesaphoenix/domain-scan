@@ -927,3 +927,98 @@ fn build_subsystem_detail(
         matched_entities: matched_entities.to_vec(),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Platform + Release info for agent prompt
+// ---------------------------------------------------------------------------
+
+/// GitHub release asset info returned to the frontend.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ReleaseAsset {
+    pub name: String,
+    pub download_url: String,
+    pub size: u64,
+}
+
+/// Platform and latest release info used to build the agent prompt dynamically.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PlatformReleaseInfo {
+    /// e.g. "darwin", "linux", "windows"
+    pub os: String,
+    /// e.g. "aarch64", "x86_64"
+    pub arch: String,
+    /// Latest release tag or None
+    pub latest_tag: Option<String>,
+    /// All release assets
+    pub assets: Vec<ReleaseAsset>,
+    /// The matching asset for this OS+arch, if found
+    pub matching_asset: Option<ReleaseAsset>,
+    /// Cargo install fallback command
+    pub cargo_install_cmd: String,
+}
+
+/// Detect current platform and fetch the latest domain-scan release from GitHub.
+#[tauri::command]
+pub async fn get_platform_release_info() -> Result<PlatformReleaseInfo, CommandError> {
+    let os = std::env::consts::OS.to_string();     // "macos", "linux", "windows"
+    let arch = std::env::consts::ARCH.to_string();  // "aarch64", "x86_64"
+
+    // Normalise os name to match release asset naming convention
+    let os_label = match os.as_str() {
+        "macos" => "darwin",
+        other => other,
+    };
+
+    let cargo_install_cmd =
+        "cargo install domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git"
+            .to_string();
+
+    // Fetch latest release from GitHub API (best effort — don't fail if offline)
+    let release = fetch_latest_release().await;
+
+    let (latest_tag, assets) = match release {
+        Some((tag, raw_assets)) => {
+            let assets: Vec<ReleaseAsset> = raw_assets
+                .iter()
+                .filter_map(|a| {
+                    let name = a.get("name")?.as_str()?.to_string();
+                    let download_url = a.get("browser_download_url")?.as_str()?.to_string();
+                    let size = a.get("size")?.as_u64().unwrap_or(0);
+                    Some(ReleaseAsset { name, download_url, size })
+                })
+                .collect();
+            (Some(tag), assets)
+        }
+        None => (None, Vec::new()),
+    };
+
+    // Find matching asset for this platform
+    let matching_asset = assets.iter().find(|a| {
+        let lower = a.name.to_lowercase();
+        lower.contains(os_label) && lower.contains(&arch)
+    }).cloned();
+
+    Ok(PlatformReleaseInfo {
+        os: os_label.to_string(),
+        arch,
+        latest_tag,
+        assets,
+        matching_asset,
+        cargo_install_cmd,
+    })
+}
+
+/// Fetch the latest release JSON from GitHub. Returns (tag_name, assets[]) or None.
+async fn fetch_latest_release() -> Option<(String, Vec<serde_json::Value>)> {
+    let mut resp = ureq::get("https://api.github.com/repos/jamesaphoenix/domain-scan/releases/latest")
+        .header("Accept", "application/vnd.github+json")
+        .header("User-Agent", "domain-scan-tauri")
+        .call()
+        .ok()?;
+
+    let body: serde_json::Value = resp.body_mut().read_json().ok()?;
+
+    let tag = body.get("tag_name")?.as_str()?.to_string();
+    let assets = body.get("assets")?.as_array()?.clone();
+    Some((tag, assets))
+}

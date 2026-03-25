@@ -1,121 +1,379 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
-const AGENT_PROMPT = `# Bootstrap a system.json manifest for this codebase
+// ---------------------------------------------------------------------------
+// Types for the Rust IPC response
+// ---------------------------------------------------------------------------
 
-You are setting up **domain-scan** — a structural code intelligence tool that
-extracts interfaces, services, schemas, and functions via tree-sitter and maps
-them to a subsystem manifest. Follow these steps exactly.
+interface ReleaseAsset {
+  name: string;
+  download_url: string;
+  size: number;
+}
 
----
+interface PlatformReleaseInfo {
+  os: string;
+  arch: string;
+  latest_tag: string | null;
+  assets: ReleaseAsset[];
+  matching_asset: ReleaseAsset | null;
+  cargo_install_cmd: string;
+}
 
-## Step 1: Install the domain-scan CLI from the latest GitHub release
+// ---------------------------------------------------------------------------
+// Dynamic prompt builder
+// ---------------------------------------------------------------------------
 
-Fetch the latest release and install the correct binary for this machine:
+function buildAgentPrompt(info: PlatformReleaseInfo | null): string {
+  // Install section — adapt to detected platform + available release
+  let installSection: string;
+
+  if (info?.matching_asset) {
+    const a = info.matching_asset;
+    const tag = info.latest_tag ?? "latest";
+    installSection = `## Step 1 — Install the domain-scan CLI (${info.os}/${info.arch})
+
+A pre-built binary is available for your platform. Download and install it:
 
 \`\`\`bash
-# Get the latest release tag
-LATEST=$(curl -sL https://api.github.com/repos/jamesaphoenix/domain-scan/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\\1/')
-echo "Latest release: $LATEST"
+# Download ${a.name} (${tag}, ${(a.size / 1024 / 1024).toFixed(1)} MB)
+curl -sL "${a.download_url}" -o /tmp/domain-scan.tar.gz
 
-# Detect platform
-OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
-case "$ARCH" in
-  x86_64) ARCH="x86_64" ;;
-  arm64|aarch64) ARCH="aarch64" ;;
-esac
-
-# Download and install
-ASSET="domain-scan-cli-\${OS}-\${ARCH}"
-curl -sL "https://github.com/jamesaphoenix/domain-scan/releases/download/\${LATEST}/\${ASSET}.tar.gz" -o /tmp/domain-scan.tar.gz
+# Extract and install
 tar -xzf /tmp/domain-scan.tar.gz -C /tmp
-chmod +x /tmp/domain-scan-cli
-sudo mv /tmp/domain-scan-cli /usr/local/bin/domain-scan
-\`\`\`
+chmod +x /tmp/domain-scan
+sudo mv /tmp/domain-scan /usr/local/bin/domain-scan
 
-Verify the install:
-
-\`\`\`bash
+# Verify
 domain-scan --version
 \`\`\`
 
-If the binary release is not available for this platform, fall back to:
+If the download fails, fall back to building from source:
+
+\`\`\`bash
+${info.cargo_install_cmd}
+\`\`\``;
+  } else if (info) {
+    // We know the platform but no matching asset — list what IS available
+    const assetList = info.assets.length > 0
+      ? `Available release assets (none match ${info.os}/${info.arch}):\n${info.assets.map(a => `  - ${a.name}`).join("\n")}\n\n`
+      : "";
+    installSection = `## Step 1 — Install the domain-scan CLI (${info.os}/${info.arch})
+
+${assetList}No pre-built binary is available for your platform. Build from source:
+
+\`\`\`bash
+${info.cargo_install_cmd}
+
+# Verify
+domain-scan --version
+\`\`\``;
+  } else {
+    // Couldn't detect anything — generic instructions
+    installSection = `## Step 1 — Install the domain-scan CLI
+
+Check for a pre-built binary at:
+  https://github.com/jamesaphoenix/domain-scan/releases/latest
+
+Download the archive matching your OS and architecture, extract it, and move
+the \`domain-scan\` binary to somewhere on your PATH (e.g. /usr/local/bin/).
+
+If no binary matches, build from source:
 
 \`\`\`bash
 cargo install domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git
-\`\`\`
 
-## Step 2: Install agent skills
+# Verify
+domain-scan --version
+\`\`\``;
+  }
 
-Bootstrap the domain-scan skill files into your AI coding tool:
+  return `# Build a system.json manifest for this codebase from scratch
+
+You are an AI agent (Claude Code, Codex, or similar) tasked with generating a
+**system.json manifest** for the codebase you are currently inside.
+
+**domain-scan** is a structural code intelligence CLI. It uses tree-sitter to
+extract every interface, service, class, function, schema, and type alias from
+source code — then maps them to a manifest of domains, subsystems, and
+connections. The manifest powers a "tube map" visualization of the codebase's
+architecture.
+
+Your job: install the CLI, install agent skills, scan the codebase, and then
+create a high-quality system.json from scratch — iterating until coverage
+exceeds 90%. You will use 5-10 parallel sub-agents depending on codebase size.
+
+---
+
+${installSection}
+
+---
+
+## Step 2 — Install agent skills for your coding tool
+
+domain-scan ships embedded skill files that teach AI agents the full workflow.
+Install them for **every** AI tool the user might be using:
 
 \`\`\`bash
-# For Claude Code:
+# Install for Claude Code (writes to .claude/skills/)
 domain-scan skills install --claude-code
 
-# For Codex:
+# Install for Codex (writes to .codex/skills/)
 domain-scan skills install --codex
+
+# Or install to a custom directory
+# domain-scan skills install --dir /path/to/skills
 \`\`\`
 
-This installs structured skill files that teach the agent the full domain-scan
-workflow (scanning, matching, manifest refinement, validation).
-
-Verify the installed skills:
+Verify the skills were installed:
 
 \`\`\`bash
 domain-scan skills list
 \`\`\`
 
-## Step 3: Scan the codebase
+You should see skills like: domain-scan-cli, domain-scan-scan, domain-scan-init,
+domain-scan-match, domain-scan-query, domain-scan-validate, domain-scan-prompt,
+domain-scan-tube-map, domain-scan-cache, domain-scan-safety, domain-scan-schema.
+
+These skills contain detailed workflows and rules. Read \`domain-scan-init\` and
+\`domain-scan-match\` before proceeding — they contain critical constraints:
+
+\`\`\`bash
+domain-scan skills show domain-scan-init
+domain-scan skills show domain-scan-match
+\`\`\`
+
+---
+
+## Step 3 — Scan the codebase
+
+Run domain-scan to extract all structural entities:
 
 \`\`\`bash
 domain-scan scan . --output json --fields stats
 \`\`\`
 
-Review the stats to understand what was extracted (interfaces, services,
-schemas, functions, file count, languages).
+This prints a JSON stats summary. Note the key numbers:
+- **total_files**: How many source files were parsed
+- **total_interfaces / total_services / total_schemas**: Entity counts
+- **languages**: Which languages were detected
+- **parse_duration_ms**: How long parsing took
 
-## Step 4: Bootstrap a draft manifest
+> **Scaling rule**: Use these stats to decide how many sub-agents to spawn:
+> - < 100 files → 5 sub-agents
+> - 100-500 files → 6 sub-agents
+> - 500-1000 files → 7 sub-agents
+> - 1000-2000 files → 8 sub-agents
+> - 2000+ files → 10 sub-agents
+
+To see the full entity list (not just stats):
 
 \`\`\`bash
-domain-scan init --bootstrap -o system.json
+domain-scan scan . --output json > /tmp/scan-output.json
+domain-scan interfaces . --output json
+domain-scan services . --output json
+domain-scan schemas . --output json
 \`\`\`
 
-This runs heuristic analysis on the scan output and generates a draft
-system.json with inferred domains, subsystems, and connections.
+---
 
-## Step 5: Validate and refine
+## Step 4 — Understand the manifest schema
+
+Before writing system.json, dump the schema so you know exactly what fields
+exist and which are required:
 
 \`\`\`bash
-# Check coverage
+domain-scan schema init
+\`\`\`
+
+The manifest has this structure:
+
+\`\`\`json
+{
+  "meta": {
+    "name": "<project-name>",
+    "version": "1.0.0",
+    "description": "<one-sentence description>"
+  },
+  "domains": {
+    "<domain-id>": { "label": "<Display Name>", "color": "<hex>" }
+  },
+  "subsystems": [
+    {
+      "id": "<kebab-case-id>",
+      "name": "<Display Name>",
+      "domain": "<domain-id>",
+      "status": "new",
+      "filePath": "<real-directory-path-from-scan>",
+      "description": "<one sentence describing what this subsystem does>",
+      "interfaces": ["PascalCaseNames"],
+      "operations": ["camelCaseMethods"],
+      "tables": ["snake_case_schemas"],
+      "events": [],
+      "dependencies": ["<other-subsystem-ids>"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "<subsystem-id>",
+      "to": "<subsystem-id>",
+      "label": "<verb phrase: e.g. authenticates-via>",
+      "type": "depends_on"
+    }
+  ]
+}
+\`\`\`
+
+---
+
+## Step 5 — Create the manifest from scratch
+
+Do NOT use \`domain-scan init --bootstrap\` for the initial creation. Instead,
+build the manifest manually by analyzing the scan output. This produces a
+higher-quality result than heuristic inference.
+
+### 5a. Identify domains (3-7 max)
+
+Look at the top-level directory structure and the entity kinds:
+- Group related subsystems into domains by **business concern**, not file location
+- Good domains: "auth", "billing", "media", "api", "data-pipeline", "notifications"
+- Bad domains: "utils", "shared", "common", "lib", "src" (these are not domains)
+- Each domain gets a unique color. Use this palette:
+  \`#3b82f6 #8b5cf6 #22c55e #f97316 #ef4444 #eab308 #06b6d4 #ec4899\`
+
+### 5b. Identify subsystems (3-8 per domain)
+
+For each domain, identify concrete modules:
+- Each subsystem MUST map to a **real directory** in the codebase (domain-scan
+  matches entities to subsystems by file path prefix — if the directory is wrong,
+  nothing matches)
+- Use the scan output to verify: does \`domain-scan scan . --output json\` show
+  files under that path?
+- Subsystem IDs must be kebab-case: "auth-jwt", "billing-stripe", "api-rest"
+- If a directory has < 3 entities, merge it into a parent subsystem rather than
+  creating a tiny one
+
+### 5c. Populate entity arrays
+
+For each subsystem, populate these arrays from the scan output:
+- **interfaces**: PascalCase interface/trait/protocol names extracted by domain-scan
+- **operations**: camelCase method/function names (the key operations, not every helper)
+- **tables**: snake_case schema/table/model names (Drizzle tables, Prisma models, etc.)
+- **events**: event names if applicable (pub/sub, webhooks, etc.)
+
+IMPORTANT: Only include entities that domain-scan actually extracted. Run:
+\`\`\`bash
+domain-scan interfaces . --output json --fields name,file
+\`\`\`
+to get the real names. Do not guess or hallucinate entity names.
+
+### 5d. Define connections
+
+Connections represent real dependencies between subsystems:
+- Use the import graph: if subsystem A imports from subsystem B, add a connection
+- Label connections with a verb phrase: "authenticates-via", "persists-to",
+  "sends-events-to", "reads-from"
+- Type is almost always "depends_on" (use "uses" or "triggers" sparingly)
+- Do NOT add connections for every transitive dependency — only direct, meaningful ones
+- Cap at 3-5 connections per subsystem to keep the tube map readable
+
+### 5e. Write system.json
+
+Write the complete manifest to \`system.json\` in the repository root.
+
+---
+
+## Step 6 — Validate the manifest
+
+After writing system.json, validate it immediately:
+
+\`\`\`bash
+# Check the manifest parses correctly
+domain-scan init --apply-manifest system.json --dry-run
+
+# Run matching — this maps scanned entities to your subsystems
+domain-scan match --manifest system.json
+
+# Check coverage percentage
 domain-scan match --manifest system.json --fields coverage_percent
 
-# See what's unmatched
+# List unmatched entities (these need to be assigned to subsystems)
 domain-scan match --manifest system.json --unmatched-only
+\`\`\`
 
-# Dry-run write-back (auto-populates interfaces/operations/tables)
+---
+
+## Step 7 — Write-back and refine
+
+Use \`--write-back\` to auto-populate entity arrays from matched results:
+
+\`\`\`bash
+# Preview what will change
 domain-scan match --manifest system.json --write-back --dry-run
 
-# Apply write-back
+# Apply the write-back
 domain-scan match --manifest system.json --write-back
 \`\`\`
 
-## Step 6: Iterate until coverage > 90%
+Re-check coverage:
 
-For each group of unmatched entities:
-1. Check which directory they live in
-2. Either expand an existing subsystem's filePath or add a new subsystem
-3. Re-run: \`domain-scan match --manifest system.json --fields coverage_percent\`
+\`\`\`bash
+domain-scan match --manifest system.json --fields coverage_percent
+\`\`\`
 
-## Rules
-- filePath in each subsystem MUST be a real directory (domain-scan matches by path prefix)
-- Use status "new" for all subsystems — only the user upgrades to "built"
-- Keep 3-8 subsystems per domain (merge tiny ones, split huge ones)
-- No utility/shared/common domains — assign to the domain that owns the concern
-- Always \`--dry-run\` before any \`--write-back\`
-- Validate after every edit: \`domain-scan init --apply-manifest system.json --dry-run\``;
+---
 
-const PREVIEW_LINES = AGENT_PROMPT.split("\n").slice(0, 14).join("\n") + "\n...";
+## Step 8 — Iterate until coverage > 90%
+
+For each batch of unmatched entities:
+
+1. Run: \`domain-scan match --manifest system.json --unmatched-only\`
+2. Group unmatched entities by their file directory
+3. For each group, decide:
+   - **Expand**: Widen an existing subsystem's \`filePath\` to cover the directory
+   - **Create**: Add a new subsystem if the group represents a distinct concern
+   - **Merge**: If only 1-2 entities, merge into the nearest existing subsystem
+4. Edit system.json accordingly
+5. Re-validate: \`domain-scan init --apply-manifest system.json --dry-run\`
+6. Re-match: \`domain-scan match --manifest system.json --fields coverage_percent\`
+7. Repeat until coverage > 90%
+
+---
+
+## Sub-agent orchestration
+
+When working in parallel, assign each sub-agent a domain or set of domains:
+
+- **Sub-agent 1**: Install CLI + skills (Step 1-2). Scan codebase (Step 3).
+- **Sub-agent 2-N**: Each takes 1-2 domains. Analyzes scan output for that domain's
+  directories, identifies subsystems, populates entity arrays, defines connections.
+- **Coordinator**: Merges all sub-agent outputs into one system.json. Resolves
+  cross-domain connections. Runs validation + matching. Iterates on unmatched.
+
+---
+
+## Hard rules (do not violate)
+
+1. **filePath must be a real directory** — verify with \`ls\` before adding
+2. **Entity names must come from scan output** — never guess or hallucinate names
+3. **Status is always "new"** — only the human user upgrades to "built"
+4. **Always --dry-run before --write-back** — never write without previewing
+5. **No utility domains** — "utils", "shared", "common", "helpers" are not domains.
+   Assign each entity to the domain that owns the concern.
+6. **3-8 subsystems per domain** — fewer means you're too coarse, more means you're
+   splitting unnecessarily
+7. **kebab-case IDs only** — "auth-jwt" not "authJwt" or "auth_jwt"
+8. **Verb-first connection labels** — "authenticates-via" not "auth connection"
+9. **Cap connections** — max 3-5 outgoing connections per subsystem
+10. **Validate after every edit** — run \`domain-scan init --apply-manifest system.json --dry-run\`
+    after every change to system.json
+11. **Write system.json to the repository root** — not /tmp, not a subdirectory
+12. **Install skills for BOTH Claude Code and Codex** — the user may use either`;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 interface ManifestLoaderProps {
   onLoadManifest: () => void;
@@ -133,16 +391,51 @@ export function ManifestLoader({
   const [copied, setCopied] = useState(false);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
   const [manifestInfoOpen, setManifestInfoOpen] = useState(false);
+  const [releaseInfo, setReleaseInfo] = useState<PlatformReleaseInfo | null>(
+    null,
+  );
+  const [releaseLoading, setReleaseLoading] = useState(true);
+
+  // Fetch platform + release info on mount
+  useEffect(() => {
+    let cancelled = false;
+    invoke<PlatformReleaseInfo>("get_platform_release_info")
+      .then((info) => {
+        if (!cancelled) setReleaseInfo(info);
+      })
+      .catch(() => {
+        // Offline or API error — prompt will use generic fallback
+      })
+      .finally(() => {
+        if (!cancelled) setReleaseLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const agentPrompt = buildAgentPrompt(releaseInfo);
+  const previewLines =
+    agentPrompt.split("\n").slice(0, 16).join("\n") + "\n...";
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(AGENT_PROMPT);
+    await navigator.clipboard.writeText(agentPrompt);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Release badge text
+  const releaseBadge = releaseInfo?.latest_tag
+    ? `${releaseInfo.latest_tag} — ${releaseInfo.os}/${releaseInfo.arch}`
+    : releaseLoading
+      ? "detecting platform..."
+      : "offline";
+
+  const hasMatchingBinary = !!releaseInfo?.matching_asset;
+
   return (
     <div className="flex-1 flex items-center justify-center overflow-y-auto">
-      <div className="text-center max-w-lg py-8">
+      <div className="text-center max-w-2xl py-8 px-4">
         <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-slate-700/50 flex items-center justify-center">
           <svg
             width="32"
@@ -162,14 +455,42 @@ export function ManifestLoader({
           </svg>
         </div>
 
-        <h2 className="text-lg font-semibold text-slate-200 mb-2">
+        <h2 className="text-lg font-semibold text-slate-200 mb-1">
           Subsystem Tube Map
         </h2>
         <p className="text-sm text-slate-400 mb-4 leading-relaxed">
-          Visualize your codebase as a tube map of domains, subsystems, and
-          connections. Use an AI agent to generate a manifest, or load an
-          existing one.
+          Visualize your codebase architecture as a tube map. Use an AI agent to
+          create a manifest from scratch, or load an existing one.
         </p>
+
+        {/* Release + Platform badge */}
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
+              hasMatchingBinary
+                ? "bg-green-950/40 border-green-700/40 text-green-400"
+                : releaseLoading
+                  ? "bg-slate-800/50 border-slate-700/40 text-slate-500"
+                  : "bg-yellow-950/40 border-yellow-700/40 text-yellow-400"
+            }`}
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                hasMatchingBinary
+                  ? "bg-green-400"
+                  : releaseLoading
+                    ? "bg-slate-500 animate-pulse"
+                    : "bg-yellow-400"
+              }`}
+            />
+            {releaseBadge}
+          </span>
+          {hasMatchingBinary && (
+            <span className="text-[10px] text-slate-500">
+              binary available
+            </span>
+          )}
+        </div>
 
         {/* Recommended: Agent prompt section */}
         <div className="mb-6 text-left">
@@ -178,12 +499,12 @@ export function ManifestLoader({
               Recommended
             </span>
             <span className="text-xs text-slate-500">
-              Copy this prompt into Claude Code, Codex, or any AI agent:
+              Copy this prompt into Claude Code, Codex, or any AI agent
             </span>
           </div>
           <div className="relative">
-            <pre className="text-left text-[11px] leading-relaxed bg-slate-900/80 border border-blue-500/30 rounded-lg px-4 py-3 text-slate-400 overflow-y-auto max-h-52 scrollbar-thin whitespace-pre-wrap">
-              <code>{showFullPrompt ? AGENT_PROMPT : PREVIEW_LINES}</code>
+            <pre className="text-left text-[11px] leading-relaxed bg-slate-900/80 border border-blue-500/30 rounded-lg px-4 py-3 text-slate-400 overflow-y-auto max-h-64 scrollbar-thin whitespace-pre-wrap">
+              <code>{showFullPrompt ? agentPrompt : previewLines}</code>
             </pre>
             <div className="absolute top-2 right-2 flex items-center gap-1.5">
               <button
@@ -197,18 +518,33 @@ export function ManifestLoader({
               </button>
               <button
                 onClick={handleCopy}
+                disabled={releaseLoading}
                 className="px-3 py-1.5 rounded text-xs font-medium
-                           bg-blue-600 hover:bg-blue-500 text-white
-                           transition-colors duration-150"
+                           bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50
+                           text-white transition-colors duration-150"
               >
                 {copied ? "Copied!" : "Copy prompt"}
               </button>
             </div>
           </div>
           <p className="text-[11px] text-slate-600 mt-2">
-            The agent will install the CLI from the{" "}
-            <span className="text-slate-400">latest GitHub release</span>,
-            bootstrap skills, scan your code, and generate a real manifest.
+            {hasMatchingBinary ? (
+              <>
+                The prompt includes a direct download link for{" "}
+                <span className="text-slate-400">
+                  {releaseInfo?.matching_asset?.name}
+                </span>
+                . The agent will install the CLI, bootstrap skills for both
+                Claude Code and Codex, scan your code, and create system.json
+                from scratch using 5-10 parallel sub-agents.
+              </>
+            ) : (
+              <>
+                The agent will build the CLI from source, bootstrap skills,
+                scan your code, and create system.json from scratch using 5-10
+                parallel sub-agents.
+              </>
+            )}
           </p>
         </div>
 
