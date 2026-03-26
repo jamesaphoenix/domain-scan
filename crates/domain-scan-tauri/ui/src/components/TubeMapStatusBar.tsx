@@ -13,6 +13,33 @@ interface TubeMapStatusBarProps {
   onToggleShortcuts: () => void;
 }
 
+/** Convert zoom factor (e.g. 1.5) to percentage (e.g. 150). */
+export function formatZoomPercent(zoom: number): number {
+  return Math.round(zoom * 100);
+}
+
+/** Build the human-readable filter text from domain and status filters. */
+export function buildFilterText(
+  domainFilter: string,
+  statusFilter: string,
+  domains: Record<string, DomainDef>,
+): { text: string; hasActiveFilter: boolean } {
+  const filterParts: string[] = [];
+  if (domainFilter !== "all") {
+    const domainLabel = domains[domainFilter]?.label ?? domainFilter;
+    filterParts.push(domainLabel);
+  }
+  if (statusFilter !== "all") {
+    filterParts.push(
+      statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1),
+    );
+  }
+  return {
+    text: filterParts.length > 0 ? filterParts.join(" + ") : "No filters",
+    hasActiveFilter: filterParts.length > 0,
+  };
+}
+
 function TubeMapStatusBarComponent({
   zoom,
   visibleNodes,
@@ -24,20 +51,13 @@ function TubeMapStatusBarComponent({
   unmatchedCount,
   onToggleShortcuts,
 }: TubeMapStatusBarProps) {
-  const zoomPercent = Math.round(zoom * 100);
+  const zoomPercent = formatZoomPercent(zoom);
 
-  const filterParts: string[] = [];
-  if (domainFilter !== "all") {
-    const domainLabel = domains[domainFilter]?.label ?? domainFilter;
-    filterParts.push(domainLabel);
-  }
-  if (statusFilter !== "all") {
-    filterParts.push(
-      statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1),
-    );
-  }
-  const filterText =
-    filterParts.length > 0 ? filterParts.join(" + ") : "No filters";
+  const { text: filterText, hasActiveFilter } = buildFilterText(
+    domainFilter,
+    statusFilter,
+    domains,
+  );
 
   return (
     <div className="h-7 border-t border-slate-800 bg-slate-900/90 backdrop-blur-sm px-4 flex items-center justify-between text-[11px] text-slate-500 z-10 shrink-0">
@@ -95,7 +115,7 @@ function TubeMapStatusBarComponent({
               d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
             />
           </svg>
-          <span className={filterParts.length > 0 ? "text-blue-400" : ""}>
+          <span className={hasActiveFilter ? "text-blue-400" : ""}>
             {filterText}
           </span>
         </span>

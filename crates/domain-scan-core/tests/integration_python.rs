@@ -412,3 +412,126 @@ fn test_python_cross_language_consistency() {
     assert_eq!(ir.interfaces.len(), 1);
     assert_eq!(ir.language, Language::Python);
 }
+
+// =========================================================================
+// Edge case inline tests
+// =========================================================================
+
+#[test]
+fn test_python_class_with_inheritance() {
+    let ir = extract_py("class Child(Parent):\n    def method(self):\n        pass");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].name, "Child");
+    assert_eq!(
+        ir.classes[0].extends.as_deref(),
+        Some("Parent"),
+        "Child should extend Parent"
+    );
+}
+
+#[test]
+fn test_python_class_multiple_methods() {
+    let ir = extract_py(
+        "class Service:\n    def create(self):\n        pass\n    def read(self):\n        pass\n    def update(self):\n        pass\n    def delete(self):\n        pass",
+    );
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(
+        ir.classes[0].methods.len(),
+        4,
+        "Service should have 4 CRUD methods"
+    );
+    let names: Vec<&str> = ir.classes[0]
+        .methods
+        .iter()
+        .map(|m| m.name.as_str())
+        .collect();
+    assert!(names.contains(&"create"));
+    assert!(names.contains(&"read"));
+    assert!(names.contains(&"update"));
+    assert!(names.contains(&"delete"));
+}
+
+#[test]
+fn test_python_async_function() {
+    let ir = extract_py("async def fetch_data(url: str) -> dict:\n    pass");
+    assert_eq!(ir.functions.len(), 1);
+    assert_eq!(ir.functions[0].name, "fetch_data");
+    assert!(ir.functions[0].is_async, "fetch_data should be async");
+}
+
+#[test]
+fn test_python_function_with_type_hints() {
+    let ir = extract_py("def add(a: int, b: int) -> int:\n    return a + b");
+    assert_eq!(ir.functions.len(), 1);
+    assert_eq!(ir.functions[0].parameters.len(), 2);
+    assert_eq!(ir.functions[0].parameters[0].name, "a");
+    assert_eq!(ir.functions[0].parameters[1].name, "b");
+    assert_eq!(ir.functions[0].return_type.as_deref(), Some("int"));
+}
+
+#[test]
+fn test_python_empty_class() {
+    let ir = extract_py("class Empty:\n    pass");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].name, "Empty");
+    assert_eq!(ir.classes[0].methods.len(), 0, "Empty class should have no methods");
+}
+
+#[test]
+fn test_python_multiple_imports() {
+    let ir = extract_py("import os\nimport sys\nimport json\nfrom pathlib import Path");
+    assert!(
+        ir.imports.len() >= 4,
+        "Should have at least 4 imports, got {}",
+        ir.imports.len()
+    );
+}
+
+#[test]
+fn test_python_from_import_multiple_symbols() {
+    let ir = extract_py("from typing import List, Dict, Optional");
+    assert!(
+        !ir.imports.is_empty(),
+        "Should have at least 1 import"
+    );
+    // The import should capture the symbols
+    let typing_import = ir.imports.iter().find(|i| i.source == "typing");
+    assert!(typing_import.is_some(), "Should import from typing");
+}
+
+#[test]
+fn test_python_build_status_unbuilt() {
+    let source = "class Foo:\n    def bar(self):\n        pass";
+    let tree = parse_source(source.as_bytes(), Language::Python)
+        .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+    let ir = extract(
+        &tree,
+        source.as_bytes(),
+        Path::new("test.py"),
+        Language::Python,
+        BuildStatus::Unbuilt,
+    )
+    .unwrap_or_else(|e| panic!("Failed to extract: {e}"));
+    assert_eq!(ir.build_status, BuildStatus::Unbuilt);
+    assert_eq!(ir.confidence, Confidence::Low);
+}
+
+#[test]
+fn test_python_abstract_class_inline() {
+    let source = "from abc import ABC, abstractmethod\n\nclass BaseRepo(ABC):\n    @abstractmethod\n    def save(self, item):\n        pass";
+    let ir = extract_py(source);
+    assert_eq!(ir.interfaces.len(), 1);
+    assert_eq!(ir.interfaces[0].name, "BaseRepo");
+    assert_eq!(ir.interfaces[0].language_kind, InterfaceKind::AbstractClass);
+}
+
+#[test]
+fn test_python_decorated_function_still_extracted() {
+    let ir = extract_py("def my_decorator(func):\n    return func\n\n@my_decorator\ndef decorated_func():\n    pass");
+    // The decorated function should still be extracted
+    let names: Vec<&str> = ir.functions.iter().map(|f| f.name.as_str()).collect();
+    assert!(
+        names.contains(&"decorated_func"),
+        "Decorated function should still be extracted"
+    );
+}

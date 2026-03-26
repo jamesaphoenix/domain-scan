@@ -32,7 +32,7 @@ export interface DependencyEdgeData extends Record<string, unknown> {
 
 type DependencyEdgeType = Edge<DependencyEdgeData, "dependency">;
 
-function getTubeStyle(
+export function getTubeStyle(
   connType: ConnectionType,
   sourceDomainColor: string,
   isHovered: boolean,

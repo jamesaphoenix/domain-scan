@@ -1409,3 +1409,197 @@ describe("generateSegments & buildCanonicalPositions — boundary tests", () => 
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Property-based tests — buildDynamicLayout
+// ---------------------------------------------------------------------------
+
+/** Build arbitrary TubeMapData with 1..maxDomains domains and 1..maxPerDomain subsystems each. */
+function arbLayoutData() {
+  return fc.integer({ min: 1, max: 8 }).chain((numDomains) =>
+    fc.integer({ min: 1, max: 6 }).chain((subsPerDomain) => {
+      // Generate connections: random subset of cross-domain edges
+      return fc.array(
+        fc.record({
+          fromDomain: fc.integer({ min: 0, max: numDomains - 1 }),
+          fromSub: fc.integer({ min: 0, max: subsPerDomain - 1 }),
+          toDomain: fc.integer({ min: 0, max: numDomains - 1 }),
+          toSub: fc.integer({ min: 0, max: subsPerDomain - 1 }),
+          connType: fc.constantFrom("depends_on", "uses", "triggers") as fc.Arbitrary<TubeMapConnection["type"]>,
+        }),
+        { minLength: 0, maxLength: 15 },
+      ).map((edges) => {
+        const domains: Record<string, { label: string; color: string }> = {};
+        const subsystems: TubeMapSubsystem[] = [];
+
+        for (let d = 0; d < numDomains; d++) {
+          const domainId = `domain-${d}`;
+          domains[domainId] = { label: `Domain ${d}`, color: "" };
+          for (let s = 0; s < subsPerDomain; s++) {
+            subsystems.push(makeSub(`d${d}-s${s}`, domainId));
+          }
+        }
+
+        const connections: TubeMapConnection[] = edges
+          .filter((e) => !(e.fromDomain === e.toDomain && e.fromSub === e.toSub))
+          .map((e) => makeConn(
+            `d${e.fromDomain}-s${e.fromSub}`,
+            `d${e.toDomain}-s${e.toSub}`,
+            e.connType,
+          ));
+
+        const data: TubeMapData = {
+          meta: { name: "Generated", version: "0", description: "" },
+          domains,
+          subsystems,
+          connections,
+          coverage_percent: 0,
+          unmatched_count: 0,
+        };
+        return data;
+      });
+    }),
+  );
+}
+
+describe("buildDynamicLayout — property-based", () => {
+  it("returns positions for every subsystem in the input", () => {
+    fc.assert(
+      fc.property(arbLayoutData(), (data) => {
+        const layout = buildDynamicLayout(data);
+        expect(layout.positions.size).toBe(data.subsystems.length);
+        for (const sub of data.subsystems) {
+          expect(layout.positions.has(sub.id)).toBe(true);
+        }
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("all positions have finite x and y coordinates (no NaN/Infinity)", () => {
+    fc.assert(
+      fc.property(arbLayoutData(), (data) => {
+        const layout = buildDynamicLayout(data);
+        for (const [id, pos] of layout.positions) {
+          expect(Number.isFinite(pos.x)).toBe(true);
+          expect(Number.isFinite(pos.y)).toBe(true);
+          void id;
+        }
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("every subsystem ID appears exactly once across all lines", () => {
+    fc.assert(
+      fc.property(arbLayoutData(), (data) => {
+        const layout = buildDynamicLayout(data);
+        const allStationIds = layout.lines.flatMap((l) => l.stationIds);
+        expect(allStationIds.length).toBe(data.subsystems.length);
+        expect(new Set(allStationIds).size).toBe(data.subsystems.length);
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("number of lines equals number of unique domains", () => {
+    fc.assert(
+      fc.property(arbLayoutData(), (data) => {
+        const layout = buildDynamicLayout(data);
+        const uniqueDomains = new Set(data.subsystems.map((s) => s.domain));
+        expect(layout.lines.length).toBe(uniqueDomains.size);
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("no two subsystems share the same position", () => {
+    fc.assert(
+      fc.property(arbLayoutData(), (data) => {
+        const layout = buildDynamicLayout(data);
+        const positionKeys = new Set<string>();
+        for (const [, pos] of layout.positions) {
+          const key = `${pos.x},${pos.y}`;
+          expect(positionKeys.has(key)).toBe(false);
+          positionKeys.add(key);
+        }
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("layers count equals unique domain count", () => {
+    fc.assert(
+      fc.property(arbLayoutData(), (data) => {
+        const layout = buildDynamicLayout(data);
+        const uniqueDomains = new Set(data.subsystems.map((s) => s.domain));
+        expect(layout.layers.length).toBe(uniqueDomains.size);
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("each line has a valid domain from the input", () => {
+    fc.assert(
+      fc.property(arbLayoutData(), (data) => {
+        const layout = buildDynamicLayout(data);
+        const validDomains = new Set(Object.keys(data.domains));
+        for (const line of layout.lines) {
+          expect(validDomains.has(line.domain)).toBe(true);
+        }
+      }),
+      { numRuns: 50 },
+    );
+  });
+
+  it("handles data with self-referencing connections gracefully", () => {
+    const data: TubeMapData = {
+      meta: { name: "SelfRef", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [makeSub("a", "alpha"), makeSub("b", "alpha")],
+      connections: [
+        makeConn("a", "a"), // self-reference
+        makeConn("a", "b"),
+      ],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+    const layout = buildDynamicLayout(data);
+    expect(layout.positions.size).toBe(2);
+    expect(layout.lines).toHaveLength(1);
+  });
+
+  it("handles data with duplicate connections gracefully", () => {
+    const data: TubeMapData = {
+      meta: { name: "Dups", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [makeSub("a", "alpha"), makeSub("b", "alpha")],
+      connections: [
+        makeConn("a", "b"),
+        makeConn("a", "b"), // duplicate
+        makeConn("a", "b"), // triplicate
+      ],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+    const layout = buildDynamicLayout(data);
+    expect(layout.positions.size).toBe(2);
+  });
+
+  it("handles connections referencing non-existent subsystem IDs", () => {
+    const data: TubeMapData = {
+      meta: { name: "Phantom", version: "0", description: "" },
+      domains: { alpha: { label: "Alpha", color: "#ff0000" } },
+      subsystems: [makeSub("a", "alpha")],
+      connections: [
+        makeConn("a", "nonexistent"), // target doesn't exist
+        makeConn("phantom", "a"), // source doesn't exist
+      ],
+      coverage_percent: 0,
+      unmatched_count: 0,
+    };
+    const layout = buildDynamicLayout(data);
+    expect(layout.positions.size).toBe(1);
+    expect(layout.positions.has("a")).toBe(true);
+  });
+});

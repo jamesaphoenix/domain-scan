@@ -293,3 +293,107 @@ fn test_cpp_schema_framework() {
         assert_eq!(schema.source_framework, "cpp-struct");
     }
 }
+
+// =========================================================================
+// Edge case inline tests
+// =========================================================================
+
+/// Helper: extract from inline C++ source
+fn extract_cpp(source: &str) -> IrFile {
+    let tree = parse_source(source.as_bytes(), Language::Cpp)
+        .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+    extract(
+        &tree,
+        source.as_bytes(),
+        Path::new("test.cpp"),
+        Language::Cpp,
+        BuildStatus::Built,
+    )
+    .unwrap_or_else(|e| panic!("Failed to extract: {e}"))
+}
+
+#[test]
+fn test_cpp_simple_class() {
+    let ir = extract_cpp("class Foo { public: void bar(); };");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].name, "Foo");
+}
+
+#[test]
+fn test_cpp_empty_class() {
+    let ir = extract_cpp("class EmptyClass {};");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].name, "EmptyClass");
+    assert_eq!(ir.classes[0].methods.len(), 0);
+}
+
+#[test]
+fn test_cpp_simple_struct() {
+    let ir = extract_cpp("struct Point { double x; double y; };");
+    // Structs with only fields (no methods) should be schemas
+    let has_point = ir.classes.iter().any(|c| c.name == "Point")
+        || ir.schemas.iter().any(|s| s.name == "Point");
+    assert!(has_point, "Point struct should be extracted as class or schema");
+}
+
+#[test]
+fn test_cpp_simple_function() {
+    let ir = extract_cpp("int add(int a, int b) { return a + b; }");
+    assert_eq!(ir.functions.len(), 1);
+    assert_eq!(ir.functions[0].name, "add");
+    assert_eq!(ir.functions[0].parameters.len(), 2);
+    assert_eq!(ir.functions[0].return_type.as_deref(), Some("int"));
+}
+
+#[test]
+fn test_cpp_include_system_header() {
+    let ir = extract_cpp("#include <iostream>\n#include <vector>\nint main() { return 0; }");
+    assert!(
+        ir.imports.len() >= 2,
+        "Should have at least 2 includes, got {}",
+        ir.imports.len()
+    );
+    let sources: Vec<&str> = ir.imports.iter().map(|i| i.source.as_str()).collect();
+    assert!(sources.contains(&"iostream"));
+    assert!(sources.contains(&"vector"));
+}
+
+#[test]
+fn test_cpp_include_local_header() {
+    let ir = extract_cpp("#include \"myheader.h\"\nvoid foo() {}");
+    assert!(
+        ir.imports.iter().any(|i| i.source == "myheader.h"),
+        "Should have myheader.h include"
+    );
+}
+
+#[test]
+fn test_cpp_language_field() {
+    let ir = extract_cpp("class Foo {};");
+    assert_eq!(ir.language, Language::Cpp);
+}
+
+#[test]
+fn test_cpp_build_status_unbuilt() {
+    let source = "class Foo {};";
+    let tree = parse_source(source.as_bytes(), Language::Cpp)
+        .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+    let ir = extract(
+        &tree,
+        source.as_bytes(),
+        Path::new("test.cpp"),
+        Language::Cpp,
+        BuildStatus::Unbuilt,
+    )
+    .unwrap_or_else(|e| panic!("Failed to extract: {e}"));
+    assert_eq!(ir.build_status, BuildStatus::Unbuilt);
+    assert_eq!(ir.confidence, Confidence::Low);
+}
+
+#[test]
+fn test_cpp_void_function() {
+    let ir = extract_cpp("void doNothing() {}");
+    assert_eq!(ir.functions.len(), 1);
+    assert_eq!(ir.functions[0].name, "doNothing");
+    assert_eq!(ir.functions[0].return_type.as_deref(), Some("void"));
+}

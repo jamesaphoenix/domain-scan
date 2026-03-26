@@ -226,3 +226,113 @@ fn test_ruby_include_is_wildcard() {
         "include should be marked as wildcard"
     );
 }
+
+// =========================================================================
+// Edge case inline tests
+// =========================================================================
+
+/// Helper: extract from inline Ruby source
+fn extract_rb(source: &str) -> IrFile {
+    let tree = parse_source(source.as_bytes(), Language::Ruby)
+        .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+    extract(
+        &tree,
+        source.as_bytes(),
+        Path::new("test.rb"),
+        Language::Ruby,
+        BuildStatus::Built,
+    )
+    .unwrap_or_else(|e| panic!("Failed to extract: {e}"))
+}
+
+#[test]
+fn test_ruby_simple_class() {
+    let ir = extract_rb("class Foo\n  def bar\n    42\n  end\nend");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].name, "Foo");
+    assert_eq!(ir.classes[0].methods.len(), 1);
+    assert_eq!(ir.classes[0].methods[0].name, "bar");
+}
+
+#[test]
+fn test_ruby_class_with_no_methods() {
+    let ir = extract_rb("class EmptyClass\nend");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].name, "EmptyClass");
+    assert_eq!(ir.classes[0].methods.len(), 0);
+}
+
+#[test]
+fn test_ruby_module_with_no_methods() {
+    let ir = extract_rb("module EmptyModule\nend");
+    assert_eq!(ir.interfaces.len(), 1);
+    assert_eq!(ir.interfaces[0].name, "EmptyModule");
+    assert_eq!(ir.interfaces[0].methods.len(), 0);
+}
+
+#[test]
+fn test_ruby_simple_require() {
+    let ir = extract_rb("require 'json'");
+    assert!(
+        ir.imports.iter().any(|i| i.source == "json"),
+        "Should have json require"
+    );
+}
+
+#[test]
+fn test_ruby_class_extends_detected() {
+    let ir = extract_rb("class Child < Parent\n  def hello\n    'world'\n  end\nend");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].name, "Child");
+    assert_eq!(
+        ir.classes[0].extends.as_deref(),
+        Some("Parent"),
+        "Child should extend Parent"
+    );
+}
+
+#[test]
+fn test_ruby_build_status_unbuilt() {
+    let source = "class Foo\n  def bar\n    42\n  end\nend";
+    let tree = parse_source(source.as_bytes(), Language::Ruby)
+        .unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+    let ir = extract(
+        &tree,
+        source.as_bytes(),
+        Path::new("test.rb"),
+        Language::Ruby,
+        BuildStatus::Unbuilt,
+    )
+    .unwrap_or_else(|e| panic!("Failed to extract: {e}"));
+    assert_eq!(ir.build_status, BuildStatus::Unbuilt);
+    assert_eq!(ir.confidence, Confidence::Low);
+}
+
+#[test]
+fn test_ruby_language_field() {
+    let ir = extract_rb("class Foo\nend");
+    assert_eq!(ir.language, Language::Ruby);
+}
+
+#[test]
+fn test_ruby_class_multiple_methods() {
+    let ir = extract_rb("class Service\n  def create\n  end\n  def read\n  end\n  def update\n  end\n  def delete\n  end\nend");
+    assert_eq!(ir.classes.len(), 1);
+    assert_eq!(ir.classes[0].methods.len(), 4, "Service should have 4 methods");
+}
+
+#[test]
+fn test_ruby_class_self_method_is_static() {
+    let ir = extract_rb("class MyClass\n  def self.factory\n    new\n  end\nend");
+    assert_eq!(ir.classes.len(), 1);
+    let factory = ir.classes[0].methods.iter().find(|m| m.name == "factory");
+    assert!(factory.is_some(), "Missing static method 'factory'");
+    assert!(factory.unwrap().is_static, "'self.factory' should be static");
+}
+
+#[test]
+fn test_ruby_module_is_trait_kind() {
+    let ir = extract_rb("module Serializable\n  def to_json\n    '{}'\n  end\nend");
+    assert_eq!(ir.interfaces.len(), 1);
+    assert_eq!(ir.interfaces[0].language_kind, InterfaceKind::Module);
+}

@@ -5,21 +5,33 @@ interface CoverageOverlayProps {
   matchedEntities: number;
 }
 
+/** Clamp coverage percentage to [0, 100] for progress bar width. */
+export function clampCoverage(coveragePercent: number): number {
+  return Math.min(coveragePercent, 100);
+}
+
+/** Return the Tailwind bar color class based on clamped percentage. */
+export function getBarColorClass(clampedPct: number): string {
+  if (clampedPct >= 80) return "bg-emerald-500";
+  if (clampedPct >= 50) return "bg-amber-500";
+  return "bg-red-500";
+}
+
+/** Determine whether the overlay should be visible. */
+export function shouldShowOverlay(totalEntities: number, unmatchedCount: number): boolean {
+  return !(totalEntities === 0 && unmatchedCount === 0);
+}
+
 export function CoverageOverlay({
   coveragePercent,
   unmatchedCount,
   totalEntities,
   matchedEntities,
 }: CoverageOverlayProps) {
-  if (totalEntities === 0 && unmatchedCount === 0) return null;
+  if (!shouldShowOverlay(totalEntities, unmatchedCount)) return null;
 
-  const pct = Math.min(coveragePercent, 100);
-  const barColor =
-    pct >= 80
-      ? "bg-emerald-500"
-      : pct >= 50
-        ? "bg-amber-500"
-        : "bg-red-500";
+  const pct = clampCoverage(coveragePercent);
+  const barColor = getBarColorClass(pct);
 
   return (
     <div className="absolute top-3 right-3 z-10 bg-slate-900/90 backdrop-blur-sm border border-slate-700/50 rounded-lg p-3 w-56">
