@@ -659,4 +659,186 @@ mod tests {
         let actions = cache.dry_run_prune();
         assert!(actions.is_empty());
     }
+
+    #[test]
+    fn test_cache_concurrent_insert_and_get() {
+        use std::sync::Arc;
+
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Arc::new(Cache::new(dir.path().join("cache"), 100));
+
+        // Spawn multiple threads inserting concurrently
+        let mut handles = Vec::new();
+        for i in 0..10 {
+            let cache = Arc::clone(&cache);
+            let handle = std::thread::spawn(move || {
+                let key = format!("key_{i}");
+                let ir = IrFile::new(
+                    PathBuf::from(format!("src/file_{i}.ts")),
+                    Language::TypeScript,
+                    format!("hash_{i}"),
+                    BuildStatus::Built,
+                );
+                let _ = cache.insert(key, ir);
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().ok();
+        }
+
+        assert_eq!(cache.len(), 10);
+
+        // All entries should be retrievable
+        for i in 0..10 {
+            let key = format!("key_{i}");
+            assert!(cache.get(&key).is_some(), "Missing key: {key}");
+        }
+    }
+
+    #[test]
+    fn test_cache_concurrent_insert_and_evict() {
+        use std::sync::Arc;
+
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        // Very small max size to trigger eviction
+        let cache = Arc::new(Cache::new(dir.path().join("cache"), 0));
+
+        // Spawn threads that insert
+        let mut handles = Vec::new();
+        for i in 0..5 {
+            let cache = Arc::clone(&cache);
+            let handle = std::thread::spawn(move || {
+                let key = format!("evict_key_{i}");
+                let ir = IrFile::new(
+                    PathBuf::from(format!("src/evict_{i}.ts")),
+                    Language::TypeScript,
+                    format!("evict_hash_{i}"),
+                    BuildStatus::Built,
+                );
+                let _ = cache.insert(key, ir);
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().ok();
+        }
+
+        // Now evict — should not panic even after concurrent inserts
+        let evicted = cache.evict();
+        assert!(evicted.is_ok());
+
+        // After eviction with max_size 0, cache should be empty
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_insert_overwrites_existing() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        let ir1 = IrFile::new(
+            PathBuf::from("src/v1.ts"),
+            Language::TypeScript,
+            "hash_v1".to_string(),
+            BuildStatus::Built,
+        );
+        let ir2 = IrFile::new(
+            PathBuf::from("src/v2.ts"),
+            Language::TypeScript,
+            "hash_v2".to_string(),
+            BuildStatus::Built,
+        );
+
+        let _ = cache.insert("same_key".to_string(), ir1);
+        let _ = cache.insert("same_key".to_string(), ir2.clone());
+
+        assert_eq!(cache.len(), 1);
+        let got = cache.get("same_key");
+        assert!(got.is_some());
+        assert_eq!(got.map(|g| g.path), Some(ir2.path));
+    }
+
+    #[test]
+    fn test_cache_remove_nonexistent_key() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        // Removing a nonexistent key should not panic
+        cache.remove("nonexistent");
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_clear_empty_cache() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        // Clearing an empty cache should succeed
+        let result = cache.clear();
+        assert!(result.is_ok());
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_cache_stats_max_size_bytes() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        // 42 MB
+        let cache = Cache::new(dir.path().join("cache"), 42);
+        let stats = cache.stats();
+        assert_eq!(stats.max_size_bytes, 42 * 1024 * 1024);
+        assert_eq!(stats.entries, 0);
+        assert_eq!(stats.disk_size_bytes, 0);
+    }
+
+    #[test]
+    fn test_cache_prune_keeps_existing_files() {
+        let dir = tempfile::TempDir::new();
+        let dir = match dir {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        let cache = Cache::new(dir.path().join("cache"), 100);
+
+        // Insert an entry pointing to an existing path (the temp dir itself)
+        let ir = IrFile::new(
+            dir.path().to_path_buf(),
+            Language::TypeScript,
+            "hash_exists".to_string(),
+            BuildStatus::Built,
+        );
+        let _ = cache.insert("exists_key".to_string(), ir);
+        assert_eq!(cache.len(), 1);
+
+        // Prune should keep this entry
+        let pruned = cache.prune();
+        assert_eq!(pruned, 0);
+        assert_eq!(cache.len(), 1);
+    }
 }

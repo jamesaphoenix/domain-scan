@@ -54,7 +54,7 @@ const EXT_MAP: Record<string, string> = {
   zsh: "shell",
 };
 
-function detectLanguage(
+export function detectLanguage(
   language: string | null,
   file: string | null,
 ): string {
@@ -213,10 +213,19 @@ export function MonacoPreview({
     decorationsRef.current = ed.createDecorationsCollection([]);
   }, []);
 
-  // Scroll to highlighted line and apply decorations when they change
+  // Scroll to highlighted line and apply decorations when they change.
+  // When highlightLine is null (e.g., switching tabs), clear old decorations.
   useEffect(() => {
     const ed = editorRef.current;
-    if (!ed || !highlightLine) return;
+    if (!ed) return;
+
+    if (!highlightLine) {
+      // Clear stale decorations when no highlight is active
+      if (decorationsRef.current) {
+        decorationsRef.current.set([]);
+      }
+      return;
+    }
 
     ed.revealLineInCenter(highlightLine);
 

@@ -255,4 +255,235 @@ mod tests {
         assert!(!tree2.root_node().has_error());
         Ok(())
     }
+
+    // -----------------------------------------------------------------------
+    // Edge case: empty source
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_empty_source_typescript() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"";
+        let tree = parse_source(source, Language::TypeScript)?;
+        let root = tree.root_node();
+        assert_eq!(root.kind(), "program");
+        assert!(!root.has_error());
+        assert_eq!(root.child_count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_empty_source_rust() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"";
+        let tree = parse_source(source, Language::Rust)?;
+        let root = tree.root_node();
+        assert_eq!(root.kind(), "source_file");
+        assert!(!root.has_error());
+        assert_eq!(root.child_count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_empty_source_python() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"";
+        let tree = parse_source(source, Language::Python)?;
+        let root = tree.root_node();
+        assert!(!root.has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_empty_source_go() -> Result<(), Box<dyn std::error::Error>> {
+        // Go requires `package` declaration, so empty source has error
+        let source = b"";
+        let tree = parse_source(source, Language::Go)?;
+        let root = tree.root_node();
+        // Go grammar may produce an error node for empty input — that's fine
+        assert_eq!(root.kind(), "source_file");
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_empty_source_all_languages() -> Result<(), Box<dyn std::error::Error>> {
+        // Every language should parse empty source without panicking
+        let languages = [
+            Language::TypeScript,
+            Language::Rust,
+            Language::Go,
+            Language::Python,
+            Language::Java,
+            Language::Kotlin,
+            Language::Scala,
+            Language::CSharp,
+            Language::Swift,
+            Language::Cpp,
+            Language::PHP,
+            Language::Ruby,
+        ];
+        for lang in languages {
+            let tree = parse_source(b"", lang)?;
+            // Root node should exist regardless
+            let _root = tree.root_node();
+        }
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: whitespace-only source
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_whitespace_only() -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"   \n\n\t\t   \n";
+        let tree = parse_source(source, Language::TypeScript)?;
+        let root = tree.root_node();
+        assert!(!root.has_error());
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: binary content (should not panic)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_binary_content_no_panic() -> Result<(), Box<dyn std::error::Error>> {
+        // PNG header + random bytes — tree-sitter should not panic
+        let source: &[u8] = &[
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00,
+            0x0D, 0x49, 0x48, 0x44, 0x52, 0xFF, 0xFE, 0x00, 0x01,
+        ];
+        // tree-sitter may produce a tree with errors, or may fail to parse
+        // The important thing is no panic
+        let result = parse_source(source, Language::TypeScript);
+        // Either Ok or Err is fine, as long as no panic
+        let _ = result;
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: language switching on thread-local parser
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_language_switching() -> Result<(), Box<dyn std::error::Error>> {
+        // Parse TypeScript, then Rust, then Python — the thread-local parser
+        // must correctly switch languages between calls.
+        let ts_tree = parse_source(b"const x = 1;", Language::TypeScript)?;
+        assert_eq!(ts_tree.root_node().kind(), "program");
+        assert!(!ts_tree.root_node().has_error());
+
+        let rs_tree = parse_source(b"fn main() {}", Language::Rust)?;
+        assert_eq!(rs_tree.root_node().kind(), "source_file");
+        assert!(!rs_tree.root_node().has_error());
+
+        let py_tree = parse_source(b"x = 1", Language::Python)?;
+        assert!(!py_tree.root_node().has_error());
+
+        // Go back to TypeScript to verify parser reuse
+        let ts_tree2 = parse_source(b"interface Foo {}", Language::TypeScript)?;
+        assert_eq!(ts_tree2.root_node().kind(), "program");
+        assert!(!ts_tree2.root_node().has_error());
+
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: parse_file with nonexistent path
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_file_nonexistent() {
+        let result = parse_file(
+            std::path::Path::new("/nonexistent/path/file.ts"),
+            Language::TypeScript,
+        );
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: parse_file with empty file on disk
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_file_empty_on_disk() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::TempDir::new()?;
+        let path = dir.path().join("empty.ts");
+        std::fs::write(&path, "")?;
+
+        let (tree, source) = parse_file(&path, Language::TypeScript)?;
+        assert!(source.is_empty());
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: source with syntax errors (partial recovery)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_source_with_syntax_errors() -> Result<(), Box<dyn std::error::Error>> {
+        // Incomplete TypeScript — tree-sitter does partial recovery
+        let source = b"interface { }"; // missing name
+        let tree = parse_source(source, Language::TypeScript)?;
+        // tree-sitter should still produce a tree (with error markers)
+        let root = tree.root_node();
+        assert!(root.has_error()); // should have error nodes
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: Unicode content
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_unicode_identifiers() -> Result<(), Box<dyn std::error::Error>> {
+        let source = "interface \u{30E6}\u{30FC}\u{30B6}\u{30FC} { name: string; }";
+        let tree = parse_source(source.as_bytes(), Language::TypeScript)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_unicode_strings() -> Result<(), Box<dyn std::error::Error>> {
+        let source = "const greeting = \"\u{4F60}\u{597D}\u{4E16}\u{754C}\";";
+        let tree = parse_source(source.as_bytes(), Language::TypeScript)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: very long single line
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_parse_very_long_line() -> Result<(), Box<dyn std::error::Error>> {
+        // Build a TypeScript file with a very long array literal
+        let mut source = String::from("const arr = [");
+        for i in 0..10_000 {
+            if i > 0 {
+                source.push_str(", ");
+            }
+            source.push_str(&i.to_string());
+        }
+        source.push_str("];");
+
+        let tree = parse_source(source.as_bytes(), Language::TypeScript)?;
+        assert!(!tree.root_node().has_error());
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: all language_from_fn conversions
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_all_language_fn_conversions() {
+        // Each public language function should return a valid Language without panic
+        let _kotlin = kotlin_language();
+        let _scala = scala_language();
+        let _csharp = csharp_language();
+        let _swift = swift_language();
+        let _cpp = cpp_language();
+        let _php = php_language();
+        let _ruby = ruby_language();
+    }
 }

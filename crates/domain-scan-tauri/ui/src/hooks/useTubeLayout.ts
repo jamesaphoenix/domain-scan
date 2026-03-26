@@ -9,10 +9,10 @@ import { assignDomainColors } from "../layout/colors";
 import type { TubeMapConnection } from "../types";
 
 /** Edges between the same two domains are bundled when count exceeds this */
-const BUNDLE_THRESHOLD = 3;
+export const BUNDLE_THRESHOLD = 3;
 
 /** Build an individual (non-bundled) edge from a connection */
-function buildIndividualEdge(
+export function buildIndividualEdge(
   conn: TubeMapConnection,
   sourceSub: TubeMapSubsystem | undefined,
   targetSub: TubeMapSubsystem | undefined,

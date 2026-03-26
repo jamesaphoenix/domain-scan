@@ -5,13 +5,13 @@ import { invoke } from "@tauri-apps/api/core";
 // Types for the Rust IPC response
 // ---------------------------------------------------------------------------
 
-interface ReleaseAsset {
+export interface ReleaseAsset {
   name: string;
   download_url: string;
   size: number;
 }
 
-interface PlatformReleaseInfo {
+export interface PlatformReleaseInfo {
   os: string;
   arch: string;
   latest_tag: string | null;
@@ -31,7 +31,7 @@ interface PlatformReleaseInfo {
 // Dynamic prompt builder
 // ---------------------------------------------------------------------------
 
-function buildAgentPrompt(info: PlatformReleaseInfo | null): string {
+export function buildAgentPrompt(info: PlatformReleaseInfo | null): string {
   // Install section — adapt to detected platform + available release
   let installSection: string;
 
