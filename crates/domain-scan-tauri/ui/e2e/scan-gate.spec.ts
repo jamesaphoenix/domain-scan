@@ -110,6 +110,15 @@ test.describe("Agent prompt content", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
+  test("agent prompt uses doctor when the CLI is already installed", async ({ page }) => {
+    const expandBtn = page.getByRole("button", { name: "Expand" });
+    await expandBtn.click();
+
+    await expect(
+      page.getByText("domain-scan doctor --output json"),
+    ).toBeVisible({ timeout: 3_000 });
+  });
+
   test("expand button shows full prompt", async ({ page }) => {
     const expandBtn = page.getByRole("button", { name: "Expand" });
     await expandBtn.click();

@@ -190,6 +190,25 @@ fn test_stats_table() {
     assert!(stdout.contains("TypeScript"));
 }
 
+#[test]
+fn test_doctor_json_output() {
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .arg("--output")
+        .arg("json")
+        .arg("doctor")
+        .output()
+        .expect("command should run");
+
+    assert!(output.status.success(), "doctor should succeed");
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("output should be valid JSON");
+    assert_eq!(json["current_version"], env!("CARGO_PKG_VERSION"));
+    assert!(json["executable_path"].is_string());
+    assert!(json["recommended_update_command"].is_string());
+}
+
 // ---------------------------------------------------------------------------
 // search
 // ---------------------------------------------------------------------------

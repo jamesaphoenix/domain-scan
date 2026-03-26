@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 use std::sync::Mutex;
 
+use domain_scan_core::doctor::DoctorReport;
 use domain_scan_core::ir::{
     BuildStatus, Entity, EntityKind, EntitySummary, FilterParams, MatchResult, ScanConfig,
     ScanIndex, ScanStats,
@@ -1001,8 +1003,20 @@ pub struct PlatformReleaseInfo {
     pub matching_asset: Option<ReleaseAsset>,
     /// Cargo install fallback command
     pub cargo_install_cmd: String,
+    /// Preferred install command for this platform
+    pub recommended_install_cmd: String,
+    /// Preferred update command for this platform/install state
+    pub recommended_update_cmd: String,
     /// Absolute path to the currently scanned directory, if a scan is loaded.
     pub scanned_root: Option<String>,
+    /// Absolute path to the installed CLI on PATH, if found.
+    pub installed_path: Option<String>,
+    /// Installed CLI version parsed from `domain-scan --version`, if found.
+    pub installed_version: Option<String>,
+    /// Whether the installed CLI already supports `domain-scan doctor`.
+    pub doctor_supported: bool,
+    /// Whether the installed CLI appears older than the latest release.
+    pub update_available: Option<bool>,
 }
 
 /// Detect current platform and fetch the latest domain-scan release from GitHub.
@@ -1010,17 +1024,14 @@ pub struct PlatformReleaseInfo {
 pub async fn get_platform_release_info(
     state: State<'_, AppState>,
 ) -> Result<PlatformReleaseInfo, CommandError> {
-    let os = std::env::consts::OS.to_string(); // "macos", "linux", "windows"
+    let os = std::env::consts::OS.to_string();
     let arch = std::env::consts::ARCH.to_string(); // "aarch64", "x86_64"
 
     // Normalise os name to match release asset naming convention
-    let os_label = match os.as_str() {
-        "macos" => "darwin",
-        other => other,
-    };
+    let os_label = normalize_os_label(&os).to_string();
 
     let cargo_install_cmd =
-        "cargo install domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git"
+        "cargo install --force domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git"
             .to_string();
 
     // Fetch latest release from GitHub API (best effort — don't fail if offline)
@@ -1051,9 +1062,14 @@ pub async fn get_platform_release_info(
         .iter()
         .find(|a| {
             let lower = a.name.to_lowercase();
-            lower.contains(os_label) && lower.contains(&arch)
+            lower.contains(&os_label) && lower.contains(&arch)
         })
         .cloned();
+
+    let recommended_install_cmd = matching_asset
+        .as_ref()
+        .map(|asset| build_binary_install_command(&os_label, asset))
+        .unwrap_or_else(|| cargo_install_cmd.clone());
 
     // Read the scanned root path (if a scan has been performed)
     let scanned_root = state
@@ -1062,15 +1078,154 @@ pub async fn get_platform_release_info(
         .ok()
         .and_then(|r| r.as_ref().map(|p| p.display().to_string()));
 
+    let installed_path_buf = find_executable_on_path("domain-scan");
+    let mut installed_version = installed_path_buf
+        .as_deref()
+        .and_then(read_installed_version);
+    let doctor_report = installed_path_buf.as_deref().and_then(read_doctor_report);
+    let doctor_supported = doctor_report.is_some();
+
+    if let Some(report) = doctor_report.as_ref() {
+        installed_version = Some(report.current_version.clone());
+    }
+
+    let fallback_update_available = match (installed_version.as_deref(), latest_tag.as_deref()) {
+        (Some(current), Some(latest)) => Some(is_update_available(current, latest)),
+        _ => None,
+    };
+    let update_available = doctor_report
+        .as_ref()
+        .and_then(|report| report.update_available)
+        .or(fallback_update_available);
+    let recommended_update_cmd = doctor_report
+        .as_ref()
+        .map(|report| report.recommended_update_command.clone())
+        .unwrap_or_else(|| recommended_install_cmd.clone());
+
     Ok(PlatformReleaseInfo {
-        os: os_label.to_string(),
+        os: os_label,
         arch,
         latest_tag,
         assets,
         matching_asset,
         cargo_install_cmd,
+        recommended_install_cmd,
+        recommended_update_cmd,
         scanned_root,
+        installed_path: installed_path_buf.map(|path| path.display().to_string()),
+        installed_version,
+        doctor_supported,
+        update_available,
     })
+}
+
+fn normalize_os_label(os: &str) -> &str {
+    match os {
+        "macos" => "darwin",
+        other => other,
+    }
+}
+
+fn build_binary_install_command(os: &str, asset: &ReleaseAsset) -> String {
+    if os == "windows" {
+        return "cargo install --force domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git".to_string();
+    }
+
+    format!(
+        "curl -sL \"{url}\" -o /tmp/domain-scan.tar.gz\n\
+         tar -xzf /tmp/domain-scan.tar.gz -C /tmp\n\
+         chmod +x /tmp/domain-scan\n\
+         mkdir -p ~/.local/bin\n\
+         mv /tmp/domain-scan ~/.local/bin/domain-scan\n\
+         export PATH=\"$HOME/.local/bin:$PATH\"",
+        url = asset.download_url,
+    )
+}
+
+fn find_executable_on_path(name: &str) -> Option<PathBuf> {
+    let executable_name = if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    };
+    if let Some(path_var) = std::env::var_os("PATH") {
+        if let Some(found) = std::env::split_paths(&path_var)
+            .map(|dir| dir.join(&executable_name))
+            .find(|candidate| candidate.is_file())
+        {
+            return Some(found);
+        }
+    }
+
+    let home_dir = std::env::var_os("HOME").map(PathBuf::from);
+    let mut fallback_paths = Vec::new();
+    if let Some(home) = home_dir {
+        fallback_paths.push(home.join(".local").join("bin").join(&executable_name));
+        fallback_paths.push(home.join(".cargo").join("bin").join(&executable_name));
+    }
+    fallback_paths.push(PathBuf::from("/usr/local/bin").join(&executable_name));
+    fallback_paths.push(PathBuf::from("/opt/homebrew/bin").join(&executable_name));
+
+    fallback_paths
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+fn read_installed_version(executable_path: &Path) -> Option<String> {
+    let output = ProcessCommand::new(executable_path)
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8(output.stdout).ok()?;
+    parse_cli_version_output(&stdout)
+}
+
+fn parse_cli_version_output(raw: &str) -> Option<String> {
+    raw.split_whitespace().nth(1).map(|value| value.to_string())
+}
+
+fn read_doctor_report(executable_path: &Path) -> Option<DoctorReport> {
+    let output = ProcessCommand::new(executable_path)
+        .arg("doctor")
+        .arg("--output")
+        .arg("json")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    serde_json::from_slice::<DoctorReport>(&output.stdout).ok()
+}
+
+fn normalize_version(version: &str) -> &str {
+    version.trim().trim_start_matches('v')
+}
+
+fn parse_version_parts(version: &str) -> Option<(u64, u64, u64)> {
+    let normalized = normalize_version(version);
+    let core = normalized.split(['-', '+']).next()?;
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+fn is_update_available(current_version: &str, latest_tag: &str) -> bool {
+    match (
+        parse_version_parts(current_version),
+        parse_version_parts(latest_tag),
+    ) {
+        (Some(current), Some(latest)) => current < latest,
+        _ => normalize_version(current_version) != normalize_version(latest_tag),
+    }
 }
 
 /// Fetch the latest release JSON from GitHub. Returns (tag_name, assets[]) or None.

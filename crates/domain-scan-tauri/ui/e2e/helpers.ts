@@ -1,5 +1,5 @@
 /**
- * E2E test helpers for domain-scan Tauri app.
+ * E2E test helpers for the Domain Scan Tauri app.
  *
  * Tests run against the Vite dev server (http://localhost:5173).
  * Tauri IPC calls are intercepted via `page.exposeFunction` or
@@ -37,8 +37,8 @@ export function fixturePath(name: string): string {
  * Checks that the status bar and tab bar are present.
  */
 export async function waitForAppReady(page: Page): Promise<void> {
-  // Wait for the domain-scan label in the status bar
-  await page.waitForSelector("text=domain-scan", { timeout: 10_000 });
+  // Wait for the Domain Scan label in the status bar
+  await page.waitForSelector("text=Domain Scan", { timeout: 10_000 });
   // Wait for tab bar to render
   await page.waitForSelector("text=Entities/Types", { timeout: 5_000 });
   await page.waitForSelector("text=Subsystem Tube Map", { timeout: 5_000 });

@@ -152,6 +152,6 @@ test.describe("F.2: Open Directory & Scan Flow", () => {
     await expect(page.getByText("Subsystem Tube Map")).toBeVisible();
 
     // Status bar still shows the app name (not a blank crash page)
-    await expect(page.getByText("domain-scan")).toBeVisible();
+    await expect(page.getByText("Domain Scan")).toBeVisible();
   });
 });

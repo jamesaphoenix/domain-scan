@@ -122,7 +122,7 @@ test.describe("F.3: Tab Switching", () => {
     }
 
     // App should not have crashed — verify core elements are still present
-    await expect(page.getByText("domain-scan")).toBeVisible();
+    await expect(page.getByText("Domain Scan")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Entities/Types" }),
     ).toBeVisible();

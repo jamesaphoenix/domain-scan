@@ -663,8 +663,14 @@ export async function setupTauriMocks(
           latest_tag: "v0.4.0",
           assets: [{ name: "domain-scan-darwin-aarch64.tar.gz", download_url: "https://example.com/domain-scan.tar.gz", size: 5000000 }],
           matching_asset: { name: "domain-scan-darwin-aarch64.tar.gz", download_url: "https://example.com/domain-scan.tar.gz", size: 5000000 },
-          cargo_install_cmd: "cargo install domain-scan-cli",
+          cargo_install_cmd: "cargo install --force domain-scan-cli",
+          recommended_install_cmd: "curl -sL \"https://example.com/domain-scan.tar.gz\" -o /tmp/domain-scan.tar.gz\nmkdir -p ~/.local/bin",
+          recommended_update_cmd: "curl -sL \"https://example.com/domain-scan.tar.gz\" -o /tmp/domain-scan.tar.gz\nmkdir -p ~/.local/bin",
           scanned_root: config.dialogResult,
+          installed_path: "/Users/test/.local/bin/domain-scan",
+          installed_version: "0.4.0",
+          doctor_supported: true,
+          update_available: false,
         };
       }
 

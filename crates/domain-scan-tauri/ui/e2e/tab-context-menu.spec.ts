@@ -192,7 +192,7 @@ test.describe("Tab overflow", () => {
     await scanAndOpenEntities(page, 8);
 
     // App should still be functional — status bar visible
-    await expect(page.getByText("domain-scan")).toBeVisible();
+    await expect(page.getByText("Domain Scan")).toBeVisible();
 
     // Monaco should be loaded
     await expect(page.locator(".monaco-editor")).toBeVisible({ timeout: 5_000 });

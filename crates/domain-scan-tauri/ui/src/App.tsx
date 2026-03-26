@@ -404,7 +404,7 @@ function App() {
       {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700 text-sm flex-shrink-0">
         <div className="flex items-center gap-3">
-          <span className="font-semibold">domain-scan</span>
+          <span className="font-semibold">Domain Scan</span>
           <button
             className="text-xs text-blue-400 hover:text-blue-300"
             onClick={handleOpenDirectory}

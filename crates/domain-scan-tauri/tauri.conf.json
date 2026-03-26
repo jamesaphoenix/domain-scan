@@ -1,6 +1,6 @@
 {
-  "productName": "domain-scan",
-  "identifier": "com.domain-scan.app",
+  "productName": "Domain Scan",
+  "identifier": "com.domainscan.desktop",
   "build": {
     "beforeDevCommand": { "script": "npm run dev", "cwd": "ui" },
     "beforeBuildCommand": { "script": "npm run build", "cwd": "ui" },
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "domain-scan",
+        "title": "Domain Scan",
         "width": 1440,
         "height": 900,
         "minWidth": 1200,

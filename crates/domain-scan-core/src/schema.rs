@@ -10,6 +10,7 @@ use schemars::schema::RootSchema;
 use schemars::schema_for;
 use serde::{Deserialize, Serialize};
 
+use crate::doctor::{DoctorInput, DoctorReport};
 use crate::ir::{
     EntitySummary, FilterParams, ImplDef, InterfaceDef, MatchResult, MethodDef, ScanConfig,
     ScanIndex, ScanStats, SchemaDef, ServiceDef, ValidationResult,
@@ -172,6 +173,16 @@ pub fn init_schema() -> CommandSchema {
     }
 }
 
+/// Generate the schema for the `doctor` subcommand.
+pub fn doctor_schema() -> CommandSchema {
+    CommandSchema {
+        command: "doctor".to_string(),
+        description: "Inspect the installed CLI and recommend install/update commands".to_string(),
+        input: root_to_value(schema_for!(DoctorInput)),
+        output: root_to_value(schema_for!(DoctorReport)),
+    }
+}
+
 /// Get the schema for a specific subcommand by name.
 /// Returns `None` if the command name is not recognized.
 pub fn schema_for_command(command: &str) -> Option<CommandSchema> {
@@ -188,6 +199,7 @@ pub fn schema_for_command(command: &str) -> Option<CommandSchema> {
         "match" => Some(match_schema()),
         "prompt" => Some(prompt_schema()),
         "init" => Some(init_schema()),
+        "doctor" => Some(doctor_schema()),
         _ => None,
     }
 }
@@ -207,6 +219,7 @@ pub fn all_command_names() -> &'static [&'static str] {
         "match",
         "prompt",
         "init",
+        "doctor",
     ]
 }
 
@@ -311,6 +324,15 @@ mod tests {
         assert!(
             names.contains(&"init"),
             "all_command_names() should contain \"init\""
+        );
+    }
+
+    #[test]
+    fn test_all_command_names_includes_doctor() {
+        let names = all_command_names();
+        assert!(
+            names.contains(&"doctor"),
+            "all_command_names() should contain \"doctor\""
         );
     }
 

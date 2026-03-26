@@ -10,6 +10,7 @@
 pub mod build_status;
 pub mod cache;
 pub mod config;
+pub mod doctor;
 pub mod field_mask;
 pub mod index;
 pub mod input_validation;

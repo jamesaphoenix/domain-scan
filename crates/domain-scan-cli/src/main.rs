@@ -4,6 +4,7 @@ use std::process;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::{Parser, Subcommand, ValueEnum};
+use domain_scan_core::doctor::{DoctorAsset, DoctorReport, InstallSource};
 use domain_scan_core::input_validation;
 use domain_scan_core::ir::{BuildStatus, EntityKind, FilterParams, Language, ScanConfig};
 use domain_scan_core::output::{self, OutputFormat};
@@ -266,9 +267,12 @@ enum Commands {
         name: Option<String>,
     },
 
+    /// Inspect the installed CLI and recommend install/update commands
+    Doctor,
+
     /// Dump the JSON schema for a subcommand's input/output types
     Schema {
-        /// Subcommand name (e.g. scan, interfaces, services, methods, schemas, impls, search, stats, validate, match, prompt, init)
+        /// Subcommand name (e.g. scan, interfaces, services, methods, schemas, impls, search, stats, validate, match, prompt, init, doctor)
         command: Option<String>,
         /// Dump all schemas in a single JSON object keyed by subcommand name
         #[arg(long)]
@@ -817,6 +821,7 @@ fn validate_string_inputs(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Scan
         | Commands::Stats
+        | Commands::Doctor
         | Commands::Match { .. }
         | Commands::Cache { .. }
         | Commands::Init { .. }
@@ -840,7 +845,11 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
 
     // Early validation for common mistakes (skip for self-test which overrides root)
     let is_self_test = matches!(&cli.command, Commands::Validate { self_test, .. } if *self_test);
-    if !is_self_test {
+    let requires_root = !matches!(
+        &cli.command,
+        Commands::Doctor | Commands::Schema { .. } | Commands::Skills { .. }
+    );
+    if !is_self_test && requires_root {
         validate_root_path(&cli)?;
     }
     validate_config_path(&cli)?;
@@ -1103,6 +1112,7 @@ fn run(mut cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
             *dry_run,
             name.clone(),
         ),
+        Commands::Doctor => cmd_doctor(&cli, format),
         Commands::Prompt {
             agents,
             ref focus,
@@ -2675,6 +2685,210 @@ fn update_gitignore(root: &Path, skills_dir: &Path) -> Result<(), Box<dyn std::e
     std::fs::write(&gitignore_path, content)?;
 
     Ok(())
+}
+
+fn current_platform_labels() -> (String, String) {
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    };
+    (os.to_string(), std::env::consts::ARCH.to_string())
+}
+
+fn cargo_install_command() -> String {
+    "cargo install --force domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git"
+        .to_string()
+}
+
+fn build_binary_install_command(os: &str, asset: &DoctorAsset) -> String {
+    if os == "windows" {
+        return cargo_install_command();
+    }
+
+    format!(
+        "curl -sL \"{url}\" -o /tmp/domain-scan.tar.gz\n\
+         tar -xzf /tmp/domain-scan.tar.gz -C /tmp\n\
+         chmod +x /tmp/domain-scan\n\
+         mkdir -p ~/.local/bin\n\
+         mv /tmp/domain-scan ~/.local/bin/domain-scan\n\
+         export PATH=\"$HOME/.local/bin:$PATH\"",
+        url = asset.download_url,
+    )
+}
+
+fn fetch_latest_release_assets() -> Option<(String, Vec<DoctorAsset>)> {
+    let mut resp =
+        ureq::get("https://api.github.com/repos/jamesaphoenix/domain-scan/releases/latest")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "domain-scan-cli")
+            .call()
+            .ok()?;
+
+    let body: serde_json::Value = resp.body_mut().read_json().ok()?;
+    let tag = body.get("tag_name")?.as_str()?.to_string();
+    let assets = body
+        .get("assets")?
+        .as_array()?
+        .iter()
+        .filter_map(|asset| {
+            let name = asset.get("name")?.as_str()?.to_string();
+            let download_url = asset.get("browser_download_url")?.as_str()?.to_string();
+            let size = asset.get("size")?.as_u64()?;
+            Some(DoctorAsset {
+                name,
+                download_url,
+                size,
+            })
+        })
+        .collect();
+
+    Some((tag, assets))
+}
+
+fn select_matching_asset(assets: &[DoctorAsset], os: &str, arch: &str) -> Option<DoctorAsset> {
+    assets
+        .iter()
+        .find(|asset| {
+            let lower = asset.name.to_lowercase();
+            lower.contains(os) && lower.contains(arch)
+        })
+        .cloned()
+}
+
+fn normalize_version(version: &str) -> &str {
+    version.trim().trim_start_matches('v')
+}
+
+fn parse_version_parts(version: &str) -> Option<(u64, u64, u64)> {
+    let normalized = normalize_version(version);
+    let core = normalized.split(['-', '+']).next()?;
+    let mut parts = core.split('.');
+    let major = parts.next()?.parse::<u64>().ok()?;
+    let minor = parts.next()?.parse::<u64>().ok()?;
+    let patch = parts.next()?.parse::<u64>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+fn is_update_available(current_version: &str, latest_tag: &str) -> bool {
+    match (
+        parse_version_parts(current_version),
+        parse_version_parts(latest_tag),
+    ) {
+        (Some(current), Some(latest)) => current < latest,
+        _ => normalize_version(current_version) != normalize_version(latest_tag),
+    }
+}
+
+fn detect_install_source(executable_path: &Path) -> InstallSource {
+    let home_dir = std::env::var_os("HOME").map(PathBuf::from);
+    if let Some(ref home) = home_dir {
+        if executable_path.starts_with(home.join(".cargo").join("bin")) {
+            return InstallSource::CargoBin;
+        }
+        if executable_path.starts_with(home.join(".local").join("bin")) {
+            return InstallSource::LocalBin;
+        }
+    }
+
+    if executable_path.starts_with(Path::new("/usr/local/bin"))
+        || executable_path.starts_with(Path::new("/opt/homebrew/bin"))
+    {
+        InstallSource::SystemBin
+    } else {
+        InstallSource::CustomPath
+    }
+}
+
+fn install_source_label(source: InstallSource) -> &'static str {
+    match source {
+        InstallSource::CargoBin => "cargo_bin",
+        InstallSource::LocalBin => "local_bin",
+        InstallSource::SystemBin => "system_bin",
+        InstallSource::CustomPath => "custom_path",
+    }
+}
+
+fn current_executable_path() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let path = std::env::current_exe()?;
+    match path.canonicalize() {
+        Ok(canonical) => Ok(canonical),
+        Err(_) => Ok(path),
+    }
+}
+
+fn cmd_doctor(cli: &Cli, format: OutputFormat) -> Result<(), Box<dyn std::error::Error>> {
+    let executable_path = current_executable_path()?;
+    let (os, arch) = current_platform_labels();
+    let current_version = env!("CARGO_PKG_VERSION").to_string();
+    let install_source = detect_install_source(&executable_path);
+    let latest_release = fetch_latest_release_assets();
+    let (latest_tag, latest_version, matching_asset, update_available) = match latest_release {
+        Some((tag, assets)) => {
+            let asset = select_matching_asset(&assets, &os, &arch);
+            let latest_version = Some(normalize_version(&tag).to_string());
+            let update_available = Some(is_update_available(&current_version, &tag));
+            (Some(tag), latest_version, asset, update_available)
+        }
+        None => (None, None, None, None),
+    };
+
+    let recommended_install_command = matching_asset
+        .as_ref()
+        .map(|asset| build_binary_install_command(&os, asset))
+        .unwrap_or_else(cargo_install_command);
+    let recommended_update_command = recommended_install_command.clone();
+
+    let report = DoctorReport {
+        current_version,
+        executable_path: executable_path.display().to_string(),
+        os,
+        arch,
+        latest_tag,
+        latest_version,
+        install_source,
+        matching_asset,
+        update_available,
+        recommended_install_command,
+        recommended_update_command,
+    };
+
+    match format {
+        OutputFormat::Json => emit_json(cli, &report, format, Some("doctor")),
+        OutputFormat::Table | OutputFormat::Compact => {
+            let latest_text = report
+                .latest_tag
+                .as_deref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "offline".to_string());
+            let update_text = report
+                .update_available
+                .map(|value| if value { "yes" } else { "no" })
+                .unwrap_or("unknown");
+            let output = format!(
+                "Domain Scan Doctor\n\
+                 Current version:   {current_version}\n\
+                 Executable path:   {path}\n\
+                 Install source:    {install_source}\n\
+                 Platform:          {os}/{arch}\n\
+                 Latest release:    {latest_text}\n\
+                 Update available:  {update_text}\n\
+                 Recommended update:\n\
+                 {update_cmd}\n",
+                current_version = report.current_version,
+                path = report.executable_path,
+                install_source = install_source_label(report.install_source),
+                os = report.os,
+                arch = report.arch,
+                latest_text = latest_text,
+                update_text = update_text,
+                update_cmd = report.recommended_update_command,
+            );
+            emit(cli, &output)
+        }
+    }
 }
 
 fn interface_kind_str(kind: &domain_scan_core::ir::InterfaceKind) -> &'static str {

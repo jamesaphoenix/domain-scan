@@ -18,7 +18,13 @@ interface PlatformReleaseInfo {
   assets: ReleaseAsset[];
   matching_asset: ReleaseAsset | null;
   cargo_install_cmd: string;
+  recommended_install_cmd: string;
+  recommended_update_cmd: string;
   scanned_root: string | null;
+  installed_path: string | null;
+  installed_version: string | null;
+  doctor_supported: boolean;
+  update_available: boolean | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -29,7 +35,49 @@ function buildAgentPrompt(info: PlatformReleaseInfo | null): string {
   // Install section — adapt to detected platform + available release
   let installSection: string;
 
-  if (info?.matching_asset) {
+  if (info?.installed_path && info.doctor_supported) {
+    const installedVersion = info.installed_version
+      ? ` (version ${info.installed_version})`
+      : "";
+    const updateLine = info.update_available === false
+      ? "If `update_available` is `false`, keep the existing install and continue to Step 2."
+      : "If `update_available` is `true`, update the CLI before continuing to Step 2.";
+    installSection = `## Step 1 — Check the installed domain-scan CLI (${info.os}/${info.arch})
+
+\`domain-scan\` is already installed at \`${info.installed_path}\`${installedVersion}.
+Start by inspecting the existing install instead of reinstalling blindly:
+
+\`\`\`bash
+domain-scan doctor --output json
+\`\`\`
+
+${updateLine}
+
+If an update is needed, run:
+
+\`\`\`bash
+${info.recommended_update_cmd}
+
+# Verify
+domain-scan doctor --output json
+\`\`\``;
+  } else if (info?.installed_path) {
+    const installedVersion = info.installed_version
+      ? ` (version ${info.installed_version})`
+      : "";
+    installSection = `## Step 1 — Upgrade the installed domain-scan CLI (${info.os}/${info.arch})
+
+\`domain-scan\` is already installed at \`${info.installed_path}\`${installedVersion}, but this
+install predates the \`doctor\` command. Upgrade it first so the rest of the
+workflow can use \`domain-scan doctor --output json\` deterministically:
+
+\`\`\`bash
+${info.recommended_update_cmd}
+
+# Verify
+domain-scan doctor --output json
+\`\`\``;
+  } else if (info?.matching_asset) {
     const a = info.matching_asset;
     const tag = info.latest_tag ?? "latest";
     installSection = `## Step 1 — Install the domain-scan CLI (${info.os}/${info.arch})
@@ -38,17 +86,10 @@ A pre-built binary is available for your platform. Download and install it:
 
 \`\`\`bash
 # Download ${a.name} (${tag}, ${(a.size / 1024 / 1024).toFixed(1)} MB)
-curl -sL "${a.download_url}" -o /tmp/domain-scan.tar.gz
-
-# Extract and install to ~/.local/bin (no sudo required)
-tar -xzf /tmp/domain-scan.tar.gz -C /tmp
-chmod +x /tmp/domain-scan
-mkdir -p ~/.local/bin
-mv /tmp/domain-scan ~/.local/bin/domain-scan
-export PATH="$HOME/.local/bin:$PATH"
+${info.recommended_install_cmd}
 
 # Verify
-domain-scan --version
+domain-scan doctor --output json
 \`\`\`
 
 If the download fails, fall back to building from source:
@@ -69,7 +110,7 @@ ${assetList}No pre-built binary is available for your platform. Build from sourc
 ${info.cargo_install_cmd}
 
 # Verify
-domain-scan --version
+domain-scan doctor --output json
 \`\`\``;
   } else {
     // Couldn't detect anything — generic instructions
@@ -84,10 +125,10 @@ the \`domain-scan\` binary to somewhere on your PATH (e.g. ~/.local/bin/).
 If no binary matches, build from source:
 
 \`\`\`bash
-cargo install domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git
+cargo install --force domain-scan-cli --git https://github.com/jamesaphoenix/domain-scan.git
 
 # Verify
-domain-scan --version
+domain-scan doctor --output json
 \`\`\``;
   }
 
@@ -457,6 +498,16 @@ export function ManifestLoader({
       : "offline";
 
   const hasMatchingBinary = !!releaseInfo?.matching_asset;
+  const hasInstalledCli = !!releaseInfo?.installed_path;
+  const installSummary = hasInstalledCli
+    ? releaseInfo?.doctor_supported
+      ? releaseInfo?.update_available === false
+        ? `Existing CLI detected at ${releaseInfo.installed_path}. The prompt starts with domain-scan doctor and keeps the current install if it is already up to date.`
+        : `Existing CLI detected at ${releaseInfo?.installed_path}. The prompt starts with domain-scan doctor and upgrades the CLI first when an update is available.`
+      : `Existing CLI detected at ${releaseInfo?.installed_path}, but it predates the doctor command. The prompt upgrades it first, then switches to domain-scan doctor.`
+    : hasMatchingBinary
+      ? `The prompt includes a direct download path for ${releaseInfo?.matching_asset?.name}. The agent will install the CLI, bootstrap skills for both Claude Code and Codex, scan your code, bootstrap a starter manifest, and then refine it using 5-10 parallel sub-agents.`
+      : "The agent will build the CLI from source, bootstrap skills, scan your code, bootstrap a starter manifest, and then refine it using 5-10 parallel sub-agents.";
 
   return (
     <div className="flex-1 flex items-center justify-center overflow-y-auto">
@@ -515,6 +566,11 @@ export function ManifestLoader({
               binary available
             </span>
           )}
+          {hasInstalledCli && (
+            <span className="text-[10px] text-slate-500">
+              installed locally
+            </span>
+          )}
         </div>
 
         {/* Recommended: Agent prompt section */}
@@ -553,23 +609,7 @@ export function ManifestLoader({
             </div>
           </div>
           <p className="text-[11px] text-slate-600 mt-2">
-            {hasMatchingBinary ? (
-              <>
-                The prompt includes a direct download link for{" "}
-                <span className="text-slate-400">
-                  {releaseInfo?.matching_asset?.name}
-                </span>
-                . The agent will install the CLI, bootstrap skills for both
-                Claude Code and Codex, scan your code, bootstrap a starter
-                manifest, and then refine it using 5-10 parallel sub-agents.
-              </>
-            ) : (
-              <>
-                The agent will build the CLI from source, bootstrap skills,
-                scan your code, bootstrap a starter manifest, and then refine
-                it using 5-10 parallel sub-agents.
-              </>
-            )}
+            {installSummary}
           </p>
         </div>
 
