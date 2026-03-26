@@ -50,14 +50,20 @@ function ChildRow({
   selected: boolean;
   onClick: () => void;
 }) {
+  const navigable = child.line > 0;
   return (
     <div
-      className={`flex items-center gap-1.5 pl-8 py-0.5 text-xs cursor-pointer ${
+      className={`flex items-center gap-1.5 pl-8 py-0.5 text-xs ${
+        navigable ? "cursor-pointer" : "cursor-default"
+      } ${
         selected
           ? "bg-blue-900/30 text-blue-200"
-          : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+          : navigable
+            ? "text-gray-400 hover:text-gray-200 hover:bg-gray-800/50"
+            : "text-gray-600"
       }`}
       onClick={onClick}
+      title={navigable ? undefined : "No source location available"}
     >
       <span className="text-gray-600 w-3 text-center">
         {child.kind === "method"
@@ -68,7 +74,7 @@ function ChildRow({
               ? "r"
               : "f"}
       </span>
-      <span className="truncate">
+      <span className={`truncate ${navigable ? "" : "opacity-60"}`}>
         {child.name}
         {child.is_async && (
           <span className="text-yellow-600 ml-1">async</span>
@@ -77,7 +83,7 @@ function ChildRow({
           <span className="text-gray-600 ml-1">: {child.return_type}</span>
         )}
       </span>
-      {child.line > 0 && (
+      {navigable && (
         <span className="ml-auto text-[10px] text-gray-600 flex-shrink-0">
           :{child.line}
         </span>

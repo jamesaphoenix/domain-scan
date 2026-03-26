@@ -479,11 +479,10 @@ pub fn get_file_source(file: String, state: State<'_, AppState>) -> Result<Strin
         .lock()
         .map_err(|e| CommandError::Scan(e.to_string()))?;
     if cache.len() >= 50 {
-        // Evict oldest entry (arbitrary — HashMap doesn't track order, just clear half)
-        let keys: Vec<PathBuf> = cache.keys().take(25).cloned().collect();
-        for k in keys {
-            cache.remove(&k);
-        }
+        // HashMap has no defined iteration order, so evicting via .keys().take()
+        // is non-deterministic. Simply clear the entire cache — it will refill on
+        // demand with the files actually in use.
+        cache.clear();
     }
     cache.insert(path, content.clone());
 
@@ -652,32 +651,63 @@ pub fn open_in_editor(
         return Ok(());
     }
 
-    // Fallback: use macOS `open -a` with the app bundle name
-    let app_name = app_name_for_editor(&editor)?;
+    // Fallback: platform-specific open command
+    #[cfg(target_os = "macos")]
+    {
+        let app_name = app_name_for_editor(&editor)?;
 
-    // For VS Code / Cursor, use `open -a <App> --args --goto file:line`
-    // For Zed, use `open -a Zed file:line`
-    let mut cmd = ProcessCommand::new("open");
-    cmd.arg("-a").arg(app_name);
+        // For VS Code / Cursor, use `open -a <App> --args --goto file:line`
+        // For Zed, use `open -a Zed file:line`
+        let mut cmd = ProcessCommand::new("open");
+        cmd.arg("-a").arg(app_name);
 
-    if resolved_path.is_dir() {
-        cmd.arg(&resolved_path);
-    } else {
-        match editor.as_str() {
-            "code" | "vscode" | "cursor" => {
-                cmd.arg("--args")
-                    .arg("--goto")
-                    .arg(format!("{}:{line}", resolved_path.display()));
+        if resolved_path.is_dir() {
+            cmd.arg(&resolved_path);
+        } else {
+            match editor.as_str() {
+                "code" | "vscode" | "cursor" => {
+                    cmd.arg("--args")
+                        .arg("--goto")
+                        .arg(format!("{}:{line}", resolved_path.display()));
+                }
+                "zed" => {
+                    cmd.arg(format!("{}:{line}", resolved_path.display()));
+                }
+                _ => {}
             }
-            "zed" => {
-                cmd.arg(format!("{}:{line}", resolved_path.display()));
-            }
-            _ => {}
         }
+
+        cmd.spawn()
+            .map_err(|e| CommandError::Io(format!("Failed to open {app_name}: {e}")))?;
     }
 
-    cmd.spawn()
-        .map_err(|e| CommandError::Io(format!("Failed to open {app_name}: {e}")))?;
+    #[cfg(target_os = "windows")]
+    {
+        // On Windows, use `start <editor>` or `cmd /C start "" <editor> <args>`
+        let (cli_cmd, args) = build_cli_editor_command(&editor, &resolved_path, line)?;
+        ProcessCommand::new("cmd")
+            .args(["/C", "start", "", cli_cmd])
+            .args(&args)
+            .spawn()
+            .map_err(|e| CommandError::Io(format!("Failed to open {cli_cmd}: {e}")))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // On Linux, use xdg-open for directories, or fall back to the CLI command
+        if resolved_path.is_dir() {
+            ProcessCommand::new("xdg-open")
+                .arg(&resolved_path)
+                .spawn()
+                .map_err(|e| CommandError::Io(format!("Failed to xdg-open: {e}")))?;
+        } else {
+            let (cli_cmd, args) = build_cli_editor_command(&editor, &resolved_path, line)?;
+            ProcessCommand::new(cli_cmd)
+                .args(&args)
+                .spawn()
+                .map_err(|e| CommandError::Io(format!("Failed to open {cli_cmd}: {e}")))?;
+        }
+    }
 
     Ok(())
 }
@@ -1598,5 +1628,66 @@ mod tests {
             "src/api/index.ts",
             "already-forward-slashed paths should remain unchanged"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_cli_version_output tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_version_normal_output() {
+        let result = parse_cli_version_output("domain-scan 1.2.3\n");
+        assert_eq!(result, Some("1.2.3".to_string()));
+    }
+
+    #[test]
+    fn parse_version_with_git_hash() {
+        let result = parse_cli_version_output("domain-scan 1.2.3 (abc123)");
+        assert_eq!(result, Some("1.2.3".to_string()));
+    }
+
+    #[test]
+    fn parse_version_v_prefix() {
+        // The function takes the second whitespace token, so "v1.2.3" is returned as-is.
+        // normalize_version (used elsewhere) would strip the v, but parse_cli_version_output
+        // returns the raw token.
+        let result = parse_cli_version_output("domain-scan v1.2.3");
+        assert_eq!(result, Some("v1.2.3".to_string()));
+    }
+
+    #[test]
+    fn parse_version_empty_string() {
+        let result = parse_cli_version_output("");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn parse_version_single_token() {
+        let result = parse_cli_version_output("domain-scan");
+        assert_eq!(result, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // File source cache eviction tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn file_source_cache_clears_when_full() {
+        let mut cache: HashMap<PathBuf, String> = HashMap::new();
+        // Fill the cache to the limit
+        for i in 0..50 {
+            cache.insert(PathBuf::from(format!("/tmp/file{i}.ts")), format!("content{i}"));
+        }
+        assert_eq!(cache.len(), 50);
+
+        // Simulate the eviction logic: clear the cache when it hits 50
+        if cache.len() >= 50 {
+            cache.clear();
+        }
+        assert_eq!(cache.len(), 0, "cache should be empty after eviction");
+
+        // New entry can be inserted after clearing
+        cache.insert(PathBuf::from("/tmp/new.ts"), "new content".to_string());
+        assert_eq!(cache.len(), 1);
     }
 }

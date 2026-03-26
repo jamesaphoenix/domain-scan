@@ -1116,10 +1116,125 @@ describe("snapshot: layout algorithm output", () => {
 void NODE_WIDTH;
 
 // ---------------------------------------------------------------------------
-// Property-based tests — generateSegments & buildCanonicalPositions
+// Property-based tests — normalizeOrphanDomains
 // ---------------------------------------------------------------------------
 
 import fc from "fast-check";
+
+/** Arbitrary domain ID generator (short lowercase strings). */
+const arbDomainId = fc.stringMatching(/^[a-z][a-z0-9-]{0,15}$/);
+
+/** Arbitrary TubeMapSubsystem using makeSub helper. */
+function arbSubsystem(domainIds: string[]) {
+  return fc.record({
+    id: fc.stringMatching(/^[a-z][a-z0-9-]{0,15}$/),
+    domain: fc.constantFrom(...domainIds),
+  }).map(({ id, domain }) => makeSub(id, domain));
+}
+
+/** Build a TubeMapData from generated domains and subsystems. */
+function arbTubeMapData() {
+  return arbDomainId
+    .filter((d) => d.length > 0)
+    .chain((firstDomain) =>
+      fc.array(arbDomainId.filter((d) => d.length > 0), { minLength: 0, maxLength: 5 }).chain(
+        (moreDomains) => {
+          const allDomainIds = [firstDomain, ...moreDomains];
+          const uniqueDomainIds = [...new Set(allDomainIds)];
+          const domains: Record<string, { label: string; color: string }> = {};
+          for (const d of uniqueDomainIds) {
+            domains[d] = { label: d, color: "#000" };
+          }
+
+          // Generate subsystems that may reference known OR unknown domains
+          const knownOrUnknown = fc.oneof(
+            fc.constantFrom(...uniqueDomainIds),
+            arbDomainId,
+            fc.constant(""),
+          );
+
+          return fc.array(
+            fc.record({
+              id: fc.stringMatching(/^[a-z][a-z0-9-]{0,15}$/).filter((s) => s.length > 0),
+              domain: knownOrUnknown,
+            }),
+            { minLength: 1, maxLength: 10 },
+          ).map((subs) => {
+            const data: TubeMapData = {
+              meta: { name: "Test", version: "0", description: "" },
+              domains,
+              subsystems: subs.map(({ id, domain }) => makeSub(id, domain)),
+              connections: [],
+              coverage_percent: 0,
+              unmatched_count: 0,
+            };
+            return data;
+          });
+        },
+      ),
+    );
+}
+
+describe("normalizeOrphanDomains — property-based", () => {
+  it("every subsystem in the output has a domain that exists in the output's domains map", () => {
+    fc.assert(
+      fc.property(arbTubeMapData(), (data) => {
+        const result = normalizeOrphanDomains(data);
+        const knownDomains = new Set(Object.keys(result.domains));
+        for (const sub of result.subsystems) {
+          expect(knownDomains.has(sub.domain)).toBe(true);
+        }
+      }),
+    );
+  });
+
+  it("the total subsystem count is preserved (no subsystems lost)", () => {
+    fc.assert(
+      fc.property(arbTubeMapData(), (data) => {
+        const result = normalizeOrphanDomains(data);
+        expect(result.subsystems.length).toBe(data.subsystems.length);
+      }),
+    );
+  });
+
+  it("subsystems with valid domains are unchanged", () => {
+    fc.assert(
+      fc.property(arbTubeMapData(), (data) => {
+        const result = normalizeOrphanDomains(data);
+        const knownDomains = new Set(Object.keys(data.domains));
+        for (let i = 0; i < data.subsystems.length; i++) {
+          const original = data.subsystems[i]!;
+          const normalized = result.subsystems[i]!;
+          if (original.domain && knownDomains.has(original.domain)) {
+            expect(normalized.domain).toBe(original.domain);
+          }
+        }
+      }),
+    );
+  });
+
+  it("if the input has no orphan domains, the output equals the input (same reference)", () => {
+    fc.assert(
+      fc.property(arbTubeMapData(), (data) => {
+        // Force all subsystems to have known domains
+        const knownDomains = Object.keys(data.domains);
+        if (knownDomains.length === 0) return; // skip degenerate case
+        const cleanData: TubeMapData = {
+          ...data,
+          subsystems: data.subsystems.map((s, i) =>
+            makeSub(s.id, knownDomains[i % knownDomains.length]!),
+          ),
+        };
+        const result = normalizeOrphanDomains(cleanData);
+        expect(result).toBe(cleanData); // same reference — no copy
+      }),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Property-based tests — generateSegments & buildCanonicalPositions
+// ---------------------------------------------------------------------------
 
 describe("generateSegments — property-based", () => {
   it("sum of all segment.steps equals stationCount - 1 for any stationCount >= 2", () => {

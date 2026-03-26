@@ -1976,6 +1976,154 @@ mod tests {
         assert!(validate_manifest_globs(&manifest).is_ok());
     }
 
+    // -----------------------------------------------------------------------
+    // Child subsystem matching: deepest path prefix wins
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_child_subsystem_takes_precedence_over_parent() {
+        let manifest = sample_manifest(); // auth has child auth-jwt
+
+        // Entity in auth/jwt/ should match auth-jwt (child), not auth (parent)
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/auth/jwt/claims.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("JwtClaims", "/project/src/auth/jwt/claims.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1);
+        assert_eq!(
+            result.matched[0].subsystem_id, "auth-jwt",
+            "Entity in auth/jwt/ should match the child subsystem, not the parent"
+        );
+        assert_eq!(result.matched[0].match_strategy, MatchStrategy::FilePath);
+    }
+
+    #[test]
+    fn test_parent_subsystem_matches_when_not_in_child_path() {
+        let manifest = sample_manifest(); // auth has child auth-jwt
+
+        // Entity in auth/ (but not auth/jwt/) should match auth (parent)
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/auth/session.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface("SessionManager", "/project/src/auth/session.ts")];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1);
+        assert_eq!(
+            result.matched[0].subsystem_id, "auth",
+            "Entity in auth/ (not in jwt/) should match the parent subsystem"
+        );
+    }
+
+    #[test]
+    fn test_multiple_entities_distributed_across_parent_and_child() {
+        let manifest = sample_manifest();
+
+        let mut file_parent = IrFile::new(
+            PathBuf::from("/project/src/auth/login.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file_parent.interfaces =
+            vec![make_iface("LoginService", "/project/src/auth/login.ts")];
+
+        let mut file_child = IrFile::new(
+            PathBuf::from("/project/src/auth/jwt/verify.ts"),
+            Language::TypeScript,
+            "hash2".to_string(),
+            BuildStatus::Built,
+        );
+        file_child.interfaces =
+            vec![make_iface("TokenVerifier", "/project/src/auth/jwt/verify.ts")];
+
+        let mut file_unmatched = IrFile::new(
+            PathBuf::from("/project/src/unknown/thing.ts"),
+            Language::TypeScript,
+            "hash3".to_string(),
+            BuildStatus::Built,
+        );
+        file_unmatched.interfaces =
+            vec![make_iface("UnknownThing", "/project/src/unknown/thing.ts")];
+
+        let index = crate::index::build_index(
+            PathBuf::from("/project"),
+            vec![file_parent, file_child, file_unmatched],
+            0,
+            0,
+            0,
+        );
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 2);
+        assert_eq!(result.unmatched.len(), 1);
+
+        let parent_match = result.matched.iter().find(|m| m.entity.name == "LoginService");
+        let child_match = result.matched.iter().find(|m| m.entity.name == "TokenVerifier");
+
+        assert_eq!(
+            parent_match.map(|m| m.subsystem_id.as_str()),
+            Some("auth")
+        );
+        assert_eq!(
+            child_match.map(|m| m.subsystem_id.as_str()),
+            Some("auth-jwt")
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Glob pattern with relative paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_glob_relative_path_resolved_against_scan_root() {
+        let json = r#"{
+            "subsystems": [{
+                "id": "services",
+                "name": "Services",
+                "domain": "core",
+                "status": "built",
+                "filePath": "src/services/**",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [],
+                "dependencies": []
+            }]
+        }"#;
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+
+        let mut file = IrFile::new(
+            PathBuf::from("/project/src/services/auth/handler.ts"),
+            Language::TypeScript,
+            "hash1".to_string(),
+            BuildStatus::Built,
+        );
+        file.interfaces = vec![make_iface(
+            "AuthHandler",
+            "/project/src/services/auth/handler.ts",
+        )];
+
+        let index = crate::index::build_index(PathBuf::from("/project"), vec![file], 0, 0, 0);
+        let result = match_entities(&index, &manifest);
+
+        assert_eq!(result.matched.len(), 1, "Relative glob should match when resolved against scan root");
+        assert_eq!(result.matched[0].subsystem_id, "services");
+    }
+
     #[test]
     fn test_validate_manifest_globs_invalid() {
         let json = r#"{
