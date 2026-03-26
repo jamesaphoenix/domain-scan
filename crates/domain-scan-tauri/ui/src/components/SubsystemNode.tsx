@@ -183,7 +183,15 @@ function SubsystemNodeComponent({ data }: NodeProps) {
             </span>
           </div>
 
-          <h3 className="text-[14px] font-bold text-slate-50 leading-tight mb-0.5 tracking-[-0.01em]">
+          <h3
+            className="text-[14px] font-bold text-slate-50 leading-tight mb-0.5 tracking-[-0.01em]
+                       cursor-copy nodrag nopan"
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(d.label);
+            }}
+            title={`${d.label} (click to copy)`}
+          >
             {d.label}
           </h3>
 

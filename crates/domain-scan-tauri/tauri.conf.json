@@ -9,7 +9,7 @@
   },
   "app": {
     "security": {
-      "csp": "default-src 'self' tauri: asset: ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset:; connect-src ipc: http://ipc.localhost tauri:; font-src 'self' data:;"
+      "csp": "default-src 'self' tauri: asset: ipc: http://ipc.localhost; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset:; connect-src ipc: http://ipc.localhost tauri: https://cdn.jsdelivr.net; font-src 'self' data:;"
     },
     "windows": [
       {
@@ -32,7 +32,8 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.png",
-      "icons/icon.icns"
+      "icons/icon.icns",
+      "icons/icon.ico"
     ]
   },
   "plugins": {}

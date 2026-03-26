@@ -572,7 +572,13 @@ function App() {
           </div>
         </div>
       ) : (
-        <TubeMapView onSelectedPathContextChange={setEntityPathScope} />
+        <TubeMapView
+          onSelectedPathContextChange={setEntityPathScope}
+          onManifestLoaded={(dir) => {
+            // Sync useScan with the scan that TubeMapView triggered
+            scan.scanDirectory(dir).catch(() => {});
+          }}
+        />
       )}
     </div>
   );

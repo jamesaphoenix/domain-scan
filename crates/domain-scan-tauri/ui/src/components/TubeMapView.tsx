@@ -38,9 +38,10 @@ interface TubeMapViewProps {
   onSelectedPathContextChange?: (
     scope: { subsystemId: string; name: string; prefix: string } | null,
   ) => void;
+  onManifestLoaded?: (manifestDir: string) => void;
 }
 
-function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
+function TubeMapInner({ onSelectedPathContextChange, onManifestLoaded }: TubeMapViewProps) {
   const state = useTubeMapState();
   const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,6 +81,34 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
       cancelled = true;
     };
   }, []);
+
+  // When manifest loads, auto-scan its parent directory so Entities/Types tab has data
+  useEffect(() => {
+    if (!state.manifestPath || scanLoaded) return;
+    const dir = state.manifestPath.replace(/\/[^/]+$/, "");
+    if (!dir) return;
+    let cancelled = false;
+    setScanningDirectory(true);
+    invoke("scan_directory", { root: dir })
+      .then(() => {
+        if (!cancelled) {
+          setScanLoaded(true);
+          // Re-match now that scan data exists
+          invoke("match_manifest")
+            .then(() => invoke<TubeMapData>("get_tube_map_data"))
+            .then((data) => {
+              if (!cancelled) state.setTubeMapDataDirectly(data);
+            })
+            .catch(() => {});
+          if (onManifestLoaded) onManifestLoaded(dir);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setScanningDirectory(false);
+      });
+    return () => { cancelled = true; };
+  }, [state.manifestPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!onSelectedPathContextChange) return;

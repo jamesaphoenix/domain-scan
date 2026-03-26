@@ -305,7 +305,12 @@ export function SubsystemDrillIn({
                   key={child.id}
                   className="p-3 rounded-lg border border-slate-700/50 bg-slate-800/40"
                 >
-                  <div className="text-sm text-slate-200 font-medium mb-1">
+                  <div
+                    className="text-sm text-slate-200 font-medium mb-1 cursor-copy
+                               hover:text-white transition-colors"
+                    onClick={() => navigator.clipboard.writeText(child.name)}
+                    title={`${child.name} (click to copy)`}
+                  >
                     {child.name}
                   </div>
                   <div className="text-[11px] text-slate-500">
