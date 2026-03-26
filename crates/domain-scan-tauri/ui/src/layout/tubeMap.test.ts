@@ -1114,3 +1114,191 @@ describe("snapshot: layout algorithm output", () => {
 
 // Suppress lint: all imports are used in tests above
 void NODE_WIDTH;
+
+// ---------------------------------------------------------------------------
+// Property-based tests — generateSegments & buildCanonicalPositions
+// ---------------------------------------------------------------------------
+
+import fc from "fast-check";
+
+describe("generateSegments — property-based", () => {
+  it("sum of all segment.steps equals stationCount - 1 for any stationCount >= 2", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 2, max: 500 }), (stationCount) => {
+        const segments = generateSegments(stationCount);
+        const totalSteps = segments.reduce((sum, seg) => sum + seg.steps, 0);
+        expect(totalSteps).toBe(stationCount - 1);
+      }),
+    );
+  });
+
+  it("produces at least one segment for any stationCount >= 2", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 2, max: 500 }), (stationCount) => {
+        const segments = generateSegments(stationCount);
+        expect(segments.length).toBeGreaterThanOrEqual(1);
+      }),
+    );
+  });
+
+  it("returns empty for stationCount = 1", () => {
+    const segments = generateSegments(1);
+    expect(segments).toEqual([]);
+  });
+
+  it("produces only one horizontal segment (no U-bends) for stationCount <= MAX_STATIONS_PER_SEGMENT", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 2, max: MAX_STATIONS_PER_SEGMENT }),
+        (stationCount) => {
+          const segments = generateSegments(stationCount);
+          // Exactly one segment
+          expect(segments).toHaveLength(1);
+          // It should be horizontal (dy === 0)
+          expect(segments[0]!.dy).toBe(0);
+          // It should go right (dx === 1)
+          expect(segments[0]!.dx).toBe(1);
+        },
+      ),
+    );
+  });
+
+  it("produces at least one U-bend segment (dy !== 0) for stationCount > MAX_STATIONS_PER_SEGMENT", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: MAX_STATIONS_PER_SEGMENT + 1, max: 500 }),
+        (stationCount) => {
+          const segments = generateSegments(stationCount);
+          const hasBend = segments.some((seg) => seg.dy !== 0);
+          expect(hasBend).toBe(true);
+        },
+      ),
+    );
+  });
+});
+
+describe("buildCanonicalPositions — property-based", () => {
+  /**
+   * Helper: build a single ComputedLine with N stations at origin (0,0)
+   * using segments from generateSegments.
+   */
+  function makeSingleLine(stationCount: number): ComputedLine[] {
+    const stationIds = Array.from({ length: stationCount }, (_, i) => `s${i}`);
+    return [
+      {
+        domain: "test",
+        color: "#fff",
+        label: "Test",
+        stationIds,
+        origin: { x: 0, y: 0 },
+        segments: generateSegments(stationCount),
+      },
+    ];
+  }
+
+  it("produces exactly stationCount positions for any stationCount >= 1", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 200 }), (stationCount) => {
+        const lines = makeSingleLine(stationCount);
+        const positions = buildCanonicalPositions(lines);
+        expect(positions.size).toBe(stationCount);
+      }),
+    );
+  });
+
+  it("no two stations share the same {x, y} position", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 200 }), (stationCount) => {
+        const lines = makeSingleLine(stationCount);
+        const positions = buildCanonicalPositions(lines);
+        const positionKeys = new Set<string>();
+        for (const [, pos] of positions) {
+          const key = `${pos.x},${pos.y}`;
+          expect(positionKeys.has(key)).toBe(false);
+          positionKeys.add(key);
+        }
+      }),
+    );
+  });
+});
+
+describe("generateSegments & buildCanonicalPositions — boundary tests", () => {
+  function makeSingleLine(stationCount: number): ComputedLine[] {
+    const stationIds = Array.from({ length: stationCount }, (_, i) => `s${i}`);
+    return [
+      {
+        domain: "test",
+        color: "#fff",
+        label: "Test",
+        stationIds,
+        origin: { x: 0, y: 0 },
+        segments: generateSegments(stationCount),
+      },
+    ];
+  }
+
+  it("stationCount = MAX_STATIONS_PER_SEGMENT exactly fills one row", () => {
+    const count = MAX_STATIONS_PER_SEGMENT;
+    const segments = generateSegments(count);
+    // Single horizontal segment
+    expect(segments).toHaveLength(1);
+    expect(segments[0]!.steps).toBe(count - 1);
+    expect(segments[0]!.dx).toBe(1);
+    expect(segments[0]!.dy).toBe(0);
+
+    // All positions should have the same y coordinate (single row)
+    const positions = buildCanonicalPositions(makeSingleLine(count));
+    expect(positions.size).toBe(count);
+    const yValues = new Set([...positions.values()].map((p) => p.y));
+    expect(yValues.size).toBe(1);
+  });
+
+  it("stationCount = MAX_STATIONS_PER_SEGMENT + 1 triggers first U-bend", () => {
+    const count = MAX_STATIONS_PER_SEGMENT + 1;
+    const segments = generateSegments(count);
+    // Should have: horizontal right, bend down, (possibly another horizontal)
+    expect(segments.length).toBeGreaterThanOrEqual(2);
+    // First segment: 9 steps right
+    expect(segments[0]).toEqual({
+      steps: MAX_STATIONS_PER_SEGMENT - 1,
+      dx: 1,
+      dy: 0,
+    });
+    // Second segment: 1 step down (the U-bend turn)
+    expect(segments[1]).toEqual({ steps: 1, dx: 0, dy: 1 });
+
+    // Positions should span 2 y-values (two rows)
+    const positions = buildCanonicalPositions(makeSingleLine(count));
+    expect(positions.size).toBe(count);
+    const yValues = new Set([...positions.values()].map((p) => p.y));
+    expect(yValues.size).toBe(2);
+  });
+
+  it("stationCount = 2 * MAX_STATIONS_PER_SEGMENT + 1 produces two rows plus bend", () => {
+    const count = 2 * MAX_STATIONS_PER_SEGMENT + 1;
+    const segments = generateSegments(count);
+
+    // Should have segments for: right-row, bend, left-row, bend, right-row
+    // Verify total steps add up
+    const totalSteps = segments.reduce((sum, seg) => sum + seg.steps, 0);
+    expect(totalSteps).toBe(count - 1);
+
+    // Should have at least 2 bend segments (dy !== 0)
+    const bends = segments.filter((seg) => seg.dy !== 0);
+    expect(bends.length).toBeGreaterThanOrEqual(2);
+
+    // Positions should span 3 y-values (three rows)
+    const positions = buildCanonicalPositions(makeSingleLine(count));
+    expect(positions.size).toBe(count);
+    const yValues = new Set([...positions.values()].map((p) => p.y));
+    expect(yValues.size).toBe(3);
+
+    // No position overlaps
+    const positionKeys = new Set<string>();
+    for (const [, pos] of positions) {
+      const key = `${pos.x},${pos.y}`;
+      expect(positionKeys.has(key)).toBe(false);
+      positionKeys.add(key);
+    }
+  });
+});

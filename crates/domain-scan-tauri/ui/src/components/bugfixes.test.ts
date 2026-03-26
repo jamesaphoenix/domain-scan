@@ -229,17 +229,17 @@ describe("TubeMapView — auto-scan guard fix", () => {
 
 describe("FilterBar — reset key on new scan", () => {
   it("key changes when parse_duration_ms changes", () => {
-    const stats1 = { parse_duration_ms: 42 };
-    const stats2 = { parse_duration_ms: 99 };
+    const stats1: { parse_duration_ms: number } | null = { parse_duration_ms: 42 };
+    const stats2: { parse_duration_ms: number } | null = { parse_duration_ms: 99 };
 
-    const key1 = stats1.parse_duration_ms ?? 0;
-    const key2 = stats2.parse_duration_ms ?? 0;
+    const key1 = stats1?.parse_duration_ms ?? 0;
+    const key2 = stats2?.parse_duration_ms ?? 0;
 
     expect(key1).not.toBe(key2);
   });
 
   it("key defaults to 0 when stats is null", () => {
-    const stats: { parse_duration_ms: number } | null = null;
+    const stats = null as { parse_duration_ms: number } | null;
 
     const key = stats?.parse_duration_ms ?? 0;
     expect(key).toBe(0);
