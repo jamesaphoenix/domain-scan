@@ -287,13 +287,13 @@ test.describe("Manifest scaffold copy button", () => {
       page.getByRole("button", { name: "Copy prompt" }),
     ).toBeVisible();
 
-    // Load Manifest button should also be present
+    // Open Manifest button should also be present
     await expect(
-      page.getByRole("button", { name: "Load Manifest" }),
+      page.getByRole("button", { name: "Open Manifest" }),
     ).toBeVisible();
   });
 
-  test("tube map shows scan gate when no scan is loaded", async ({
+  test("tube map shows manifest loader even when no scan is loaded", async ({
     page,
   }) => {
     await setupTauriMocks(page, {
@@ -304,15 +304,15 @@ test.describe("Manifest scaffold copy button", () => {
 
     await switchTab(page, "Subsystem Tube Map");
 
-    // The scan gate should show "Open a project first"
+    await expect(page.getByText("Recommended")).toBeVisible({
+      timeout: 5_000,
+    });
     await expect(
-      page.getByText("Open a project first"),
-    ).toBeVisible({ timeout: 5_000 });
-
-    // ManifestLoader content should NOT be visible
+      page.getByRole("button", { name: "Open Directory" }).first(),
+    ).toBeVisible();
     await expect(
-      page.getByText("Recommended"),
-    ).not.toBeVisible();
+      page.getByRole("button", { name: "Open Manifest" }),
+    ).toBeVisible();
   });
 
   test("clicking copy prompt button changes text to 'Copied!'", async ({

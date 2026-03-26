@@ -172,7 +172,7 @@ export function useTubeLayout({
         childOperationCount: childStats?.operations ?? sub.operation_count,
         childTableCount: childStats?.tables ?? sub.table_count,
         childEventCount: childStats?.events ?? sub.event_count,
-        onDrillIn,
+        onDrillIn: () => onDrillIn(sub.id),
         onOpenFile,
         onFocusDependency: () => onFocusDependency(sub.id),
       };

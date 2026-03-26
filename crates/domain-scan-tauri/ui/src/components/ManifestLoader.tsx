@@ -443,14 +443,20 @@ When working in parallel, assign each sub-agent a domain or set of domains:
 
 interface ManifestLoaderProps {
   onLoadManifest: () => void;
+  onOpenDirectory?: () => void;
   loading: boolean;
+  scanLoaded?: boolean | null;
+  openDirectoryLoading?: boolean;
   error: string | null;
   onStartWizard?: () => void;
 }
 
 export function ManifestLoader({
   onLoadManifest,
+  onOpenDirectory,
   loading,
+  scanLoaded = null,
+  openDirectoryLoading = false,
   error,
   onStartWizard,
 }: ManifestLoaderProps) {
@@ -539,6 +545,13 @@ export function ManifestLoader({
           bootstrap and refine a manifest, or load an existing one.
         </p>
 
+        {scanLoaded === false && (
+          <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+            No scan is loaded yet. Open a directory to scan the codebase first,
+            or load an existing manifest directly if you already have one.
+          </p>
+        )}
+
         {/* Release + Platform badge */}
         <div className="flex items-center justify-center gap-2 mb-4">
           <span
@@ -613,17 +626,27 @@ export function ManifestLoader({
           </p>
         </div>
 
-        {/* Divider */}
         <div className="flex items-center gap-3 mb-4">
           <div className="flex-1 border-t border-slate-700/50" />
           <span className="text-xs text-slate-600">
-            already have a manifest?
+            choose your starting point
           </span>
           <div className="flex-1 border-t border-slate-700/50" />
         </div>
 
-        {/* Load existing manifest */}
-        <div className="flex items-center gap-3 justify-center">
+        <div className="flex items-center gap-3 justify-center flex-wrap">
+          {onOpenDirectory && (
+            <button
+              onClick={onOpenDirectory}
+              disabled={openDirectoryLoading}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg
+                         bg-slate-700 hover:bg-slate-600 disabled:bg-slate-700/50
+                         text-white text-sm font-medium
+                         transition-colors duration-150"
+            >
+              {openDirectoryLoading ? "Scanning..." : "Open Directory"}
+            </button>
+          )}
           <button
             onClick={onLoadManifest}
             disabled={loading}
@@ -632,7 +655,7 @@ export function ManifestLoader({
                        text-white text-sm font-medium
                        transition-colors duration-150"
           >
-            {loading ? "Loading..." : "Load Manifest"}
+            {loading ? "Loading..." : "Open Manifest"}
           </button>
         </div>
 

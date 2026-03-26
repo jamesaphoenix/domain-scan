@@ -20,7 +20,7 @@ export interface SubsystemNodeData {
   childTableCount: number;
   childOperationCount: number;
   childEventCount: number;
-  onDrillIn: (nodeId: string) => void;
+  onDrillIn: () => void;
   onOpenFile: (filePath: string) => void;
   onFocusDependency?: () => void;
   [key: string]: unknown;
@@ -128,11 +128,7 @@ function SubsystemNodeComponent({ data }: NodeProps) {
       d.onFocusDependency();
       return;
     }
-    if (d.hasChildren) {
-      d.onDrillIn(d.label);
-    } else {
-      d.onOpenFile(d.filePath);
-    }
+    d.onDrillIn();
   }, [d, isDimmed]);
 
   return (
@@ -415,16 +411,14 @@ function SubsystemNodeComponent({ data }: NodeProps) {
           ) : (
             <div />
           )}
-          {d.hasChildren && (
-            <div
-              className="flex items-center gap-1 text-[11px] font-medium transition-transform duration-150
-                         group-hover:translate-x-0.5"
-              style={{ color: d.domainColor }}
-            >
-              Drill in
-              <ChevronRightIcon color={d.domainColor} />
-            </div>
-          )}
+          <div
+            className="flex items-center gap-1 text-[11px] font-medium transition-transform duration-150
+                       group-hover:translate-x-0.5"
+            style={{ color: d.domainColor }}
+          >
+            {d.hasChildren ? "Drill in" : "View details"}
+            <ChevronRightIcon color={d.domainColor} />
+          </div>
         </div>
 
         <Handle

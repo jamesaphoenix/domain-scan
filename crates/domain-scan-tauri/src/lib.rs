@@ -13,6 +13,7 @@ pub fn run() {
             current_index: Mutex::new(None),
             current_root: Mutex::new(None),
             current_manifest: Mutex::new(None),
+            current_manifest_path: Mutex::new(None),
             current_match_result: Mutex::new(None),
             file_source_cache: Mutex::new(HashMap::new()),
             entity_lookup: Mutex::new(HashMap::new()),

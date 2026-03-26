@@ -87,16 +87,15 @@ export async function waitForScan(page: Page): Promise<void> {
  * path injected via the TAURI_TEST_SCAN_PATH environment variable.
  */
 export async function clickOpenDirectory(page: Page): Promise<void> {
-  await page.getByText("Open Directory").click();
+  await page.getByRole("button", { name: "Open Directory" }).first().click();
 }
 
 /**
- * Click the "Load Manifest" button to trigger the file picker.
+ * Click the "Open Manifest" button to trigger the file picker.
  * In test mode, the manifest path should be injected.
  */
 export async function clickLoadManifest(page: Page): Promise<void> {
-  // The ManifestLoader has a "Load Manifest" button
-  const button = page.getByRole("button", { name: /load manifest/i });
+  const button = page.getByRole("button", { name: /open manifest/i });
   await button.click();
 }
 

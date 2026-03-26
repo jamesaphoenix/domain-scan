@@ -34,81 +34,6 @@ import type { ScanStats, TubeMapData } from "../types";
 const nodeTypes = { subsystem: SubsystemNode };
 const edgeTypes = { dependency: DependencyEdge };
 
-function ScanGate({ children }: { children: React.ReactNode }) {
-  const [scanLoaded, setScanLoaded] = useState<boolean | null>(null); // null = loading
-  const [scanning, setScanning] = useState(false);
-  const { addToast } = useToast();
-
-  useEffect(() => {
-    invoke<ScanStats | null>("get_current_scan")
-      .then((stats) => setScanLoaded(stats !== null))
-      .catch(() => setScanLoaded(false));
-  }, []);
-
-  const handleOpenDirectory = useCallback(async () => {
-    const selected = await openDialog({ directory: true, multiple: false });
-    if (!selected) return;
-    setScanning(true);
-    try {
-      await invoke("scan_directory", { root: selected as string });
-      setScanLoaded(true);
-      addToast("Scan complete", "success");
-    } catch {
-      addToast("Scan failed", "error");
-    } finally {
-      setScanning(false);
-    }
-  }, [addToast]);
-
-  // Still checking
-  if (scanLoaded === null) return null;
-
-  // No scan loaded — show gate
-  if (!scanLoaded) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center max-w-md">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-slate-700/50 flex items-center justify-center">
-            <svg
-              width="32"
-              height="32"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="text-slate-400"
-            >
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-          </div>
-          <h2 className="text-lg font-semibold text-slate-200 mb-2">
-            Open a project first
-          </h2>
-          <p className="text-sm text-slate-400 mb-6 leading-relaxed">
-            Scan a codebase so the agent prompt includes the correct project
-            path. The prompt needs to know where to run commands and write
-            system.json.
-          </p>
-          <button
-            onClick={handleOpenDirectory}
-            disabled={scanning}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg
-                       bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50
-                       text-white text-sm font-medium
-                       transition-colors duration-150"
-          >
-            {scanning ? "Scanning..." : "Open Directory"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return <>{children}</>;
-}
-
 interface TubeMapViewProps {
   onSelectedPathContextChange?: (
     scope: { subsystemId: string; name: string; prefix: string } | null,
@@ -124,6 +49,8 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
   const [zoom, setZoom] = useState(1);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showWizard, setShowWizard] = useState(false);
+  const [scanLoaded, setScanLoaded] = useState<boolean | null>(null);
+  const [scanningDirectory, setScanningDirectory] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const reactFlowInstance = useReactFlow();
@@ -139,6 +66,20 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
   const drilledInSubsystemId = isDrilledIn
     ? state.breadcrumbs[state.breadcrumbs.length - 1].id
     : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<ScanStats | null>("get_current_scan")
+      .then((stats) => {
+        if (!cancelled) setScanLoaded(stats !== null);
+      })
+      .catch(() => {
+        if (!cancelled) setScanLoaded(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!onSelectedPathContextChange) return;
@@ -160,20 +101,33 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
   }, [drilledInSubsystemId, onSelectedPathContextChange, tubeMapData]);
 
   const handleDrillIn = useCallback(
-    (nodeId: string) => {
-      const sub = tubeMapData?.subsystems.find(
-        (s) => s.name === nodeId || s.id === nodeId,
-      );
-      if (sub?.has_children) {
-        state.drillIn(sub.id, sub.name);
-      }
+    (subsystemId: string) => {
+      const sub = tubeMapData?.subsystems.find((s) => s.id === subsystemId);
+      if (!sub) return;
+      state.drillIn(sub.id, sub.name);
     },
     [tubeMapData, state.drillIn],
   );
 
+  const handleOpenDirectory = useCallback(async () => {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (!selected) return;
+    setScanningDirectory(true);
+    try {
+      await invoke("scan_directory", { root: selected as string });
+      setScanLoaded(true);
+      addToast("Scan complete", "success");
+    } catch {
+      addToast("Scan failed", "error");
+    } finally {
+      setScanningDirectory(false);
+    }
+  }, [addToast]);
+
   const handleOpenFile = useCallback(
     async (filePath: string, line?: number) => {
-      const fileName = filePath.split("/").pop() ?? filePath;
+      const fileName =
+        filePath.split("/").filter(Boolean).pop() ?? filePath;
       try {
         await invoke("open_in_editor", {
           editor: "cursor",
@@ -220,6 +174,29 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
     },
     [],
   );
+
+  const traceableSubsystems = useMemo(() => {
+    if (!tubeMapData) return [];
+    return tubeMapData.subsystems.filter((sub) => {
+      if (domainFilter !== "all" && sub.domain !== domainFilter) return false;
+      if (statusFilter !== "all" && sub.status !== statusFilter) return false;
+      return true;
+    });
+  }, [tubeMapData, domainFilter, statusFilter]);
+
+  useEffect(() => {
+    if (!state.focusedSubsystemId) return;
+    const isStillVisible = traceableSubsystems.some(
+      (sub) => sub.id === state.focusedSubsystemId,
+    );
+    if (!isStillVisible) {
+      state.setFocusedSubsystemId(null);
+    }
+  }, [
+    state.focusedSubsystemId,
+    state.setFocusedSubsystemId,
+    traceableSubsystems,
+  ]);
 
   const { nodes: layoutNodes, edges: layoutEdges, tubeLines, stationPositions } = useTubeLayout({
     tubeMapData,
@@ -398,7 +375,10 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
     return (
       <ManifestLoader
         onLoadManifest={state.loadManifest}
+        onOpenDirectory={handleOpenDirectory}
         loading={state.loading}
+        scanLoaded={scanLoaded}
+        openDirectoryLoading={scanningDirectory}
         error={state.error}
         onStartWizard={() => setShowWizard(true)}
       />
@@ -448,7 +428,7 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
             domains={tubeMapData.domains}
-            subsystems={tubeMapData.subsystems}
+            subsystems={traceableSubsystems}
             focusedSubsystemId={state.focusedSubsystemId}
             onFocusedSubsystemChange={state.setFocusedSubsystemId}
             dependencyDirection={state.dependencyDirection}
@@ -575,10 +555,8 @@ function TubeMapInner({ onSelectedPathContextChange }: TubeMapViewProps) {
 
 export function TubeMapView(props: TubeMapViewProps) {
   return (
-    <ScanGate>
-      <ReactFlowProvider>
-        <TubeMapInner {...props} />
-      </ReactFlowProvider>
-    </ScanGate>
+    <ReactFlowProvider>
+      <TubeMapInner {...props} />
+    </ReactFlowProvider>
   );
 }

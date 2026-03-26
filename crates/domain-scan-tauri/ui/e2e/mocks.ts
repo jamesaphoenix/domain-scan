@@ -375,6 +375,8 @@ export interface MockIPCOptions {
   bootstrapError?: string;
   /** Error thrown by save_manifest (if set, rejects). */
   saveManifestError?: string;
+  /** Error thrown by open_in_editor (if set, rejects). */
+  openInEditorError?: string | null;
 }
 
 /**
@@ -397,6 +399,7 @@ export async function setupTauriMocks(
   const bootstrapResult = options.bootstrapResult !== undefined ? options.bootstrapResult : null;
   const bootstrapError = options.bootstrapError ?? null;
   const saveManifestError = options.saveManifestError ?? null;
+  const openInEditorError = options.openInEditorError ?? null;
 
   // Serialize data for injection into browser context
   const serialized = JSON.stringify({
@@ -411,6 +414,7 @@ export async function setupTauriMocks(
     bootstrapResult,
     bootstrapError,
     saveManifestError,
+    openInEditorError,
   });
 
   await page.addInitScript((data: string) => {
@@ -431,6 +435,8 @@ export async function setupTauriMocks(
       bootstrapResult: config.bootstrapResult,
       bootstrapError: config.bootstrapError,
       saveManifestError: config.saveManifestError,
+      openInEditorError: config.openInEditorError,
+      editorOpenCalls: [] as Array<Record<string, unknown>>,
       savedManifests: [] as Array<{ manifest: unknown; path: string }>,
     };
 
@@ -676,7 +682,11 @@ export async function setupTauriMocks(
 
       // Open in editor
       if (cmd === "open_in_editor") {
-        throw new Error("No editor available in test mode");
+        if (w.__MOCK_TUBE_MAP__?.openInEditorError) {
+          throw new Error(w.__MOCK_TUBE_MAP__.openInEditorError);
+        }
+        w.__MOCK_TUBE_MAP__?.editorOpenCalls?.push(args ?? {});
+        return null;
       }
 
       // Default: return null for unknown commands

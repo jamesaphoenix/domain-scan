@@ -128,7 +128,7 @@ test.describe("F.9: Error Recovery", () => {
     if (await reloadButton.isVisible()) {
       await reloadButton.click();
     } else {
-      // If no reload button, click "Load Manifest" from the status bar area
+      // If no reload button, reopen the manifest from the loader
       await clickLoadManifest(page);
     }
 

@@ -27,7 +27,7 @@ const ENTITIES: EntitySummary[] = [
 ];
 
 test.describe("Tube Map scan gate", () => {
-  test("shows 'Open a project first' when no scan is loaded", async ({
+  test("shows both Open Directory and Open Manifest when no scan is loaded", async ({
     page,
   }) => {
     // Set scanStats to null — no scan loaded
@@ -38,13 +38,13 @@ test.describe("Tube Map scan gate", () => {
     await page.goto("/");
     await waitForAppReady(page);
 
-    // App defaults to tube map tab, which should show the scan gate
+    await expect(page.getByText("Recommended")).toBeVisible({ timeout: 5_000 });
     await expect(
-      page.getByText("Open a project first"),
-    ).toBeVisible({ timeout: 5_000 });
-
-    // The ManifestLoader should NOT be visible yet
-    await expect(page.getByText("Recommended")).not.toBeVisible();
+      page.getByRole("button", { name: "Open Directory" }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Open Manifest" }),
+    ).toBeVisible();
   });
 
   test("shows ManifestLoader after scanning a directory", async ({ page }) => {
@@ -63,7 +63,7 @@ test.describe("Tube Map scan gate", () => {
     ).toBeVisible({ timeout: 5_000 });
   });
 
-  test("Open Directory button is present in the scan gate", async ({
+  test("Open Directory button is present on the empty-state loader", async ({
     page,
   }) => {
     await setupTauriMocks(page, {
@@ -73,8 +73,7 @@ test.describe("Tube Map scan gate", () => {
     await page.goto("/");
     await waitForAppReady(page);
 
-    // The scan gate should show the Open Directory button (the large primary one, not the status bar link)
-    const openBtn = page.getByRole("button", { name: "Open Directory" }).nth(1);
+    const openBtn = page.getByRole("button", { name: "Open Directory" }).first();
     await expect(openBtn).toBeVisible({ timeout: 5_000 });
     await expect(openBtn).toBeEnabled();
   });
@@ -170,18 +169,17 @@ test.describe("ManifestLoader layout", () => {
     await waitForAppReady(page);
   });
 
-  test("agent prompt section appears before Load Manifest button", async ({
+  test("agent prompt section appears before Open Manifest button", async ({
     page,
   }) => {
     // "Recommended" label should be visible (appears above the prompt)
     const recommended = page.getByText("Recommended");
     await expect(recommended).toBeVisible({ timeout: 5_000 });
 
-    // "Load Manifest" should also be visible (below the prompt)
-    const loadBtn = page.getByRole("button", { name: "Load Manifest" });
+    const loadBtn = page.getByRole("button", { name: "Open Manifest" });
     await expect(loadBtn).toBeVisible();
 
-    // Check vertical order: Recommended is above Load Manifest
+    // Check vertical order: Recommended is above Open Manifest
     const recBox = await recommended.boundingBox();
     const loadBox = await loadBtn.boundingBox();
     expect(recBox).not.toBeNull();
@@ -197,8 +195,8 @@ test.describe("ManifestLoader layout", () => {
     const wizardLink = page.getByText("or create manually with the wizard");
     await expect(wizardLink).toBeVisible({ timeout: 5_000 });
 
-    // Should be below Load Manifest
-    const loadBtn = page.getByRole("button", { name: "Load Manifest" });
+    // Should be below Open Manifest
+    const loadBtn = page.getByRole("button", { name: "Open Manifest" });
     const loadBox = await loadBtn.boundingBox();
     const wizardBox = await wizardLink.boundingBox();
     if (loadBox && wizardBox) {

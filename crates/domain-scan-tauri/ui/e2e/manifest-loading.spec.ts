@@ -156,18 +156,17 @@ test.describe("F.4: Manifest Loading & Matching", () => {
     // Tube map should stay on loader view (no React Flow canvas)
     await expect(page.locator(".react-flow")).not.toBeVisible();
 
-    // "Load Manifest" button should still be available for retry
+    // "Open Manifest" button should still be available for retry
     await expect(
-      page.getByRole("button", { name: /load manifest/i }),
+      page.getByRole("button", { name: /open manifest/i }),
     ).toBeVisible();
   });
 
   test("load manifest before scan → matching skipped gracefully, entities show as unmatched", async ({
     page,
   }) => {
-    // No scan performed: scanStats defaults but we don't click "Open Directory"
-    // matchResult = null means match_manifest will throw (no scan loaded)
     await setupTauriMocks(page, {
+      scanStats: null,
       tubeMapData: MOCK_MINIMAL_TUBE_MAP,
       matchResult: null,
     });

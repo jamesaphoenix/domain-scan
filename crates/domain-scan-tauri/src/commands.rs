@@ -25,6 +25,7 @@ pub struct AppState {
     pub current_index: Mutex<Option<ScanIndex>>,
     pub current_root: Mutex<Option<PathBuf>>,
     pub current_manifest: Mutex<Option<SystemManifest>>,
+    pub current_manifest_path: Mutex<Option<PathBuf>>,
     pub current_match_result: Mutex<Option<MatchResult>>,
     /// Cache file contents to avoid repeated disk reads (path → content).
     pub file_source_cache: Mutex<HashMap<PathBuf, String>>,
@@ -573,40 +574,63 @@ pub fn get_build_status(
 /// Open a file in the user's editor.
 /// Uses macOS `open -a` to launch by app name, avoiding PATH issues in bundled apps.
 #[tauri::command]
-pub fn open_in_editor(editor: String, file: String, line: usize) -> Result<(), CommandError> {
+pub fn open_in_editor(
+    editor: String,
+    file: String,
+    line: usize,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    let scan_root = state
+        .current_root
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?
+        .clone();
+    let manifest_path = state
+        .current_manifest_path
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?
+        .clone();
+    let resolved_path = resolve_editor_path(
+        &file,
+        scan_root.as_deref(),
+        manifest_path.as_deref(),
+    );
+
+    if !resolved_path.exists() {
+        return Err(CommandError::Io(format!(
+            "Path does not exist: {}",
+            resolved_path.display()
+        )));
+    }
+
     // First, try the CLI command directly (works when CLI tools are in PATH)
-    let cli_result = try_open_via_cli(&editor, &file, line);
+    let cli_result = try_open_via_cli(&editor, &resolved_path, line);
     if cli_result.is_ok() {
         return Ok(());
     }
 
     // Fallback: use macOS `open -a` with the app bundle name
-    let app_name = match editor.as_str() {
-        "cursor" => "Cursor",
-        "code" | "vscode" => "Visual Studio Code",
-        "zed" => "Zed",
-        _ => {
-            return Err(CommandError::Io(format!(
-                "Unsupported editor: {editor}. Use cursor, code, or zed."
-            )));
-        }
-    };
+    let app_name = app_name_for_editor(&editor)?;
 
     // For VS Code / Cursor, use `open -a <App> --args --goto file:line`
     // For Zed, use `open -a Zed file:line`
-    let mut cmd = std::process::Command::new("open");
+    let mut cmd = ProcessCommand::new("open");
     cmd.arg("-a").arg(app_name);
 
-    match editor.as_str() {
-        "code" | "vscode" | "cursor" => {
-            cmd.arg("--args")
-                .arg("--goto")
-                .arg(format!("{file}:{line}"));
+    if resolved_path.is_dir() {
+        cmd.arg(&resolved_path);
+    } else {
+        match editor.as_str() {
+            "code" | "vscode" | "cursor" => {
+                cmd.arg("--args")
+                    .arg("--goto")
+                    .arg(format!("{}:{line}", resolved_path.display()));
+            }
+            "zed" => {
+                cmd.arg(format!("{}:{line}", resolved_path.display()));
+            }
+            _ => {}
         }
-        "zed" => {
-            cmd.arg(format!("{file}:{line}"));
-        }
-        _ => {}
     }
 
     cmd.spawn()
@@ -615,18 +639,83 @@ pub fn open_in_editor(editor: String, file: String, line: usize) -> Result<(), C
     Ok(())
 }
 
-fn try_open_via_cli(editor: &str, file: &str, line: usize) -> Result<(), CommandError> {
-    let (cmd, args): (&str, Vec<String>) = match editor {
-        "code" | "vscode" => ("code", vec!["--goto".to_string(), format!("{file}:{line}")]),
-        "cursor" => (
-            "cursor",
-            vec!["--goto".to_string(), format!("{file}:{line}")],
-        ),
-        "zed" => ("zed", vec![format!("{file}:{line}")]),
-        _ => return Err(CommandError::Io("unsupported".to_string())),
-    };
+fn app_name_for_editor(editor: &str) -> Result<&'static str, CommandError> {
+    match editor {
+        "cursor" => Ok("Cursor"),
+        "code" | "vscode" => Ok("Visual Studio Code"),
+        "zed" => Ok("Zed"),
+        _ => Err(CommandError::Io(format!(
+            "Unsupported editor: {editor}. Use cursor, code, or zed."
+        ))),
+    }
+}
 
-    std::process::Command::new(cmd)
+fn resolve_editor_path(
+    target: &str,
+    scan_root: Option<&Path>,
+    manifest_path: Option<&Path>,
+) -> PathBuf {
+    let candidate = PathBuf::from(target);
+    if candidate.is_absolute() {
+        return candidate;
+    }
+
+    let manifest_dir = manifest_path.and_then(Path::parent);
+
+    let joined_scan = scan_root.map(|root| root.join(&candidate));
+    let joined_manifest = manifest_dir.map(|root| root.join(&candidate));
+
+    if let Some(path) = joined_scan.as_ref() {
+        if path.exists() {
+            return path.clone();
+        }
+    }
+    if let Some(path) = joined_manifest.as_ref() {
+        if path.exists() {
+            return path.clone();
+        }
+    }
+
+    joined_scan
+        .or(joined_manifest)
+        .unwrap_or(candidate)
+}
+
+fn build_cli_editor_command(
+    editor: &str,
+    path: &Path,
+    line: usize,
+) -> Result<(&'static str, Vec<String>), CommandError> {
+    let path_text = path.display().to_string();
+    let is_dir = path.is_dir();
+
+    match editor {
+        "code" | "vscode" => Ok(if is_dir {
+            ("code", vec![path_text])
+        } else {
+            ("code", vec!["--goto".to_string(), format!("{path_text}:{line}")])
+        }),
+        "cursor" => Ok(if is_dir {
+            ("cursor", vec![path_text])
+        } else {
+            (
+                "cursor",
+                vec!["--goto".to_string(), format!("{path_text}:{line}")],
+            )
+        }),
+        "zed" => Ok(if is_dir {
+            ("zed", vec![path_text])
+        } else {
+            ("zed", vec![format!("{path_text}:{line}")])
+        }),
+        _ => Err(CommandError::Io("unsupported".to_string())),
+    }
+}
+
+fn try_open_via_cli(editor: &str, path: &Path, line: usize) -> Result<(), CommandError> {
+    let (cmd, args) = build_cli_editor_command(editor, path, line)?;
+
+    ProcessCommand::new(cmd)
         .args(&args)
         .spawn()
         .map_err(|e| CommandError::Io(e.to_string()))?;
@@ -672,6 +761,12 @@ pub fn load_manifest(
         .lock()
         .map_err(|e| CommandError::Scan(e.to_string()))?;
     *manifest_lock = Some(sys_manifest.clone());
+
+    let mut manifest_path_lock = state
+        .current_manifest_path
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    *manifest_path_lock = Some(manifest_path.to_path_buf());
 
     Ok(sys_manifest)
 }
@@ -845,6 +940,12 @@ pub fn save_manifest(
         .lock()
         .map_err(|e| CommandError::Scan(e.to_string()))?;
     *manifest_lock = Some(manifest_json);
+
+    let mut manifest_path_lock = state
+        .current_manifest_path
+        .lock()
+        .map_err(|e| CommandError::Scan(e.to_string()))?;
+    *manifest_path_lock = Some(PathBuf::from(path));
 
     Ok(())
 }
@@ -1242,4 +1343,81 @@ async fn fetch_latest_release() -> Option<(String, Vec<serde_json::Value>)> {
     let tag = body.get("tag_name")?.as_str()?.to_string();
     let assets = body.get("assets")?.as_array()?.clone();
     Some((tag, assets))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn make_temp_dir(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("domain-scan-{label}-{nonce}"));
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        dir
+    }
+
+    #[test]
+    fn resolve_editor_path_prefers_scan_root() {
+        let root = make_temp_dir("scan-root");
+        let target = root.join("packages/services");
+        fs::create_dir_all(&target).expect("target dir should exist");
+
+        let resolved = resolve_editor_path("packages/services", Some(&root), None);
+        assert_eq!(resolved, target);
+
+        fs::remove_dir_all(root).expect("temp dir should be removed");
+    }
+
+    #[test]
+    fn resolve_editor_path_falls_back_to_manifest_directory() {
+        let manifest_dir = make_temp_dir("manifest-root");
+        let manifest_path = manifest_dir.join("system.json");
+        let target = manifest_dir.join("apps/api");
+        fs::create_dir_all(&target).expect("target dir should exist");
+        fs::write(&manifest_path, "{}").expect("manifest should be written");
+
+        let resolved =
+            resolve_editor_path("apps/api", None, Some(manifest_path.as_path()));
+        assert_eq!(resolved, target);
+
+        fs::remove_dir_all(manifest_dir).expect("temp dir should be removed");
+    }
+
+    #[test]
+    fn build_cli_editor_command_uses_plain_directory_open() {
+        let dir = make_temp_dir("editor-dir");
+        let (cmd, args) =
+            build_cli_editor_command("cursor", &dir, 1).expect("command should build");
+        assert_eq!(cmd, "cursor");
+        assert_eq!(args, vec![dir.display().to_string()]);
+
+        fs::remove_dir_all(dir).expect("temp dir should be removed");
+    }
+
+    #[test]
+    fn build_cli_editor_command_uses_goto_for_files() {
+        let dir = make_temp_dir("editor-file");
+        let file = dir.join("src/main.ts");
+        fs::create_dir_all(file.parent().expect("file should have parent"))
+            .expect("parent dir should exist");
+        fs::write(&file, "export const x = 1;\n").expect("file should be written");
+
+        let (cmd, args) =
+            build_cli_editor_command("code", &file, 12).expect("command should build");
+        assert_eq!(cmd, "code");
+        assert_eq!(
+            args,
+            vec![
+                "--goto".to_string(),
+                format!("{}:12", file.display()),
+            ]
+        );
+
+        fs::remove_dir_all(dir).expect("temp dir should be removed");
+    }
 }

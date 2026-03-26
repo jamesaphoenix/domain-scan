@@ -120,14 +120,11 @@ test.describe("F.5: Tube Map Interactions", () => {
     expect(newTransform).not.toBe(initialTransform);
   });
 
-  test("click station node → details panel shows subsystem info", async ({
+  test("click leaf station node → drill-in view opens for that subsystem", async ({
     page,
   }) => {
-    // Use minimal manifest where subsystems do NOT have children (has_children: false)
-    // Clicking a node without children calls onOpenFile, but the node body is still clickable
-    // For testing "click shows info", use octospark where nodes have children → drill-in shows detail
     await setupTauriMocks(page, {
-      tubeMapData: MOCK_OCTOSPARK_TUBE_MAP,
+      tubeMapData: MOCK_MINIMAL_TUBE_MAP,
     });
 
     await page.goto("/");
@@ -135,15 +132,18 @@ test.describe("F.5: Tube Map Interactions", () => {
     await switchTab(page, "Subsystem Tube Map");
     await loadManifestAndWait(page);
 
-    // Click a station node heading to trigger click on the node body
-    // Auth & Identity has has_children: true, so clicking drills in and shows detail
-    const authNode = page.getByRole("heading", { name: "Auth & Identity" });
+    const authNode = page.getByRole("heading", { name: "Authentication" });
     await expect(authNode).toBeVisible();
     await authNode.click();
 
-    // Drill-in view should show subsystem info (SubsystemDrillIn renders detail)
-    // The mock get_subsystem_detail returns { name: "Mock Subsystem", domain: "core", status: "built" }
     await expect(page.getByText("Mock Subsystem")).toBeVisible({ timeout: 5_000 });
+    const breadcrumbNav = page.locator("nav");
+    await expect(breadcrumbNav.getByText("Minimal Test App")).toBeVisible();
+    await expect(
+      breadcrumbNav.locator("span.text-slate-200.font-medium", {
+        hasText: "Authentication",
+      }),
+    ).toBeVisible();
   });
 
   test("click station with children → drill-in view opens, breadcrumbs update", async ({
@@ -300,6 +300,64 @@ test.describe("F.5: Tube Map Interactions", () => {
     await expect(
       page.getByRole("heading", { name: "Workflows" }),
     ).not.toBeVisible({ timeout: 3_000 });
+  });
+
+  test("domain filter narrows dependency trace options", async ({ page }) => {
+    await setupTauriMocks(page, {
+      tubeMapData: MOCK_OCTOSPARK_TUBE_MAP,
+    });
+
+    await page.goto("/");
+    await waitForAppReady(page);
+    await switchTab(page, "Subsystem Tube Map");
+    await loadManifestAndWait(page);
+
+    const domainSelect = page.locator("select").nth(0);
+    const traceSelect = page.locator("select").nth(2);
+
+    await domainSelect.selectOption("platform-core");
+    await page.waitForTimeout(300);
+
+    const options = await traceSelect.locator("option").allTextContents();
+    expect(options).toContain("Dep. Trace: Off");
+    expect(options).toContain("Auth & Identity");
+    expect(options).toContain("Billing & Subscriptions");
+    expect(options).not.toContain("AI Generation");
+    expect(options).not.toContain("Social Media Publisher");
+  });
+
+  test("click Open in Editor on a subsystem → editor command is invoked without drilling in", async ({
+    page,
+  }) => {
+    await setupTauriMocks(page, {
+      tubeMapData: MOCK_MINIMAL_TUBE_MAP,
+    });
+
+    await page.goto("/");
+    await waitForAppReady(page);
+    await switchTab(page, "Subsystem Tube Map");
+    await loadManifestAndWait(page);
+
+    const authNode = page
+      .locator(".react-flow__node")
+      .filter({ has: page.getByRole("heading", { name: "Authentication" }) })
+      .first();
+    await expect(authNode).toBeVisible();
+
+    await authNode.getByRole("button", { name: "Open in Editor" }).click();
+
+    await expect(page.getByText(/Opened auth in Cursor/i)).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByText("Mock Subsystem")).not.toBeVisible();
+
+    const editorCalls = await page.evaluate(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return ((window as any).__MOCK_TUBE_MAP__?.editorOpenCalls ?? []) as Array<Record<string, unknown>>;
+    });
+    expect(editorCalls).toHaveLength(1);
+    expect(editorCalls[0]?.editor).toBe("cursor");
+    expect(editorCalls[0]?.file).toBe("src/auth/");
   });
 
   test("clear search → all stations reappear at canonical positions", async ({
