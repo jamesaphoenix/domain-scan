@@ -212,7 +212,12 @@ pub async fn scan_directory(
         return Err(CommandError::Scan(format!("Not a directory: {root}")));
     }
 
-    let scan_index = run_scan_pipeline(root_path.clone())?;
+    // Run the CPU-intensive scan pipeline on a blocking thread to avoid
+    // starving the tokio async executor.
+    let scan_root = root_path.clone();
+    let scan_index = tauri::async_runtime::spawn_blocking(move || run_scan_pipeline(scan_root))
+        .await
+        .map_err(|e| CommandError::Scan(e.to_string()))??;
     let stats = scan_index.stats.clone();
 
     // Build entity lookup index for O(1) detail retrieval
@@ -365,22 +370,60 @@ pub fn get_entity_detail(
         .map_err(|e| CommandError::Scan(e.to_string()))?;
 
     if let Some(entry) = lookup_lock.get(&(name.clone(), file_path)) {
-        let ir_file = &idx.files[entry.file_index];
+        let ir_file = idx
+            .files
+            .get(entry.file_index)
+            .ok_or_else(|| CommandError::EntityNotFound(name.clone()))?;
+        let not_found = || CommandError::EntityNotFound(format!("{name} in {file}"));
         return match entry.kind {
             EntityKind::Interface => Ok(Entity::Interface(
-                ir_file.interfaces[entry.kind_index].clone(),
+                ir_file
+                    .interfaces
+                    .get(entry.kind_index)
+                    .ok_or_else(not_found)?
+                    .clone(),
             )),
-            EntityKind::Service => Ok(Entity::Service(ir_file.services[entry.kind_index].clone())),
-            EntityKind::Class => Ok(Entity::Class(ir_file.classes[entry.kind_index].clone())),
+            EntityKind::Service => Ok(Entity::Service(
+                ir_file
+                    .services
+                    .get(entry.kind_index)
+                    .ok_or_else(not_found)?
+                    .clone(),
+            )),
+            EntityKind::Class => Ok(Entity::Class(
+                ir_file
+                    .classes
+                    .get(entry.kind_index)
+                    .ok_or_else(not_found)?
+                    .clone(),
+            )),
             EntityKind::Function => Ok(Entity::Function(
-                ir_file.functions[entry.kind_index].clone(),
+                ir_file
+                    .functions
+                    .get(entry.kind_index)
+                    .ok_or_else(not_found)?
+                    .clone(),
             )),
-            EntityKind::Schema => Ok(Entity::Schema(ir_file.schemas[entry.kind_index].clone())),
+            EntityKind::Schema => Ok(Entity::Schema(
+                ir_file
+                    .schemas
+                    .get(entry.kind_index)
+                    .ok_or_else(not_found)?
+                    .clone(),
+            )),
             EntityKind::Impl => Ok(Entity::Impl(
-                ir_file.implementations[entry.kind_index].clone(),
+                ir_file
+                    .implementations
+                    .get(entry.kind_index)
+                    .ok_or_else(not_found)?
+                    .clone(),
             )),
             EntityKind::TypeAlias => Ok(Entity::TypeAlias(
-                ir_file.type_aliases[entry.kind_index].clone(),
+                ir_file
+                    .type_aliases
+                    .get(entry.kind_index)
+                    .ok_or_else(not_found)?
+                    .clone(),
             )),
             _ => Err(CommandError::EntityNotFound(format!("{name} in {file}"))),
         };
@@ -726,10 +769,15 @@ fn try_open_via_cli(editor: &str, path: &Path, line: usize) -> Result<(), Comman
 /// Check which editors are available on this system.
 #[tauri::command]
 pub fn check_editors_available() -> HashMap<String, bool> {
+    #[cfg(target_os = "windows")]
+    let lookup_cmd = "where";
+    #[cfg(not(target_os = "windows"))]
+    let lookup_cmd = "which";
+
     let editors = ["code", "cursor", "zed"];
     let mut result = HashMap::new();
     for editor in &editors {
-        let available = std::process::Command::new("which")
+        let available = std::process::Command::new(lookup_cmd)
             .arg(editor)
             .output()
             .map(|o| o.status.success())
@@ -923,12 +971,16 @@ pub fn bootstrap_manifest(
 }
 
 /// Save a manifest to disk. Accepts the full SystemManifest JSON and a file path.
+/// Normalizes all `filePath` fields to use forward slashes for cross-platform
+/// compatibility (Windows paths with backslashes break consumers on Unix).
 #[tauri::command]
 pub fn save_manifest(
-    manifest_json: SystemManifest,
+    mut manifest_json: SystemManifest,
     path: String,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
+    normalize_manifest_paths(&mut manifest_json.subsystems);
+
     let json = manifest_builder::serialize_manifest(&manifest_json)
         .map_err(|e| CommandError::Export(e.to_string()))?;
 
@@ -1023,6 +1075,16 @@ fn collect_tube_map_subsystems(
         });
 
         collect_tube_map_subsystems(&sub.children, match_result, out);
+    }
+}
+
+/// Normalize `file_path` fields on subsystems (and their children) to always
+/// use forward slashes so that serialised manifests are portable across OSes.
+fn normalize_manifest_paths(subsystems: &mut [ManifestSubsystem]) {
+    for sub in subsystems.iter_mut() {
+        let normalized = sub.file_path.display().to_string().replace('\\', "/");
+        sub.file_path = PathBuf::from(normalized);
+        normalize_manifest_paths(&mut sub.children);
     }
 }
 
@@ -1419,5 +1481,122 @@ mod tests {
         );
 
         fs::remove_dir_all(dir).expect("temp dir should be removed");
+    }
+
+    // -----------------------------------------------------------------------
+    // Fix 1 tests: bounds-checked entity detail lookup
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn entity_lookup_out_of_bounds_file_index_returns_none() {
+        // Build an empty ScanIndex via the public API
+        let idx = index::build_index(PathBuf::from("/tmp"), Vec::new(), 0, 0, 0);
+
+        // Create a lookup entry that points past the end of idx.files
+        let entry = EntityLookupEntry {
+            file_index: 999,
+            kind: EntityKind::Interface,
+            kind_index: 0,
+        };
+
+        let ir_file_result = idx.files.get(entry.file_index);
+        assert!(
+            ir_file_result.is_none(),
+            "out-of-bounds file_index should return None from .get()"
+        );
+    }
+
+    #[test]
+    fn entity_lookup_out_of_bounds_kind_index_returns_none() {
+        use domain_scan_core::ir::{BuildStatus, IrFile, Language};
+
+        let ir_file = IrFile::new(
+            PathBuf::from("/tmp/test.ts"),
+            Language::TypeScript,
+            "hash".to_string(),
+            BuildStatus::Built,
+        );
+
+        // kind_index 999 is past the end of the empty interfaces vec
+        let result = ir_file.interfaces.get(999);
+        assert!(
+            result.is_none(),
+            "out-of-bounds kind_index should return None from .get()"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Fix 4 tests: normalize_manifest_paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn normalize_manifest_paths_converts_backslashes() {
+        use domain_scan_core::manifest::{ManifestStatus, ManifestSubsystem};
+
+        let mut subsystems = vec![ManifestSubsystem {
+            id: "auth".to_string(),
+            name: "Auth".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::Built,
+            file_path: PathBuf::from("src\\auth\\index.ts"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: vec![ManifestSubsystem {
+                id: "auth-child".to_string(),
+                name: "Auth Child".to_string(),
+                domain: "core".to_string(),
+                status: ManifestStatus::Built,
+                file_path: PathBuf::from("src\\auth\\child\\index.ts"),
+                interfaces: Vec::new(),
+                operations: Vec::new(),
+                tables: Vec::new(),
+                events: Vec::new(),
+                children: Vec::new(),
+                dependencies: Vec::new(),
+            }],
+            dependencies: Vec::new(),
+        }];
+
+        normalize_manifest_paths(&mut subsystems);
+
+        assert_eq!(
+            subsystems[0].file_path.display().to_string(),
+            "src/auth/index.ts",
+            "top-level path should have forward slashes"
+        );
+        assert_eq!(
+            subsystems[0].children[0].file_path.display().to_string(),
+            "src/auth/child/index.ts",
+            "nested child path should have forward slashes"
+        );
+    }
+
+    #[test]
+    fn normalize_manifest_paths_preserves_forward_slashes() {
+        use domain_scan_core::manifest::{ManifestStatus, ManifestSubsystem};
+
+        let mut subsystems = vec![ManifestSubsystem {
+            id: "api".to_string(),
+            name: "API".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::Built,
+            file_path: PathBuf::from("src/api/index.ts"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        normalize_manifest_paths(&mut subsystems);
+
+        assert_eq!(
+            subsystems[0].file_path.display().to_string(),
+            "src/api/index.ts",
+            "already-forward-slashed paths should remain unchanged"
+        );
     }
 }
