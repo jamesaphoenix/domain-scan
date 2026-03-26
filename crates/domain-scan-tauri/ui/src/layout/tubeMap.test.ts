@@ -1124,14 +1124,6 @@ import fc from "fast-check";
 /** Arbitrary domain ID generator (short lowercase strings). */
 const arbDomainId = fc.stringMatching(/^[a-z][a-z0-9-]{0,15}$/);
 
-/** Arbitrary TubeMapSubsystem using makeSub helper. */
-function arbSubsystem(domainIds: string[]) {
-  return fc.record({
-    id: fc.stringMatching(/^[a-z][a-z0-9-]{0,15}$/),
-    domain: fc.constantFrom(...domainIds),
-  }).map(({ id, domain }) => makeSub(id, domain));
-}
-
 /** Build a TubeMapData from generated domains and subsystems. */
 function arbTubeMapData() {
   return arbDomainId
