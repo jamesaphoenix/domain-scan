@@ -67,7 +67,7 @@ function App() {
       fileSourceCache.current.set(filePath, src);
       return src;
     },
-    [scan],
+    [scan.getFileSource],
   );
 
   // Load entity detail + source when selection changes.
@@ -121,13 +121,13 @@ function App() {
           setOpenTabs((prev) => {
             const next = [...prev, newTab];
             if (next.length > MAX_OPEN_TABS) {
-              return next.slice(1);
+              const trimmed = next.slice(1);
+              setActiveTabIdx(trimmed.length - 1);
+              return trimmed;
             }
+            setActiveTabIdx(next.length - 1);
             return next;
           });
-          setActiveTabIdx(
-            Math.min(openTabs.length, MAX_OPEN_TABS - 1),
-          );
         }
 
         // Set source + highlight (already available — no second await)
@@ -477,6 +477,7 @@ function App() {
               />
             </div>
             <FilterBar
+              key={scan.stats?.parse_duration_ms ?? 0}
               onSearch={handleSearch}
               onFilterKind={(kinds) => applyFilters({ kind: kinds })}
               onFilterLanguage={(langs) => applyFilters({ languages: langs })}

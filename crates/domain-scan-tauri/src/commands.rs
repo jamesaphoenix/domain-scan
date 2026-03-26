@@ -514,10 +514,10 @@ pub fn export_entities(
                 use std::fmt::Write;
                 let _ = writeln!(
                     csv,
-                    "{},{:?},{},{},{:?},{:?},{:?}",
-                    s.name,
+                    "\"{}\",{:?},\"{}\",{},{:?},{:?},{:?}",
+                    s.name.replace('"', "\"\""),
                     s.kind,
-                    s.file.display(),
+                    s.file.display().to_string().replace('"', "\"\""),
                     s.line,
                     s.language,
                     s.build_status,

@@ -84,7 +84,7 @@ function TubeMapInner({ onSelectedPathContextChange, onManifestLoaded }: TubeMap
 
   // When manifest loads, auto-scan its parent directory so Entities/Types tab has data
   useEffect(() => {
-    if (!state.manifestPath || scanLoaded) return;
+    if (!state.manifestPath) return;
     const dir = state.manifestPath.replace(/\/[^/]+$/, "");
     if (!dir) return;
     let cancelled = false;

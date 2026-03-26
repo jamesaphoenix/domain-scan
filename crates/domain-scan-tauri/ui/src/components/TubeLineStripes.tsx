@@ -117,9 +117,9 @@ function TubeLineStripesComponent({ lines, positions }: TubeLineStripesProps) {
       }}
     >
       <g transform={`translate(${x}, ${y}) scale(${zoom})`}>
-        {paths.map((p) => (
+        {paths.map((p, i) => (
           <path
-            key={p.domain}
+            key={`${p.domain}-${i}`}
             d={p.d}
             fill="none"
             stroke={p.color}

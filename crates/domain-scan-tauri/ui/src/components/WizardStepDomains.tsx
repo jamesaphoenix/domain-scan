@@ -30,7 +30,7 @@ export function WizardStepDomains({
 
   const handleAddDomain = useCallback(() => {
     const idx = domainEntries.length;
-    const id = `domain-${idx + 1}`;
+    const id = `domain-${Date.now()}`;
     onDomainsChange({
       ...domains,
       [id]: {
