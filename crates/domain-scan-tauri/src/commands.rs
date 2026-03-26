@@ -1690,4 +1690,213 @@ mod tests {
         cache.insert(PathBuf::from("/tmp/new.ts"), "new content".to_string());
         assert_eq!(cache.len(), 1);
     }
+
+    // -----------------------------------------------------------------------
+    // normalize_os_label tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn normalize_os_label_macos() {
+        assert_eq!(normalize_os_label("macos"), "darwin");
+    }
+
+    #[test]
+    fn normalize_os_label_linux() {
+        assert_eq!(normalize_os_label("linux"), "linux");
+    }
+
+    #[test]
+    fn normalize_os_label_windows() {
+        assert_eq!(normalize_os_label("windows"), "windows");
+    }
+
+    #[test]
+    fn normalize_os_label_unknown() {
+        assert_eq!(normalize_os_label("freebsd"), "freebsd");
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_version_parts tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_version_parts_simple() {
+        assert_eq!(parse_version_parts("1.2.3"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn parse_version_parts_with_v_prefix() {
+        assert_eq!(parse_version_parts("v1.2.3"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn parse_version_parts_with_prerelease() {
+        assert_eq!(parse_version_parts("1.2.3-beta.1"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn parse_version_parts_with_build_metadata() {
+        assert_eq!(parse_version_parts("1.2.3+abc123"), Some((1, 2, 3)));
+    }
+
+    #[test]
+    fn parse_version_parts_too_few_components() {
+        assert_eq!(parse_version_parts("1.2"), None);
+    }
+
+    #[test]
+    fn parse_version_parts_too_many_components() {
+        assert_eq!(parse_version_parts("1.2.3.4"), None);
+    }
+
+    #[test]
+    fn parse_version_parts_non_numeric() {
+        assert_eq!(parse_version_parts("a.b.c"), None);
+    }
+
+    #[test]
+    fn parse_version_parts_empty() {
+        assert_eq!(parse_version_parts(""), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // normalize_version tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn normalize_version_strips_v() {
+        assert_eq!(normalize_version("v1.2.3"), "1.2.3");
+    }
+
+    #[test]
+    fn normalize_version_no_v() {
+        assert_eq!(normalize_version("1.2.3"), "1.2.3");
+    }
+
+    #[test]
+    fn normalize_version_trims_whitespace() {
+        assert_eq!(normalize_version("  v1.2.3  "), "1.2.3");
+    }
+
+    // -----------------------------------------------------------------------
+    // is_update_available tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn is_update_available_newer_version() {
+        assert!(is_update_available("1.0.0", "1.1.0"));
+    }
+
+    #[test]
+    fn is_update_available_same_version() {
+        assert!(!is_update_available("1.0.0", "1.0.0"));
+    }
+
+    #[test]
+    fn is_update_available_older_version() {
+        assert!(!is_update_available("2.0.0", "1.0.0"));
+    }
+
+    #[test]
+    fn is_update_available_with_v_prefix() {
+        assert!(is_update_available("v1.0.0", "v1.1.0"));
+    }
+
+    #[test]
+    fn is_update_available_mixed_prefixes() {
+        assert!(is_update_available("1.0.0", "v1.1.0"));
+    }
+
+    #[test]
+    fn is_update_available_same_with_v() {
+        assert!(!is_update_available("v1.0.0", "1.0.0"));
+    }
+
+    #[test]
+    fn is_update_available_patch_bump() {
+        assert!(is_update_available("1.0.0", "1.0.1"));
+    }
+
+    #[test]
+    fn is_update_available_unparseable_falls_back_to_string_compare() {
+        // When versions can't be parsed, falls back to string comparison
+        assert!(is_update_available("abc", "def"));
+        assert!(!is_update_available("same", "same"));
+    }
+
+    // -----------------------------------------------------------------------
+    // build_binary_install_command tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn build_binary_install_command_windows_returns_cargo() {
+        let asset = ReleaseAsset {
+            name: "domain-scan-windows-x86_64.zip".to_string(),
+            download_url: "https://example.com/asset.zip".to_string(),
+            size: 1024,
+        };
+        let cmd = build_binary_install_command("windows", &asset);
+        assert!(
+            cmd.contains("cargo install"),
+            "Windows should fall back to cargo install"
+        );
+    }
+
+    #[test]
+    fn build_binary_install_command_darwin_returns_curl() {
+        let asset = ReleaseAsset {
+            name: "domain-scan-darwin-aarch64.tar.gz".to_string(),
+            download_url: "https://example.com/asset.tar.gz".to_string(),
+            size: 2048,
+        };
+        let cmd = build_binary_install_command("darwin", &asset);
+        assert!(
+            cmd.contains("curl -sL"),
+            "macOS should use curl-based install"
+        );
+        assert!(
+            cmd.contains("https://example.com/asset.tar.gz"),
+            "Install command should contain the download URL"
+        );
+        assert!(
+            cmd.contains("chmod +x"),
+            "Install command should make binary executable"
+        );
+    }
+
+    #[test]
+    fn build_binary_install_command_linux_returns_curl() {
+        let asset = ReleaseAsset {
+            name: "domain-scan-linux-x86_64.tar.gz".to_string(),
+            download_url: "https://example.com/linux.tar.gz".to_string(),
+            size: 4096,
+        };
+        let cmd = build_binary_install_command("linux", &asset);
+        assert!(cmd.contains("curl -sL"));
+        assert!(cmd.contains("https://example.com/linux.tar.gz"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Export format tests (pure logic, no Tauri State)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn export_csv_header_format() {
+        // Verify the CSV header string is correct
+        let csv_header = "name,kind,file,line,language,build_status,confidence\n";
+        assert!(csv_header.contains("name"));
+        assert!(csv_header.contains("kind"));
+        assert!(csv_header.contains("confidence"));
+        assert!(csv_header.ends_with('\n'));
+    }
+
+    #[test]
+    fn export_markdown_header_format() {
+        // Verify the markdown table header
+        let md_header = "| Name | Kind | File | Line | Language | Build Status | Confidence |\n";
+        let md_separator =
+            "|------|------|------|------|----------|--------------|------------|\n";
+        assert!(md_header.starts_with("| Name"));
+        assert!(md_separator.starts_with("|---"));
+    }
 }

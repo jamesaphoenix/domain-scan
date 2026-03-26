@@ -2152,4 +2152,102 @@ mod tests {
             );
         }
     }
+
+    // -----------------------------------------------------------------------
+    // validate_manifest_globs: grandchild recursion limitation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_validate_manifest_globs_catches_invalid_child_glob() {
+        // Child with invalid glob should be caught
+        let json = r#"{
+            "subsystems": [{
+                "id": "parent",
+                "name": "Parent",
+                "domain": "core",
+                "status": "new",
+                "filePath": "src/parent/",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [{
+                    "id": "child",
+                    "name": "Child",
+                    "domain": "core",
+                    "status": "new",
+                    "filePath": "[invalid-child-glob",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [],
+                    "dependencies": []
+                }],
+                "dependencies": []
+            }]
+        }"#;
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let result = validate_manifest_globs(&manifest);
+        assert!(
+            result.is_err(),
+            "Invalid glob in child subsystem should be caught"
+        );
+    }
+
+    #[test]
+    fn test_validate_manifest_globs_misses_grandchild_glob() {
+        // KNOWN LIMITATION: validate_manifest_globs only checks one level of children.
+        // A grandchild (child of child) with an invalid glob will NOT be caught.
+        // This test documents this limitation.
+        let json = r#"{
+            "subsystems": [{
+                "id": "parent",
+                "name": "Parent",
+                "domain": "core",
+                "status": "new",
+                "filePath": "src/parent/",
+                "interfaces": [],
+                "operations": [],
+                "tables": [],
+                "events": [],
+                "children": [{
+                    "id": "child",
+                    "name": "Child",
+                    "domain": "core",
+                    "status": "new",
+                    "filePath": "src/parent/child/",
+                    "interfaces": [],
+                    "operations": [],
+                    "tables": [],
+                    "events": [],
+                    "children": [{
+                        "id": "grandchild",
+                        "name": "Grandchild",
+                        "domain": "core",
+                        "status": "new",
+                        "filePath": "[invalid-grandchild-glob",
+                        "interfaces": [],
+                        "operations": [],
+                        "tables": [],
+                        "events": [],
+                        "children": [],
+                        "dependencies": []
+                    }],
+                    "dependencies": []
+                }],
+                "dependencies": []
+            }]
+        }"#;
+        let manifest = parse_manifest(json).unwrap_or_else(|e| panic!("Failed to parse: {e}"));
+        let result = validate_manifest_globs(&manifest);
+
+        // KNOWN LIMITATION: This passes (Ok) even though grandchild has invalid glob.
+        // validate_manifest_globs only iterates sub.children, not recursively.
+        assert!(
+            result.is_ok(),
+            "KNOWN LIMITATION: grandchild globs are not validated. \
+             If this assertion fails, the limitation has been fixed!"
+        );
+    }
 }

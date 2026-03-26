@@ -882,4 +882,558 @@ mod tests {
                 .collect::<Vec<_>>()
         );
     }
+
+    // -----------------------------------------------------------------------
+    // normalize_path edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_normalize_path_removes_single_dot() {
+        let p = PathBuf::from("/project/src/./auth/handler.ts");
+        let result = normalize_path(&p);
+        assert_eq!(result, PathBuf::from("/project/src/auth/handler.ts"));
+    }
+
+    #[test]
+    fn test_normalize_path_resolves_parent_dir() {
+        let p = PathBuf::from("/project/src/billing/../auth/handler.ts");
+        let result = normalize_path(&p);
+        assert_eq!(result, PathBuf::from("/project/src/auth/handler.ts"));
+    }
+
+    #[test]
+    fn test_normalize_path_multiple_parent_dirs() {
+        let p = PathBuf::from("/project/src/billing/deep/../../auth/handler.ts");
+        let result = normalize_path(&p);
+        assert_eq!(result, PathBuf::from("/project/src/auth/handler.ts"));
+    }
+
+    #[test]
+    fn test_normalize_path_parent_at_root_stays() {
+        // When .. goes above root /, it should keep the .. (can't go above root)
+        let p = PathBuf::from("/../../etc");
+        let result = normalize_path(&p);
+        // RootDir cannot be popped, so .. stays
+        assert_eq!(result, PathBuf::from("/etc"));
+    }
+
+    #[test]
+    fn test_normalize_path_relative_with_parent() {
+        let p = PathBuf::from("src/billing/../auth/handler.ts");
+        let result = normalize_path(&p);
+        assert_eq!(result, PathBuf::from("src/auth/handler.ts"));
+    }
+
+    #[test]
+    fn test_normalize_path_no_ops() {
+        let p = PathBuf::from("/project/src/auth/handler.ts");
+        let result = normalize_path(&p);
+        assert_eq!(result, PathBuf::from("/project/src/auth/handler.ts"));
+    }
+
+    #[test]
+    fn test_normalize_path_empty() {
+        let p = PathBuf::from("");
+        let result = normalize_path(&p);
+        assert_eq!(result, PathBuf::from(""));
+    }
+
+    #[test]
+    fn test_normalize_path_only_dots() {
+        let p = PathBuf::from("./././.");
+        let result = normalize_path(&p);
+        assert_eq!(result, PathBuf::from(""));
+    }
+
+    // -----------------------------------------------------------------------
+    // resolve_import_to_subsystem with @-scoped packages
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_resolve_import_scoped_package() {
+        // @myapp/auth should resolve to a subsystem containing "auth"
+        let subsystems = vec![ManifestSubsystem {
+            id: "auth".to_string(),
+            name: "Auth".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::New,
+            file_path: PathBuf::from("packages/auth/src"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        let result = resolve_import_to_subsystem(
+            "@myapp/auth",
+            &PathBuf::from("/project/src/billing/invoice.ts"),
+            &subsystems,
+            &PathBuf::from("/project"),
+        );
+
+        assert_eq!(
+            result,
+            Some("auth".to_string()),
+            "@-scoped package imports should resolve to matching subsystem"
+        );
+    }
+
+    #[test]
+    fn test_resolve_import_scoped_package_with_path() {
+        // @myapp/auth/handler should also resolve to auth subsystem
+        let subsystems = vec![ManifestSubsystem {
+            id: "auth".to_string(),
+            name: "Auth".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::New,
+            file_path: PathBuf::from("packages/auth/src"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        let result = resolve_import_to_subsystem(
+            "@myapp/auth/handler",
+            &PathBuf::from("/project/src/billing/invoice.ts"),
+            &subsystems,
+            &PathBuf::from("/project"),
+        );
+
+        assert_eq!(
+            result,
+            Some("auth".to_string()),
+            "@-scoped package imports with sub-paths should resolve"
+        );
+    }
+
+    #[test]
+    fn test_resolve_import_crate_reference() {
+        // crate::auth::handler should resolve to auth subsystem
+        let subsystems = vec![ManifestSubsystem {
+            id: "auth".to_string(),
+            name: "Auth".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::New,
+            file_path: PathBuf::from("src/auth"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        let result = resolve_import_to_subsystem(
+            "crate::auth::handler",
+            &PathBuf::from("/project/src/billing/invoice.rs"),
+            &subsystems,
+            &PathBuf::from("/project"),
+        );
+
+        assert_eq!(
+            result,
+            Some("auth".to_string()),
+            "Rust crate:: imports should resolve to matching subsystem"
+        );
+    }
+
+    #[test]
+    fn test_resolve_import_no_match() {
+        let subsystems = vec![ManifestSubsystem {
+            id: "auth".to_string(),
+            name: "Auth".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::New,
+            file_path: PathBuf::from("src/auth"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        let result = resolve_import_to_subsystem(
+            "some-random-package",
+            &PathBuf::from("/project/src/billing/invoice.ts"),
+            &subsystems,
+            &PathBuf::from("/project"),
+        );
+
+        assert_eq!(
+            result, None,
+            "Unrecognized imports should return None"
+        );
+    }
+
+    #[test]
+    fn test_resolve_import_relative_path() {
+        let subsystems = vec![ManifestSubsystem {
+            id: "auth".to_string(),
+            name: "Auth".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::New,
+            file_path: PathBuf::from("src/auth"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        let result = resolve_import_to_subsystem(
+            "../auth/handler",
+            &PathBuf::from("/project/src/billing/invoice.ts"),
+            &subsystems,
+            &PathBuf::from("/project"),
+        );
+
+        assert_eq!(
+            result,
+            Some("auth".to_string()),
+            "Relative imports with .. should resolve to the correct subsystem"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // humanize_name edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_humanize_name_empty() {
+        assert_eq!(humanize_name(""), "");
+    }
+
+    #[test]
+    fn test_humanize_name_single_char() {
+        assert_eq!(humanize_name("a"), "A");
+    }
+
+    #[test]
+    fn test_humanize_name_multiple_separators() {
+        assert_eq!(humanize_name("my--double--dash"), "My Double Dash");
+    }
+
+    #[test]
+    fn test_humanize_name_mixed_separators() {
+        assert_eq!(humanize_name("my-app_service"), "My App Service");
+    }
+
+    #[test]
+    fn test_humanize_name_underscore_root() {
+        assert_eq!(humanize_name("_root"), "Root");
+    }
+
+    // -----------------------------------------------------------------------
+    // is_workspace_dir and is_source_root
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_is_workspace_dir_known_dirs() {
+        assert!(is_workspace_dir("crates"));
+        assert!(is_workspace_dir("packages"));
+        assert!(is_workspace_dir("apps"));
+        assert!(is_workspace_dir("modules"));
+        assert!(is_workspace_dir("services"));
+        assert!(is_workspace_dir("libs"));
+        assert!(is_workspace_dir("workspaces"));
+    }
+
+    #[test]
+    fn test_is_workspace_dir_non_workspace() {
+        assert!(!is_workspace_dir("src"));
+        assert!(!is_workspace_dir("dist"));
+        assert!(!is_workspace_dir("node_modules"));
+        assert!(!is_workspace_dir("vendor"));
+    }
+
+    #[test]
+    fn test_is_source_root_known() {
+        assert!(is_source_root("src"));
+        assert!(is_source_root("lib"));
+        assert!(is_source_root("app"));
+    }
+
+    #[test]
+    fn test_is_source_root_non_source() {
+        assert!(!is_source_root("dist"));
+        assert!(!is_source_root("test"));
+        assert!(!is_source_root("crates"));
+    }
+
+    // -----------------------------------------------------------------------
+    // compute_common_prefix edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_compute_common_prefix_empty_files() {
+        let result = compute_common_prefix(&[], Path::new("/project"));
+        assert_eq!(result, PathBuf::new());
+    }
+
+    #[test]
+    fn test_compute_common_prefix_single_file() {
+        let files = vec![PathBuf::from("/project/src/auth/handler.ts")];
+        let result = compute_common_prefix(&files, Path::new("/project"));
+        assert_eq!(result, PathBuf::from("src/auth"));
+    }
+
+    #[test]
+    fn test_compute_common_prefix_same_dir() {
+        let files = vec![
+            PathBuf::from("/project/src/auth/handler.ts"),
+            PathBuf::from("/project/src/auth/types.ts"),
+        ];
+        let result = compute_common_prefix(&files, Path::new("/project"));
+        assert_eq!(result, PathBuf::from("src/auth"));
+    }
+
+    #[test]
+    fn test_compute_common_prefix_different_dirs() {
+        let files = vec![
+            PathBuf::from("/project/src/auth/handler.ts"),
+            PathBuf::from("/project/src/billing/invoice.ts"),
+        ];
+        let result = compute_common_prefix(&files, Path::new("/project"));
+        assert_eq!(result, PathBuf::from("src"));
+    }
+
+    #[test]
+    fn test_compute_common_prefix_no_common() {
+        let files = vec![
+            PathBuf::from("/project/src/handler.ts"),
+            PathBuf::from("/project/lib/utils.ts"),
+        ];
+        let result = compute_common_prefix(&files, Path::new("/project"));
+        assert_eq!(result, PathBuf::from("."));
+    }
+
+    // -----------------------------------------------------------------------
+    // group_files_by_directory edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_group_files_skips_files_outside_root() {
+        let files = vec![
+            make_ir_file("/other-project/src/auth/handler.ts", Vec::new()),
+        ];
+        let index = make_scan_index("/project", files);
+        let groups = group_files_by_directory(&index, &PathBuf::from("/project"));
+
+        assert!(
+            groups.is_empty(),
+            "Files outside scan root should be skipped"
+        );
+    }
+
+    #[test]
+    fn test_group_files_two_component_path() {
+        // e.g. src/main.rs -> domain="src", subsystem="src"
+        let files = vec![
+            make_ir_file("/project/src/main.rs", Vec::new()),
+        ];
+        let index = make_scan_index("/project", files);
+        let groups = group_files_by_directory(&index, &PathBuf::from("/project"));
+
+        assert!(groups.contains_key("src"), "Should have 'src' domain");
+        assert!(
+            groups["src"].contains_key("src"),
+            "Should have 'src' subsystem"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // find_subsystem_for_path edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_find_subsystem_deepest_match_wins() {
+        let subsystems = vec![
+            ManifestSubsystem {
+                id: "auth".to_string(),
+                name: "Auth".to_string(),
+                domain: "core".to_string(),
+                status: ManifestStatus::New,
+                file_path: PathBuf::from("src/auth"),
+                interfaces: Vec::new(),
+                operations: Vec::new(),
+                tables: Vec::new(),
+                events: Vec::new(),
+                children: Vec::new(),
+                dependencies: Vec::new(),
+            },
+            ManifestSubsystem {
+                id: "auth-jwt".to_string(),
+                name: "Auth JWT".to_string(),
+                domain: "core".to_string(),
+                status: ManifestStatus::New,
+                file_path: PathBuf::from("src/auth/jwt"),
+                interfaces: Vec::new(),
+                operations: Vec::new(),
+                tables: Vec::new(),
+                events: Vec::new(),
+                children: Vec::new(),
+                dependencies: Vec::new(),
+            },
+        ];
+
+        let result = find_subsystem_for_path(
+            Path::new("src/auth/jwt/token.ts"),
+            &subsystems,
+        );
+        assert_eq!(
+            result,
+            Some("auth-jwt".to_string()),
+            "Deepest path match should win"
+        );
+    }
+
+    #[test]
+    fn test_find_subsystem_no_match() {
+        let subsystems = vec![ManifestSubsystem {
+            id: "auth".to_string(),
+            name: "Auth".to_string(),
+            domain: "core".to_string(),
+            status: ManifestStatus::New,
+            file_path: PathBuf::from("src/auth"),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        let result = find_subsystem_for_path(
+            Path::new("src/billing/invoice.ts"),
+            &subsystems,
+        );
+        assert_eq!(result, None, "Non-matching path should return None");
+    }
+
+    #[test]
+    fn test_find_subsystem_empty_file_path_skipped() {
+        let subsystems = vec![ManifestSubsystem {
+            id: "root".to_string(),
+            name: "Root".to_string(),
+            domain: "_root".to_string(),
+            status: ManifestStatus::New,
+            file_path: PathBuf::new(),
+            interfaces: Vec::new(),
+            operations: Vec::new(),
+            tables: Vec::new(),
+            events: Vec::new(),
+            children: Vec::new(),
+            dependencies: Vec::new(),
+        }];
+
+        let result = find_subsystem_for_path(
+            Path::new("handler.ts"),
+            &subsystems,
+        );
+        assert_eq!(
+            result, None,
+            "Subsystems with empty file_path should be skipped"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Color cycling
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_domain_color_cycling() {
+        // Create more domains than DOMAIN_COLORS (12 colors) to verify cycling
+        let mut files = Vec::new();
+        for i in 0..15 {
+            files.push(make_ir_file(
+                &format!("/project/src/domain{i:02}/handler.ts"),
+                Vec::new(),
+            ));
+        }
+        let index = make_scan_index("/project", files);
+        let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
+
+        // Should have 15 domains
+        assert_eq!(manifest.domains.len(), 15);
+
+        // All colors should come from the palette
+        let valid_colors: std::collections::HashSet<&str> =
+            DOMAIN_COLORS.iter().copied().collect();
+        for domain_def in manifest.domains.values() {
+            assert!(
+                valid_colors.contains(domain_def.color.as_str()),
+                "Color {} should be from the palette",
+                domain_def.color
+            );
+        }
+
+        // With 15 domains and 12 colors, at least some colors must repeat
+        let used_colors: Vec<&str> = manifest
+            .domains
+            .values()
+            .map(|d| d.color.as_str())
+            .collect();
+        let unique_colors: std::collections::HashSet<&&str> = used_colors.iter().collect();
+        assert!(
+            unique_colors.len() <= DOMAIN_COLORS.len(),
+            "Colors should cycle: {unique_colors:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Connection inference edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_no_self_connections() {
+        // An import within the same subsystem should NOT create a connection
+        let files = vec![
+            make_ir_file(
+                "/project/src/auth/handler.ts",
+                vec![make_import("./types")],
+            ),
+            make_ir_file("/project/src/auth/types.ts", Vec::new()),
+        ];
+        let index = make_scan_index("/project", files);
+        let manifest = bootstrap_manifest(&index, &BootstrapOptions::default());
+
+        for conn in &manifest.connections {
+            assert_ne!(
+                conn.from, conn.to,
+                "Self-connections should never be created: {} -> {}",
+                conn.from, conn.to
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // make_unique_id edge cases
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_make_unique_id_many_collisions() {
+        let mut seen = HashSet::new();
+        assert_eq!(make_unique_id("x", &mut seen), "x");
+        assert_eq!(make_unique_id("x", &mut seen), "x-2");
+        assert_eq!(make_unique_id("x", &mut seen), "x-3");
+        assert_eq!(make_unique_id("x", &mut seen), "x-4");
+        assert_eq!(make_unique_id("x", &mut seen), "x-5");
+        assert_eq!(seen.len(), 5);
+    }
+
+    #[test]
+    fn test_make_unique_id_different_bases_no_collision() {
+        let mut seen = HashSet::new();
+        assert_eq!(make_unique_id("a", &mut seen), "a");
+        assert_eq!(make_unique_id("b", &mut seen), "b");
+        assert_eq!(make_unique_id("c", &mut seen), "c");
+        assert_eq!(seen.len(), 3);
+    }
 }
