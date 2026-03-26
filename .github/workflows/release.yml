@@ -81,8 +81,57 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
 
+      - name: Import Apple certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
+          security create-keychain -p "" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "" $KEYCHAIN_PATH
+          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+      - name: Write Apple API key
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          mkdir -p ~/private_keys
+          echo -n "$APPLE_API_KEY_CONTENT" > ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
+
       - name: Build Tauri app (Apple Silicon)
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ~/private_keys/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
         run: cargo tauri build --target aarch64-apple-darwin --bundles dmg
+
+      - name: Verify code signing
+        run: |
+          APP_PATH=$(find target/aarch64-apple-darwin/release/bundle/macos -name "*.app" -maxdepth 1 | head -1)
+          echo "::group::Verify app signature"
+          codesign -dvvv "$APP_PATH"
+          echo "::endgroup::"
+          echo "::group::Verify signature validity"
+          codesign --verify --deep --strict "$APP_PATH"
+          echo "::endgroup::"
+          echo "::group::Check signing identity"
+          IDENTITY=$(codesign -dvvv "$APP_PATH" 2>&1 | grep "Authority=Developer ID Application" || true)
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::App is NOT signed with Developer ID Application certificate!"
+            exit 1
+          fi
+          echo "Signed by: $IDENTITY"
+          echo "::endgroup::"
+          echo "::group::Gatekeeper assessment"
+          spctl --assess --type execute --verbose "$APP_PATH" 2>&1 || echo "::warning::spctl assessment failed — notarization may still be in progress"
+          echo "::endgroup::"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7
