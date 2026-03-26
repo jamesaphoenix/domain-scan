@@ -1776,6 +1776,52 @@ fn test_skill_create_manifest_from_scratch() {
     );
 }
 
+#[test]
+fn test_bootstrap_from_cwd_without_explicit_root_is_non_empty() {
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let manifest_path = tmp.path().join("system.json");
+    let fixture = fixture_root();
+
+    let output = Command::cargo_bin("domain-scan")
+        .expect("binary should exist")
+        .current_dir(&fixture)
+        .arg("--languages")
+        .arg("typescript")
+        .arg("--no-cache")
+        .arg("-q")
+        .arg("init")
+        .arg("--bootstrap")
+        .arg("--name")
+        .arg("cwd-bootstrap")
+        .arg("-o")
+        .arg(&manifest_path)
+        .output()
+        .expect("bootstrap command should run");
+
+    assert!(
+        output.status.success(),
+        "bootstrap from cwd should succeed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(&manifest_path).expect("read manifest"),
+    )
+    .expect("manifest should be valid JSON");
+
+    let domain_count = manifest["domains"].as_object().map(|v| v.len()).unwrap_or(0);
+    let subsystem_count = manifest["subsystems"].as_array().map(|v| v.len()).unwrap_or(0);
+
+    assert!(
+        domain_count > 0,
+        "bootstrap from cwd should infer at least one domain"
+    );
+    assert!(
+        subsystem_count > 0,
+        "bootstrap from cwd should infer at least one subsystem"
+    );
+}
+
 /// Test: Claude Code can refine an existing manifest via direct system.json edits.
 ///
 /// Simulates the refinement workflow from `domain-scan-init.md`:

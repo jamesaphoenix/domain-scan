@@ -1151,7 +1151,10 @@ fn run_tui(mut app: tui::TuiApp) -> Result<(), Box<dyn std::error::Error>> {
 // ---------------------------------------------------------------------------
 
 fn build_scan_config(cli: &Cli) -> ScanConfig {
-    let root = cli.root.clone();
+    let root = cli
+        .root
+        .canonicalize()
+        .unwrap_or_else(|_| cli.root.clone());
     let languages: Vec<Language> = cli.languages.iter().map(|l| Language::from(*l)).collect();
     let build_status_override = cli.build_status.map(BuildStatus::from);
     let cache_dir = root.join(".domain-scan-cache");
