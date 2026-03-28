@@ -1,9 +1,10 @@
 //! Performance assertion tests — verify that benchmark targets are met.
 //!
-//! These are standard #[test] functions (not criterion) so they run in CI.
+//! These are standard #[test] functions (not criterion) so they can run in CI.
 //! The authoritative measurements come from criterion benchmarks (`cargo bench`),
 //! which run in release mode. These tests use relaxed thresholds to account for
-//! the test profile (opt-level = 1) and CI variability.
+//! the test profile (opt-level = 1), and they use even looser thresholds on
+//! shared CI runners where throughput is noisier.
 //!
 //! Spec targets (release mode):
 //! - Parse throughput: >500 files/sec on 8 cores
@@ -18,6 +19,41 @@ use domain_scan_core::ir::{BuildStatus, Language, ScanConfig};
 use domain_scan_core::output::{self, OutputFormat};
 use domain_scan_core::{content_hash, index, parser, query_engine, walker};
 use rayon::prelude::*;
+
+const LOCAL_PARSE_THRESHOLD: f64 = 200.0;
+const CI_PARSE_THRESHOLD: f64 = 100.0;
+const LOCAL_RESCAN_THRESHOLD: f64 = 2000.0;
+const CI_RESCAN_THRESHOLD: f64 = 1000.0;
+const LOCAL_CLI_STARTUP_MS: u128 = 500;
+const CI_CLI_STARTUP_MS: u128 = 1000;
+
+fn running_in_ci() -> bool {
+    std::env::var_os("CI").is_some()
+}
+
+fn parse_threshold() -> f64 {
+    if running_in_ci() {
+        CI_PARSE_THRESHOLD
+    } else {
+        LOCAL_PARSE_THRESHOLD
+    }
+}
+
+fn rescan_threshold() -> f64 {
+    if running_in_ci() {
+        CI_RESCAN_THRESHOLD
+    } else {
+        LOCAL_RESCAN_THRESHOLD
+    }
+}
+
+fn cli_startup_threshold_ms() -> u128 {
+    if running_in_ci() {
+        CI_CLI_STARTUP_MS
+    } else {
+        LOCAL_CLI_STARTUP_MS
+    }
+}
 
 fn fixture_files() -> Vec<(PathBuf, Language)> {
     let fixtures_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -59,7 +95,7 @@ fn fixture_files() -> Vec<(PathBuf, Language)> {
 
 /// Parse throughput (parallel via rayon): >500 files/sec.
 /// Uses parallel parsing to match the spec target ("on 8 cores").
-/// Relaxed to 200 files/sec for test profile (opt-level=1).
+/// Relaxed to 200 files/sec locally and 100 files/sec on shared CI runners.
 #[test]
 fn test_parse_throughput_target() {
     let files = fixture_files();
@@ -80,15 +116,15 @@ fn test_parse_throughput_target() {
 
     assert_eq!(results.len(), file_count);
     let files_per_sec = file_count as f64 / elapsed.as_secs_f64();
-    // Relaxed: 200 files/sec in test profile. Criterion bench (release) verifies >500.
+    let min_files_per_sec = parse_threshold();
     assert!(
-        files_per_sec > 200.0,
-        "Parse throughput {files_per_sec:.0} files/sec is below 200 threshold ({file_count} files in {elapsed:?})"
+        files_per_sec > min_files_per_sec,
+        "Parse throughput {files_per_sec:.0} files/sec is below {min_files_per_sec:.0} threshold ({file_count} files in {elapsed:?})"
     );
 }
 
 /// Cached re-scan: >5000 files/sec with warm cache.
-/// Relaxed to 2000 files/sec for test profile.
+/// Relaxed to 2000 files/sec locally and 1000 files/sec on shared CI runners.
 #[test]
 fn test_cached_rescan_target() {
     let files = fixture_files();
@@ -125,15 +161,15 @@ fn test_cached_rescan_target() {
     let elapsed = start.elapsed();
 
     let files_per_sec = file_count as f64 / elapsed.as_secs_f64();
-    // Relaxed: 2000 files/sec in test profile. Criterion bench (release) verifies >5000.
+    let min_files_per_sec = rescan_threshold();
     assert!(
-        files_per_sec > 2000.0,
-        "Cached re-scan {files_per_sec:.0} files/sec is below 2000 threshold ({file_count} files in {elapsed:?})"
+        files_per_sec > min_files_per_sec,
+        "Cached re-scan {files_per_sec:.0} files/sec is below {min_files_per_sec:.0} threshold ({file_count} files in {elapsed:?})"
     );
 }
 
 /// CLI startup: full pipeline completes quickly for small projects.
-/// Relaxed to 500ms for test profile. Criterion bench (release) verifies <100ms.
+/// Relaxed to 500ms locally and 1000ms on shared CI runners.
 #[test]
 fn test_cli_startup_target() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
@@ -176,12 +212,13 @@ fn test_cli_startup_target() {
         .unwrap_or_else(|e| panic!("format failed: {e}"));
 
     let elapsed = start.elapsed();
+    let max_startup_ms = cli_startup_threshold_ms();
 
-    // Relaxed: 500ms in test profile. Criterion bench (release) verifies <100ms.
     assert!(
-        elapsed.as_millis() < 500,
-        "Full pipeline took {}ms, exceeding 500ms threshold ({} files)",
+        elapsed.as_millis() < max_startup_ms,
+        "Full pipeline took {}ms, exceeding {}ms threshold ({} files)",
         elapsed.as_millis(),
+        max_startup_ms,
         scan_index.stats.total_files,
     );
 }
