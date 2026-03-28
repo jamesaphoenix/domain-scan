@@ -712,6 +712,7 @@ pub fn open_in_editor(
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 fn app_name_for_editor(editor: &str) -> Result<&'static str, CommandError> {
     match editor {
         "cursor" => Ok("Cursor"),

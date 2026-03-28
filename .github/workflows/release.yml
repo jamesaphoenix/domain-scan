@@ -5,30 +5,45 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 env:
+  CARGO_TERM_COLOR: always
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build-cli:
+    name: Build CLI (${{ matrix.asset_name }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            name: domain-scan-darwin-aarch64
+            asset_name: domain-scan-darwin-aarch64.tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
-            name: domain-scan-darwin-x86_64
+            asset_name: domain-scan-darwin-x86_64.tar.gz
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            name: domain-scan-linux-x86_64
+            asset_name: domain-scan-linux-x86_64.tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            name: domain-scan-windows-x86_64
-    runs-on: ${{ matrix.os }}
+            asset_name: domain-scan-windows-x86_64.zip
     steps:
       - uses: actions/checkout@v6
 
@@ -37,42 +52,107 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build CLI binary
-        run: cargo build --release --target ${{ matrix.target }} -p domain-scan-cli
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+            ${{ runner.os }}-cargo-
 
-      - name: Archive binary (unix)
+      - name: Build CLI binary
+        run: cargo build --locked --release --target ${{ matrix.target }} -p domain-scan-cli
+
+      - name: Package CLI archive (unix)
         if: runner.os != 'Windows'
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.name }}.tar.gz domain-scan
-          cd ../../..
+          mkdir -p dist
+          tar -czf "dist/${{ matrix.asset_name }}" -C "target/${{ matrix.target }}/release" domain-scan
 
-      - name: Archive binary (windows)
+      - name: Package CLI archive (windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path target/${{ matrix.target }}/release/domain-scan.exe -DestinationPath ${{ matrix.name }}.zip
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive `
+            -Path "target/${{ matrix.target }}/release/domain-scan.exe" `
+            -DestinationPath "dist/${{ matrix.asset_name }}"
 
-      - name: Upload CLI artifact
+      - name: Upload CLI workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.name }}
-          path: |
-            ${{ matrix.name }}.tar.gz
-            ${{ matrix.name }}.zip
+          name: cli-${{ matrix.target }}
+          path: dist/${{ matrix.asset_name }}
+          if-no-files-found: error
 
-  build-tauri-macos:
-    runs-on: macos-latest
+  build-desktop:
+    name: Build Desktop (${{ matrix.label }})
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: darwin-aarch64
+            bundles: dmg
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            label: darwin-x86_64
+            bundles: dmg
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            label: linux-x86_64
+            bundles: deb,appimage
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x86_64
+            bundles: msi,nsis
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.target }}-
+            ${{ runner.os }}-cargo-
 
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: crates/domain-scan-tauri/ui/package-lock.json
 
       - name: Install UI dependencies
         working-directory: crates/domain-scan-tauri/ui
@@ -82,161 +162,206 @@ jobs:
         run: cargo install tauri-cli --version "^2" --locked
 
       - name: Import Apple certificate
+        if: runner.os == 'macOS'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $CERTIFICATE_PATH
-          security create-keychain -p "" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
-          security import $CERTIFICATE_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security set-key-partition-list -S apple-tool:,apple: -k "" $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
+          CERTIFICATE_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o "$CERTIFICATE_PATH"
+          security create-keychain -p "" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
 
       - name: Write Apple API key
+        if: runner.os == 'macOS'
         env:
-          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
         run: |
-          mkdir -p ~/private_keys
-          echo -n "$APPLE_API_KEY_CONTENT" > ~/private_keys/AuthKey_${APPLE_API_KEY}.p8
+          mkdir -p "$HOME/private_keys"
+          echo -n "$APPLE_API_KEY_CONTENT" > "$HOME/private_keys/AuthKey_${APPLE_API_KEY}.p8"
 
-      - name: Build Tauri app (Apple Silicon)
+      - name: Build desktop app
+        working-directory: crates/domain-scan-tauri
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_PATH: ~/private_keys/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
-        run: cargo tauri build --target aarch64-apple-darwin --bundles dmg
-
-      - name: Verify code signing
         run: |
-          echo "::group::Locate .app bundle"
-          APP_PATH=$(find target/aarch64-apple-darwin/release/bundle -name "*.app" -type d | head -1)
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            export APPLE_API_KEY_PATH="$HOME/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+          fi
+          cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Verify macOS code signing
+        if: runner.os == 'macOS'
+        run: |
+          APP_PATH=$(find "target/${{ matrix.target }}/release/bundle" -name "*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then
-            echo "No .app found in bundle dir, mounting DMG to verify..."
-            DMG_PATH=$(find target/aarch64-apple-darwin/release/bundle/dmg -name "*.dmg" | head -1)
+            DMG_PATH=$(find "target/${{ matrix.target }}/release/bundle/dmg" -name "*.dmg" | head -1)
             MOUNT_DIR=$(mktemp -d)
             hdiutil attach "$DMG_PATH" -mountpoint "$MOUNT_DIR" -nobrowse -quiet
-            APP_PATH=$(find "$MOUNT_DIR" -name "*.app" -type d -maxdepth 1 | head -1)
+            APP_PATH=$(find "$MOUNT_DIR" -maxdepth 1 -name "*.app" -type d | head -1)
           fi
-          echo "Found app at: $APP_PATH"
-          echo "::endgroup::"
-          echo "::group::Verify app signature"
-          codesign -dvvv "$APP_PATH"
-          echo "::endgroup::"
-          echo "::group::Verify signature validity"
-          codesign --verify --deep --strict "$APP_PATH"
-          echo "::endgroup::"
-          echo "::group::Check signing identity"
-          IDENTITY=$(codesign -dvvv "$APP_PATH" 2>&1 | grep "Authority=Developer ID Application" || true)
-          if [ -z "$IDENTITY" ]; then
-            echo "::error::App is NOT signed with Developer ID Application certificate!"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Unable to locate .app bundle for signing verification."
             exit 1
           fi
-          echo "Signed by: $IDENTITY"
-          echo "::endgroup::"
-          echo "::group::Gatekeeper assessment"
-          spctl --assess --type execute --verbose "$APP_PATH" 2>&1 || echo "::warning::spctl assessment failed — notarization may still be in progress"
-          echo "::endgroup::"
+          codesign -dvvv "$APP_PATH"
+          codesign --verify --deep --strict "$APP_PATH"
+          IDENTITY=$(codesign -dvvv "$APP_PATH" 2>&1 | grep "Authority=Developer ID Application" || true)
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::App is not signed with a Developer ID Application certificate."
+            exit 1
+          fi
+          spctl --assess --type execute --verbose "$APP_PATH" 2>&1 || echo "::warning::spctl assessment failed; notarization may still be processing."
 
-      - name: Upload DMG artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: domain-scan-aarch64-apple-darwin-dmg
-          path: target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-
-  build-tauri-linux:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install system dependencies
+      - name: Collect desktop assets (macOS)
+        if: runner.os == 'macOS'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/bundle/dmg/"*.dmg "dist/domain-scan-${{ matrix.label }}.dmg"
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Collect desktop assets (linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/bundle/deb/"*.deb "dist/domain-scan-${{ matrix.label }}.deb"
+          cp "target/${{ matrix.target }}/release/bundle/appimage/"*.AppImage "dist/domain-scan-${{ matrix.label }}.AppImage"
 
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
+      - name: Collect desktop assets (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/bundle/msi/*.msi" "dist/domain-scan-${{ matrix.label }}.msi"
+          Copy-Item "target/${{ matrix.target }}/release/bundle/nsis/*.exe" "dist/domain-scan-${{ matrix.label }}-setup.exe"
 
-      - name: Install UI dependencies
-        working-directory: crates/domain-scan-tauri/ui
-        run: npm ci
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
-
-      - name: Build Tauri app
-        run: cargo tauri build --bundles deb,appimage
-
-      - name: Upload Linux artifacts
+      - name: Upload desktop workflow artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: domain-scan-linux
-          path: |
-            target/release/bundle/deb/*.deb
-            target/release/bundle/appimage/*.AppImage
+          name: desktop-${{ matrix.label }}
+          path: dist/*
+          if-no-files-found: error
 
-  build-tauri-windows:
-    runs-on: windows-latest
+  publish-release:
+    name: Publish Release
+    needs:
+      - build-cli
+      - build-desktop
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      release_url: ${{ steps.publish.outputs.release_url }}
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-
-      - name: Install UI dependencies
-        working-directory: crates/domain-scan-tauri/ui
-        run: npm ci
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
-
-      - name: Build Tauri app
-        run: cargo tauri build --bundles msi,nsis
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: domain-scan-windows
-          path: |
-            target/release/bundle/msi/*.msi
-            target/release/bundle/nsis/*.exe
-
-  create-release:
-    needs: [build-cli, build-tauri-macos, build-tauri-linux, build-tauri-windows]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Download all artifacts
+      - name: Download all workflow artifacts
         uses: actions/download-artifact@v8
         with:
           path: artifacts
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2.6.1
-        with:
-          draft: false
-          generate_release_notes: true
-          files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.deb
-            artifacts/**/*.AppImage
-            artifacts/**/*.msi
-            artifacts/**/*.exe
-            artifacts/**/*.tar.gz
-            artifacts/**/*.zip
+      - name: Flatten release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -print0 | while IFS= read -r -d '' file; do
+            cp "$file" "release-assets/$(basename "$file")"
+          done
+
+      - name: Build checksums
+        working-directory: release-assets
+        run: |
+          sha256sum ./* > SHA256SUMS.txt
+          {
+            echo "## Release Assets"
+            echo
+            echo "| Asset | SHA256 |"
+            echo "| --- | --- |"
+            while read -r hash name; do
+              echo "| \`$name\` | \`$hash\` |"
+            done < SHA256SUMS.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish GitHub release
+        id: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          shopt -s nullglob
+          files=(./release-assets/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No release assets were produced."
+            exit 1
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" --clobber -- "${files[@]}"
+          else
+            gh release create "$tag" --generate-notes --title "$tag" -- "${files[@]}"
+          fi
+
+          release_url="$(gh release view "$tag" --json url --jq '.url')"
+          echo "release_url=$release_url" >> "$GITHUB_OUTPUT"
+
+  notify:
+    name: Notify
+    needs:
+      - validate
+      - build-cli
+      - build-desktop
+      - publish-release
+    if: ${{ always() }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - name: Build notification message
+        id: message
+        env:
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_URL: ${{ needs.publish-release.outputs.release_url }}
+        run: |
+          status="success"
+          if [ "${{ needs.validate.result }}" != "success" ] || \
+             [ "${{ needs.build-cli.result }}" != "success" ] || \
+             [ "${{ needs.build-desktop.result }}" != "success" ] || \
+             [ "${{ needs.publish-release.result }}" != "success" ]; then
+            status="failure"
+          fi
+
+          if [ "$status" = "success" ]; then
+            message="domain-scan release ${GITHUB_REF_NAME} published successfully: ${RELEASE_URL}"
+          else
+            message="domain-scan release ${GITHUB_REF_NAME} failed. Workflow run: ${RUN_URL}"
+          fi
+
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "message=$message" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack
+        env:
+          MESSAGE: ${{ steps.message.outputs.message }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            exit 0
+          fi
+          payload=$(jq -nc --arg text "$MESSAGE" '{text: $text}')
+          curl -fsSL -X POST -H "Content-Type: application/json" --data "$payload" "$SLACK_WEBHOOK_URL"
+
+      - name: Notify Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MESSAGE: ${{ steps.message.outputs.message }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            exit 0
+          fi
+          payload=$(jq -nc --arg content "$MESSAGE" '{content: $content}')
+          curl -fsSL -X POST -H "Content-Type: application/json" --data "$payload" "$DISCORD_WEBHOOK_URL"
