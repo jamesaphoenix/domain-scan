@@ -188,6 +188,7 @@ jobs:
 
       - name: Build desktop app
         working-directory: crates/domain-scan-tauri
+        shell: bash
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
